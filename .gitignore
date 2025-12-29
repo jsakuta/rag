@@ -1,0 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 環境設定ファイル
+.env
+.env.local
+.env.*.local
+*.env.backup
+
+# ログファイル
+*.log
+logs/
+
+# エディタ設定
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# キャッシュディレクトリ
+**/vector_cache/
+**/vector_db/
+*.cache
+.cache/
+
+# プロジェクトデータディレクトリ（機密データを含む可能性）
+**/reference/
+**/output/
+**/input/
+**/prompt/
+**/manuals/
+**/cache/
+
+# バックアップディレクトリ
+*.backup/
+*backup*/
+
+# アーカイブディレクトリ（Phase 3で追加予定）
+_archive/
+
+# データファイル
+*.xlsx
+*.csv
+*.pkl
+*.json.cache
+
+# OS関連
+.DS_Store
+Thumbs.db
+nul
+
+# Docker
+.dockerignore
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# ChromaDB（rag_v2.1で使用）
+chroma.sqlite3
+chroma.sqlite3-shm
+chroma.sqlite3-wal
+
+# Google Cloud認証情報
+gemini_credentials.json
+*credentials*.json
+
+# Azure Key Vault
+*.pem
+*.key
