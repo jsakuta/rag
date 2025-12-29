@@ -2,8 +2,8 @@ import streamlit as st
 import logging
 import pandas as pd
 from config import SearchConfig
-from processor import ExcelVectorProcessor
-from utils import setup_logger
+from src.core.processor import ExcelVectorProcessor
+from src.utils.utils import setup_logger
 import datetime
 import os
 import re

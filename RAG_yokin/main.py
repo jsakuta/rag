@@ -2,8 +2,8 @@ import sys
 import os
 from dotenv import load_dotenv
 from config import SearchConfig
-from processor import ExcelVectorProcessor
-from utils import setup_logger
+from src.core.processor import ExcelVectorProcessor
+from src.utils.utils import setup_logger
 
 # 環境変数の読み込み
 load_dotenv()
@@ -19,7 +19,7 @@ def main():
         logger.info("Starting in interactive mode")
         # UI用の設定値に変更
         config.vector_weight = SearchConfig.DEFAULT_UI_VECTOR_WEIGHT
-        os.system("streamlit run ui.py")
+        os.system("streamlit run ui/ui.py")
     else:
         logger.info("Starting in batch mode")
         processor = ExcelVectorProcessor(config)
