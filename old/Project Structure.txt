@@ -1,0 +1,16 @@
+```
+loan_assistant/
+├── __init__.py
+├── config.py           # 設定値の定義
+├── models/
+│   ├── __init__.py
+│   ├── embedding.py    # 埋め込みモデル関連クラス
+│   ├── reranker.py    # リランカーモデル関連クラス
+│   └── metadata.py    # メタデータ関連クラス
+├── utils/
+│   ├── __init__.py
+│   ├── text.py        # テキスト処理ユーティリティ
+│   └── file.py        # ファイル処理ユーティリティ
+├── bot.py             # メインのボットクラス
+└── main.py            # エントリーポイント
+```

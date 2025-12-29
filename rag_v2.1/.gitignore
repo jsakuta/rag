@@ -1,0 +1,61 @@
+# Python関連
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 環境設定ファイル
+.env
+.env.local
+.env.*.local
+
+# ログファイル
+*.log
+logs/
+
+# エディタ設定
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# キャッシュディレクトリ
+**/vector_cache/
+*.cache
+
+# Githubにプッシュしないディレクトリ
+reference/
+reference/**
+output/
+output/**
+input/
+input/**
+prompt/
+prompt/**
+old/
+old/**
+logs/
+logs/**
+
+# その他
+*.xlsx
+*.csv
+.DS_Store

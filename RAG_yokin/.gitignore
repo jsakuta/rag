@@ -1,0 +1,17 @@
+# 特定のフォルダを除外
+/input/
+/output/
+/reference/
+
+# グローバルに除外するパターン
+*.log
+*.pyc
+__pycache__/
+.env
+*.env
+*.env.*
+.venv
+venv/
+env/
+.DS_Store
+```
