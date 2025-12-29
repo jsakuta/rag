@@ -1,7 +1,7 @@
 import platform
 from typing import Optional
 from config import *
-from bot import LoanAssistantBot, Colors
+from src.core.bot import LoanAssistantBot, Colors
 
 def get_numeric_input(prompt: str, current_value: float, min_value: Optional[float] = None, max_value: Optional[float] = None) -> Optional[float]:
     """数値入力を受け付け、検証する"""
