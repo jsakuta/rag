@@ -29,6 +29,10 @@ MANIFEST
 .env.*.local
 *.env.backup
 
+# .env.exampleは除外しない（すべてのディレクトリで）
+!.env.example
+!**/.env.example
+
 # ログファイル
 *.log
 logs/
