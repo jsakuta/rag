@@ -52,8 +52,15 @@ prompt/
 prompt/**
 old/
 old/**
+backup/
+backup/**
 logs/
 logs/**
+
+# バックアップファイル
+*.bak
+*_backup.py
+*_archive.zip
 
 # その他
 *.xlsx
