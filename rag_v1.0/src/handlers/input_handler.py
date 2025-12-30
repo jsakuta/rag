@@ -3,7 +3,7 @@ import os
 import glob
 import pandas as pd
 from config import SearchConfig
-from utils.logger import setup_logger
+from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 

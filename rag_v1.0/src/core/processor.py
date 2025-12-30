@@ -5,10 +5,10 @@ import sys
 import time
 from tqdm import tqdm
 from config import SearchConfig
-from input_handler import InputHandlerFactory
-from output_handler import OutputHandlerFactory
-from searcher import Searcher
-from utils.logger import setup_logger
+from src.handlers.input_handler import InputHandlerFactory
+from src.handlers.output_handler import OutputHandlerFactory
+from src.core.searcher import Searcher
+from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
