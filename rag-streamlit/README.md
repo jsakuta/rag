@@ -1,12 +1,10 @@
-# RAG_yokin → rag-streamlit
-
-> **注意**: 本プロジェクトは将来的に `rag-streamlit` にリネームされます。
+# rag-streamlit
 
 ## 他プロジェクトとの違い
 - **特徴**: Streamlit UIによる対話的検索、リアルタイム検索、デモ・プレゼンテーションに最適
 - **代替プロジェクト**:
-  - バッチ処理が必要な場合: [rag_v1.0 (rag-batch)](../rag_v1.0/)
-  - 最新技術を使いたい場合: [rag_v2.1 (rag-gemini)](../rag_v2.1/)
+  - バッチ処理が必要な場合: [rag-batch](../rag-batch/)
+  - 最新技術を使いたい場合: [rag-gemini](../rag-gemini/)
   - プロジェクト全体の比較: [ルートREADME](../README.md)
 
 ---

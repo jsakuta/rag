@@ -1,12 +1,10 @@
-# RAG (Retrieval-Augmented Generation) System V2 → rag-gemini
-
-> **注意**: 本プロジェクトは将来的に `rag-gemini` にリネームされます。
+# rag-gemini
 
 ## 他プロジェクトとの違い
 - **特徴**: Vertex AI Gemini埋め込みモデル、ChromaDB永続化、LLM拡張検索（デュアルモード）、動的DB管理システム
 - **代替プロジェクト**:
-  - シンプルなバッチ処理の場合: [rag_v1.0 (rag-batch)](../rag_v1.0/)
-  - 対話的UIが必要な場合: [RAG_yokin (rag-streamlit)](../RAG_yokin/)
+  - シンプルなバッチ処理の場合: [rag-batch](../rag-batch/)
+  - 対話的UIが必要な場合: [rag-streamlit](../rag-streamlit/)
   - プロジェクト全体の比較: [ルートREADME](../README.md)
 
 ---

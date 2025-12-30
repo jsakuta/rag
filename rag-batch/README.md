@@ -1,12 +1,10 @@
-# RAG (Retrieval-Augmented Generation) System → rag-batch
-
-> **注意**: 本プロジェクトは将来的に `rag-batch` にリネームされます。
+# rag-batch
 
 ## 他プロジェクトとの違い
 - **特徴**: Excel一括バッチ処理に最適化、ハイブリッド検索（ベクトル + キーワード）、Factory Pattern採用
 - **代替プロジェクト**:
-  - 対話的UIが必要な場合: [RAG_yokin (rag-streamlit)](../RAG_yokin/)
-  - 最新技術を使いたい場合: [rag_v2.1 (rag-gemini)](../rag_v2.1/)
+  - 対話的UIが必要な場合: [rag-streamlit](../rag-streamlit/)
+  - 最新技術を使いたい場合: [rag-gemini](../rag-gemini/)
   - プロジェクト全体の比較: [ルートREADME](../README.md)
 
 ---

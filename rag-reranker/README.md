@@ -1,12 +1,12 @@
-# old (rag-reranker)
+# rag-reranker
 
 > ⚠️ **DEPRECATED**: このプロジェクトは**メンテナンス終了**しています。新規利用は推奨されません。
 
 ## 代替プロジェクト
 
-- **バッチ処理**: [rag_v1.0](../rag_v1.0/) (rag-batch)
-- **最新技術**: [rag_v2.1](../rag_v2.1/) (rag-gemini)
-- **UI版**: [RAG_yokin](../RAG_yokin/) (rag-streamlit)
+- **バッチ処理**: [rag-batch](../rag-batch/)
+- **最新技術**: [rag-gemini](../rag-gemini/)
+- **UI版**: [rag-streamlit](../rag-streamlit/)
 
 ## 概要
 
