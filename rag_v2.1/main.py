@@ -3,9 +3,9 @@ import sys
 import os
 from dotenv import load_dotenv
 from config import SearchConfig
-from processor import Processor
-from utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
-from utils.logger import setup_logger
+from src.core.processor import Processor
+from src.utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
+from src.utils.logger import setup_logger
 
 # 環境変数の読み込み
 load_dotenv()
@@ -42,7 +42,7 @@ def main():
         config.is_interactive = True
         config.vector_weight = config.DEFAULT_UI_VECTOR_WEIGHT
         mode = "chat"
-        os.system("streamlit run chat.py")
+        os.system("streamlit run ui/chat.py")
     else:
         logger.info("Starting in batch mode")
         config.is_interactive = False

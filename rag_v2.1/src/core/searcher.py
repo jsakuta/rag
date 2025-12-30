@@ -17,8 +17,8 @@ from google.oauth2 import service_account
 from langchain.schema import HumanMessage, SystemMessage
 
 from config import SearchConfig
-from utils.logger import setup_logger
-from utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
+from src.utils.logger import setup_logger
+from src.utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
 
 logger = setup_logger(__name__)
 
@@ -27,7 +27,7 @@ class Searcher:
         self.config = config
         self.tokenizer = Dictionary().create()
         self.mode = tokenizer.Tokenizer.SplitMode.C
-        from utils.gemini_embedding import GeminiEmbeddingModel
+        from src.utils.gemini_embedding import GeminiEmbeddingModel
         self.model = GeminiEmbeddingModel(config)
         
         # 動的DB管理システムの初期化

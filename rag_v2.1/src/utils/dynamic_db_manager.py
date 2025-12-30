@@ -10,7 +10,7 @@ from datetime import datetime
 import chromadb
 from chromadb.config import Settings
 from config import SearchConfig
-from utils.logger import setup_logger
+from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 

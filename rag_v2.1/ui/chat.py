@@ -1,8 +1,8 @@
 # --- chat.py (旧 ui.py) ---
 import streamlit as st
 from config import SearchConfig
-from processor import Processor
-from utils.logger import setup_logger
+from src.core.processor import Processor
+from src.utils.logger import setup_logger
 import datetime
 import os
 

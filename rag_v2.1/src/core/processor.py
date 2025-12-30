@@ -4,10 +4,10 @@ import os
 import json
 from datetime import datetime
 from config import SearchConfig
-from input_handler import InputHandlerFactory
-from output_handler import OutputHandlerFactory
-from searcher import Searcher
-from utils.logger import setup_logger
+from src.handlers.input_handler import InputHandlerFactory
+from src.handlers.output_handler import OutputHandlerFactory
+from src.core.searcher import Searcher
+from src.utils.logger import setup_logger
 from tqdm import tqdm # Added missing import for tqdm
 
 logger = setup_logger(__name__)
