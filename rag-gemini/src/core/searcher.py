@@ -13,7 +13,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 import vertexai
 from google.oauth2 import service_account
-from langchain.schema import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from config import SearchConfig
 from src.utils.logger import setup_logger

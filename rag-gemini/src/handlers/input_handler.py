@@ -57,7 +57,8 @@ class InputHandler:
 class ExcelInputHandler(InputHandler):
     def load_data(self) -> list:
         input_file = self._get_latest_file(self.input_dir, "*.xlsx")
-        logger.info(f"Processing input file: {os.path.basename(input_file)}")
+        self.current_file = os.path.basename(input_file)  # DB選択用
+        logger.info(f"Processing input file: {self.current_file}")
         input_df = pd.read_excel(input_file)
 
         # 列名チェックとデータ抽出
@@ -314,11 +315,12 @@ class HierarchicalExcelInputHandler(InputHandler):
 
 class MultiFolderInputHandler(InputHandler):
     """複数フォルダから参照データを読み込むハンドラー"""
-    
+
     def load_data(self) -> list:
         # 入力データの読み込み（従来通り）
         input_file = self._get_latest_file(self.input_dir, "*.xlsx")
-        logger.info(f"Processing input file: {os.path.basename(input_file)}")
+        self.current_file = os.path.basename(input_file)  # DB選択用
+        logger.info(f"Processing input file: {self.current_file}")
         input_df = pd.read_excel(input_file)
 
         # 列名チェックとデータ抽出
