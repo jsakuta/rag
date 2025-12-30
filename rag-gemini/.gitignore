@@ -40,6 +40,7 @@ logs/
 # キャッシュディレクトリ
 **/vector_cache/
 *.cache
+test_db/
 
 # Githubにプッシュしないディレクトリ
 reference/
