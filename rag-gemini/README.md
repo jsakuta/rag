@@ -115,9 +115,9 @@ pip install -r requirements.txt
 | --- | --- | --- |
 | 📁 input/ | 入力ファイル用ディレクトリ | 質問データを含むExcelファイルを配置 |
 | 📁 reference/ | 参照データ用ディレクトリ | 検索対象となる参照用Excelファイルを配置 |
-| 📁 reference/マージシナリオ/ | マージ版シナリオ用ディレクトリ | 階層構造を持つExcelファイルを配置 |
-| 📁 reference/履歴データ/ | 履歴データ用ディレクトリ | 従来の問合せ履歴データを配置 |
-| 📁 reference/vector_cache/ | ベクトルキャッシュディレクトリ | 計算済みの参照データのベクトルをJSON形式で保存 |
+| 📁 reference/scenario/ | マージ版シナリオ用ディレクトリ | 階層構造を持つExcelファイルを配置 |
+| 📁 reference/faq_data/ | 履歴データ用ディレクトリ | 従来の問合せ履歴データを配置 |
+| 📁 reference/vector_db/ | ベクトルキャッシュディレクトリ | 計算済みの参照データのベクトルをJSON形式で保存 |
 | 📁 prompt/ | プロンプトテンプレートディレクトリ | LLM用のプロンプトテンプレートファイル (.txt) を保存 |
 | 📁 output/ | 出力ファイル用ディレクトリ | 検索結果のExcelファイルが出力される |
 | 📁 logs/ | ログファイル用ディレクトリ | アプリケーションログ (app.log) の保存先 |
@@ -157,14 +157,14 @@ OPENAI_API_KEY=your_openai_api_key
 ### 3.2 参照データの配置
 
 #### マージ版シナリオ（階層構造Excel）
-- **配置場所**: `reference/マージシナリオ/`
+- **配置場所**: `reference/scenario/`
 - **ファイル形式**: Excel (.xlsx)
 - **構造**: Lv1, Lv2, Lv3... の階層列
 - **処理**: 全シートを自動処理
 - **特徴**: 原則文と通常の問答を自動判別
 
 #### 履歴データ（従来形式）
-- **配置場所**: `reference/履歴データ/`
+- **配置場所**: `reference/faq_data/`
 - **ファイル形式**: Excel (.xlsx)
 - **必須列**: 問合せ内容、回答
 - **処理**: 従来通りの形式で処理
@@ -178,8 +178,8 @@ OPENAI_API_KEY=your_openai_api_key
 1. 入力ファイルの配置
    - 質問データを `input/` に配置
 2. 参照データの配置
-   - マージ版シナリオを `reference/マージシナリオ/` に配置
-   - 履歴データを `reference/履歴データ/` に配置
+   - マージ版シナリオを `reference/scenario/` に配置
+   - 履歴データを `reference/faq_data/` に配置
 3. 設定確認
    - `config.py` で `reference_type: "multi_folder"` を確認
 4. コマンド実行
@@ -195,7 +195,7 @@ OPENAI_API_KEY=your_openai_api_key
    ```bash
    python main.py interactive
    # または
-   streamlit run chat.py
+   streamlit run ui/chat.py
    ```
 2. Web UI操作
    - 質問を入力し「送信」をクリック
@@ -488,8 +488,8 @@ pip install -r requirements.txt
 
 キャッシュ関連のエラー:
 
-- reference/vector_cache/ ディレクトリが存在することを確認してください。
-- キャッシュファイル (reference/vector_cache/cache.json) を削除し、再生成を試みてください。
+- reference/vector_db/ ディレクトリが存在することを確認してください。
+- キャッシュファイル (reference/vector_db/cache.json) を削除し、再生成を試みてください。
 
 メモリエラー:
 
@@ -615,7 +615,7 @@ GitHub Issues にて受け付けています。バグ報告の際は、以下の
   - Lv1, Lv2, Lv3... の階層列に対応
 
 - **複数フォルダ対応**
-  - `reference/マージシナリオ/` と `reference/履歴データ/` の統合処理
+  - `reference/scenario/` と `reference/faq_data/` の統合処理
   - 各フォルダの最新ファイルを自動選択
   - 943件の参照データを統合ベクトル化
 

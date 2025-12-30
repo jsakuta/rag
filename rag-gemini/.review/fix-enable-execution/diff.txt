@@ -1,0 +1,997 @@
+diff --git a/rag-gemini/.codex/context/files.md b/rag-gemini/.codex/context/files.md
+index 07302a6..98fec9e 100644
+--- a/rag-gemini/.codex/context/files.md
++++ b/rag-gemini/.codex/context/files.md
+@@ -1,207 +1,138 @@
+ # 関連ファイル一覧
+ 
+-## 主要修正対象ファイル
++## 1. requirements.txt (修正対象)
+ 
+-### 1. src/core/searcher.py (577行)
+-
+-**役割**: ハイブリッド検索エンジン（ベクトル検索 + キーワード検索）
+-
+-**主要な問題点**:
+-- 未使用インポート（行14: `ChatVertexAI`）
+-- 未使用変数（行47-49: `reference_vectors`, `reference_texts`, `reference_df`）
+-- 未使用メソッド（行232-336: キャッシュ関連4メソッド）
+-- ハードコード（行76-77: Vertex AI設定）
+-- 複雑なsearch()メソッド（約186行）
+-- 型ヒント互換性（`list[str]` → `List[str]`）
+-
+-**修正箇所**:
+-```
+-行14: 削除 - from langchain_google_vertexai import ChatVertexAI
+-行47-49: 削除 - 未使用インスタンス変数
+-行66-79: 修正 - 認証処理をauth.pyに委譲
+-行94, 109: 修正 - 型ヒント
+-行117: 修正 - position_weight定数化
+-行232-336: 削除 - 未使用メソッド群
+-行365-551: 分割 - search()メソッド
+-行409: 修正 - VECTOR_SEARCH_MULTIPLIER定数化
+-行506-514: 修正 - logger.info → logger.debug
+-```
+-
+----
+-
+-### 2. src/handlers/input_handler.py (428行)
+-
+-**役割**: 入力ファイル処理（Excel, 階層構造Excel, 複数フォルダ対応）
+-
+-**主要な問題点**:
+-- `_get_column_names()` がExcelInputHandlerとMultiFolderInputHandlerで重複
+-- `_build_combined_text()` 相当のロジックが複数箇所で重複
+-- 型ヒント互換性（`tuple[str, str, str]` → `Tuple[str, str, Optional[str]]`）
+-- マジックストリング（行213: 原則文判定）
+-
+-**修正箇所**:
+ ```
+-行7: 修正 - from typing import List, Tuple, Optional, Dict, Any
+-行23付近: 追加 - 基底クラスに_get_column_names(), _build_combined_text()
+-行138-147: 削除 - ExcelInputHandler._get_column_names()（基底クラス使用）
+-行213: 修正 - PRINCIPLE_MARKER定数化
+-行404-413: 削除 - MultiFolderInputHandler._get_column_names()（基底クラス使用）
++pandas>=2.0.0
++numpy>=1.24.0
++sentence-transformers>=2.2.0
++scikit-learn>=1.3.0
++torch>=2.0.0
++# LangChain関連を削除（タグレス対応）
++# langchain>=0.1.0
++# langchain-anthropic>=0.0.1
++# langchain-openai>=0.0.1
++# langchain-google-genai>=0.0.1
++google-generativeai>=0.3.0
++google-cloud-aiplatform>=1.35.0
++google-auth>=2.17.0
++...
+ ```
+ 
+ ---
+ 
+-### 3. src/utils/dynamic_db_manager.py (469行)
++## 2. src/handlers/input_handler.py (修正対象)
+ 
+-**役割**: 業務分野別の動的DB管理
+-
+-**主要な問題点**:
+-- 裸のexcept:（行306）
+-- バッチサイズハードコード（行335）
+-
+-**修正箇所**:
+-```
+-行306: 修正 - except: → except chromadb.errors.InvalidCollectionException:
+-行335: 修正 - batch_size = 100 → self.config.VECTOR_DB_BATCH_SIZE
+-```
+-
+----
+-
+-### 4. config.py (98行)
+-
+-**役割**: 検索設定管理（SearchConfigデータクラス）
+-
+-**修正内容**: マジックナンバー・マジックストリングの定数追加
+-
+-**追加箇所** (行30付近に追加):
++### ExcelInputHandler.load_data() (Line 58-74)
+ ```python
+-# バッチサイズ設定
+-EMBEDDING_BATCH_SIZE: int = 5
+-VECTOR_DB_BATCH_SIZE: int = 100
+-
+-# 検索設定
+-VECTOR_SEARCH_MULTIPLIER: int = 2
+-POSITION_WEIGHT: float = 1.2
+-
+-# 列名候補
+-QUERY_COLUMN_CANDIDATES: tuple = (...)
+-ANSWER_COLUMN_CANDIDATES: tuple = (...)
+-TAG_COLUMN_CANDIDATES: tuple = (...)
+-
+-# 原則文判定マーカー
+-PRINCIPLE_MARKER: str = "以下の選択肢から選んでください"
++class ExcelInputHandler(InputHandler):
++    def load_data(self) -> list:
++        input_file = self._get_latest_file(self.input_dir, "*.xlsx")
++        logger.info(f"Processing input file: {os.path.basename(input_file)}")
++        input_df = pd.read_excel(input_file)
++
++        # 列名チェックとデータ抽出
++        number_col, query_col, answer_col = self._get_column_names(input_df)
++        valid_input_df = input_df.dropna(subset=[query_col])
++
++        data = []
++        for _, row in valid_input_df.iterrows():
++            data.append({
++                "number": str(row[number_col]),
++                "query": str(row[query_col]),
++                "answer": str(row[answer_col]) if answer_col and pd.notna(row[answer_col]) else ""
++            })
++        return data
++```
++
++### MultiFolderInputHandler.load_data() (Line 318-335)
++```python
++class MultiFolderInputHandler(InputHandler):
++    """複数フォルダから参照データを読み込むハンドラー"""
++    
++    def load_data(self) -> list:
++        # 入力データの読み込み（従来通り）
++        input_file = self._get_latest_file(self.input_dir, "*.xlsx")
++        logger.info(f"Processing input file: {os.path.basename(input_file)}")
++        input_df = pd.read_excel(input_file)
++
++        # 列名チェックとデータ抽出
++        number_col, query_col, answer_col = self._get_column_names(input_df)
++        valid_input_df = input_df.dropna(subset=[query_col])
++
++        data = []
++        for _, row in valid_input_df.iterrows():
++            data.append({
++                "number": str(row[number_col]),
++                "query": str(row[query_col]),
++                "answer": str(row[answer_col]) if answer_col and pd.notna(row[answer_col]) else ""
++            })
++        return data
+ ```
+ 
+ ---
+ 
+-### 5. src/utils/gemini_embedding.py (104行)
++## 3. src/core/processor.py (参照元)
+ 
+-**役割**: Gemini Embedding APIによるテキストベクトル化
+-
+-**主要な問題点**:
+-- 認証処理が重複（行22-32: searcher.pyと同じ処理）
+-- バッチサイズハードコード（行61）
++### Line 47付近
++```python
++# 入力ファイル名を取得（動的DB選択用）
++input_file = getattr(self.input_handler, 'current_file', None)
+ 
+-**修正箇所**:
+-```
+-行18-32: 修正 - 認証処理をauth.pyに委譲
+-行61: 修正 - batch_size = 5 → self.config.EMBEDDING_BATCH_SIZE
++results = self.searcher.search(query_number, query_text, original_answer, input_file)
+ ```
+ 
+ ---
+ 
+-### 6. src/utils/vector_db.py (149行)
++## 4. src/core/searcher.py (依存関係)
+ 
+-**役割**: ChromaDBベクトルデータベース操作
+-
+-**主要な問題点**:
+-- バッチサイズハードコード（行69）
+-- 裸のexcept:（行36）
+-
+-**修正箇所**:
+-```
+-行14: 修正 - コンストラクタにconfig引数追加
+-行36: 修正 - except: → 具体的な例外型
+-行69: 修正 - batch_size = 100 → self.config.VECTOR_DB_BATCH_SIZE
++### Line 12-16 (LangChain import)
++```python
++from langchain_anthropic import ChatAnthropic
++from langchain_openai import ChatOpenAI
++import vertexai
++from google.oauth2 import service_account
++from langchain.schema import HumanMessage, SystemMessage
+ ```
+ 
+ ---
+ 
+-### 7. src/utils/logger.py (23行)
+-
+-**役割**: ロギング設定
++## 5. src/utils/dynamic_db_manager.py (参照)
+ 
+-**修正内容**: 環境変数によるログレベル制御、ハンドラ重複防止
+-
+-**修正後**:
++### Line 28-29
+ ```python
+-def setup_logger(name):
+-    logger = logging.getLogger(name)
+-    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+-    logger.setLevel(getattr(logging, log_level, logging.INFO))
+-    if logger.handlers:
+-        return logger
+-    # ... ハンドラ設定
++self.reference_faq_path = os.path.join(config.base_dir, "reference", "faq_data")
++self.reference_scenario_path = os.path.join(config.base_dir, "reference", "scenario")
+ ```
+ 
+ ---
+ 
+-## 新規作成ファイル
+-
+-### src/utils/auth.py (新規)
++## 6. README.md (修正対象)
+ 
+-**役割**: Google Cloud認証処理の共通モジュール
++### 修正が必要な箇所
+ 
+-**内容**:
+-```python
+-def get_google_credentials(config): ...
+-def initialize_vertex_ai(config, credentials=None): ...
++Line 118-120:
++```markdown
++#### マージ版シナリオ（階層構造Excel）
++- **配置場所**: `reference/マージシナリオ/`
+ ```
++→ `reference/scenario/` に変更
+ 
+----
+-
+-## ディレクトリ構造
+-
++Line 167-169:
++```markdown
++#### 履歴データ（従来形式）
++- **配置場所**: `reference/履歴データ/`
+ ```
+-rag-gemini/
+-├── src/
+-│   ├── core/
+-│   │   ├── processor.py      # 変更なし
+-│   │   └── searcher.py       # 主要修正
+-│   ├── handlers/
+-│   │   ├── input_handler.py  # 主要修正
+-│   │   └── output_handler.py # 変更なし
+-│   └── utils/
+-│       ├── auth.py           # 新規作成
+-│       ├── dynamic_db_manager.py # 修正
+-│       ├── gemini_embedding.py   # 修正
+-│       ├── logger.py         # 修正
+-│       ├── utils.py          # 変更なし
+-│       └── vector_db.py      # 修正
+-├── config.py                 # 修正（定数追加）
+-├── main.py                   # 変更なし
+-├── backup/                   # ZIPアーカイブ後削除
+-└── old/                      # ZIPアーカイブ後削除
+-```
+-
+----
+-
+-## 依存関係
++→ `reference/faq_data/` に変更
+ 
++Line 120:
++```markdown
++- **ベクトルキャッシュディレクトリ**: `reference/vector_cache/`
+ ```
+-main.py
+-├── config.py (SearchConfig)
+-├── DynamicDBManager
+-│   └── config.py
+-└── Processor
+-    ├── InputHandlerFactory
+-    │   ├── ExcelInputHandler
+-    │   ├── HierarchicalExcelInputHandler
+-    │   └── MultiFolderInputHandler
+-    ├── OutputHandlerFactory
+-    └── Searcher
+-        ├── auth.py (新規) ← GeminiEmbeddingModel, _setup_llm()
+-        ├── GeminiEmbeddingModel
+-        │   └── auth.py (新規)
+-        ├── DynamicDBManager
+-        └── MetadataVectorDB
++→ `reference/vector_db/` に変更
++
++Line 198-199:
++```markdown
++   streamlit run chat.py
+ ```
++→ `streamlit run ui/chat.py` に変更
+diff --git a/rag-gemini/.codex/context/task.md b/rag-gemini/.codex/context/task.md
+index c5e634b..88849de 100644
+--- a/rag-gemini/.codex/context/task.md
++++ b/rag-gemini/.codex/context/task.md
+@@ -1,485 +1,110 @@
+-# タスク: rag-gemini 非機能改善（Phase 1-3）
++# タスク: rag-gemini 実行可能化修正
+ 
+ ## 目的
+-rag-geminiプロジェクトのコード品質、保守性、可読性を向上させる非機能改善。機能は一切変更せず、リファクタリングのみ実施する。
++rag-geminiプロジェクトを実行可能な状態にする。現在、依存関係の不整合とDB選択ロジックの問題により実行不可。
+ 
+----
+-
+-## Phase 1: 即時対応（クリティカル）
+-
+-### 1.1 デッドコードの削除
+-
+-#### 変更対象: `src/core/searcher.py`
+-
+-**削除項目1: 未使用インポート（行14）**
+-```python
+-# 削除対象
+-from langchain_google_vertexai import ChatVertexAI
+-```
+-
+-**削除項目2: 未使用インスタンス変数（行47-49）**
+-```python
+-# 削除対象
+-self.reference_vectors = None
+-self.reference_texts = None
+-self.reference_df = None # processor.pyから移動
+-```
+-
+-**削除項目3: 未使用メソッド群（行232-336）**
+-以下のメソッドは動的DB管理システムで代替されており未使用のため削除：
+-- `_is_data_unchanged()`（行232-261）
+-- `_check_file_timestamps()`（行263-296）
+-- `_get_file_timestamps()`（行298-320）
+-- `_save_cache_info()`（行322-336）
+-
+-### 1.2 ハードコードの修正
+-
+-#### 変更対象: `src/core/searcher.py` 行75-78
+-
+-**現在のコード:**
+-```python
+-# Vertex AI初期化
+-vertexai.init(
+-    project="pj-cbk001",
+-    location="us-central1",
+-    credentials=credentials
+-)
+-```
+-
+-**修正後のコード:**
+-```python
+-# Vertex AI初期化
+-vertexai.init(
+-    project=self.config.gemini_project_id,
+-    location=self.config.gemini_location,
+-    credentials=credentials
+-)
+-```
+-
+-### 1.3 エラーハンドリング改善
+-
+-#### 変更対象: `src/utils/dynamic_db_manager.py` 行306
+-
+-**現在のコード:**
+-```python
+-except:
+-    logger.info(f"ChromaDBコレクションは存在しません: {collection_name}")
+-```
+-
+-**修正後のコード:**
+-```python
+-except chromadb.errors.InvalidCollectionException:
+-    logger.info(f"ChromaDBコレクションは存在しません: {collection_name}")
+-```
++## 実装要件
++1. requirements.txtのLangChain関連コメントを解除して依存関係を有効化
++2. input_handler.pyの各InputHandlerクラスにcurrent_file属性を追加
++3. reference/scenario/フォルダを作成
++4. README.mdのパス名とコマンドを実コードに合わせて修正
+ 
+ ---
+ 
+-## Phase 2: 短期対応
+-
+-### 2.1 Google認証処理の共通化
+-
+-#### 新規作成: `src/utils/auth.py`
+-
+-```python
+-"""Google Cloud認証処理の共通モジュール"""
+-import os
+-import vertexai
+-from google.oauth2 import service_account
+-from src.utils.logger import setup_logger
+-
+-logger = setup_logger(__name__)
+-
+-
+-def get_google_credentials(config):
+-    """Google Cloud認証情報を取得
+-
+-    Args:
+-        config: SearchConfig インスタンス
++## 変更対象ファイル
+ 
+-    Returns:
+-        service_account.Credentials: 認証情報
+-    """
+-    credentials_path = os.path.join(config.base_dir, config.gemini_credentials_path)
+-    return service_account.Credentials.from_service_account_file(
+-        credentials_path,
+-        scopes=['https://www.googleapis.com/auth/cloud-platform']
+-    )
++### 1. requirements.txt
++**変更内容**: Line 6-10のコメントを解除してLangChain依存関係を有効化
+ 
+-
+-def initialize_vertex_ai(config, credentials=None):
+-    """Vertex AIを初期化
+-
+-    Args:
+-        config: SearchConfig インスタンス
+-        credentials: 認証情報（省略時は自動取得）
+-    """
+-    if credentials is None:
+-        credentials = get_google_credentials(config)
+-
+-    vertexai.init(
+-        project=config.gemini_project_id,
+-        location=config.gemini_location,
+-        credentials=credentials
+-    )
+-    logger.info("Vertex AI initialized successfully")
++**現在のコード**:
+ ```
+-
+-#### 修正対象: `src/core/searcher.py` 行66-79
+-
+-**現在のコード:**
+-```python
+-elif self.config.llm_provider == "gemini":
+-    # Vertex AI Gemini用の認証設定
+-    try:
+-        # 認証情報を読み込み
+-        credentials = service_account.Credentials.from_service_account_file(
+-            os.path.join(self.config.base_dir, "gemini_credentials.json"),
+-            scopes=['https://www.googleapis.com/auth/cloud-platform']
+-        )
+-
+-        # Vertex AI初期化
+-        vertexai.init(
+-            project=self.config.gemini_project_id,
+-            location=self.config.gemini_location,
+-            credentials=credentials
+-        )
+-```
+-
+-**修正後のコード:**
+-```python
+-elif self.config.llm_provider == "gemini":
+-    # Vertex AI Gemini用の認証設定
+-    try:
+-        from src.utils.auth import get_google_credentials, initialize_vertex_ai
+-        credentials = get_google_credentials(self.config)
+-        initialize_vertex_ai(self.config, credentials)
++# LangChain関連を削除（タグレス対応）
++# langchain>=0.1.0
++# langchain-anthropic>=0.0.1
++# langchain-openai>=0.0.1
++# langchain-google-genai>=0.0.1
+ ```
+ 
+-#### 修正対象: `src/utils/gemini_embedding.py` 行18-32
+-
+-**現在のコード:**
+-```python
+-def _setup_model(self):
+-    """Gemini Embedding APIの初期化"""
+-    try:
+-        # 認証情報を読み込み
+-        credentials = service_account.Credentials.from_service_account_file(
+-            os.path.join(self.config.base_dir, "gemini_credentials.json"),
+-            scopes=['https://www.googleapis.com/auth/cloud-platform']
+-        )
+-
+-        # Vertex AI初期化
+-        vertexai.init(
+-            project=self.config.gemini_project_id,
+-            location=self.config.gemini_location,
+-            credentials=credentials
+-        )
++**実装すべきコード**:
+ ```
+-
+-**修正後のコード:**
+-```python
+-def _setup_model(self):
+-    """Gemini Embedding APIの初期化"""
+-    try:
+-        from src.utils.auth import initialize_vertex_ai
+-        initialize_vertex_ai(self.config)
++# LangChain関連（LLM拡張検索機能用）
++langchain>=0.1.0
++langchain-anthropic>=0.0.1
++langchain-openai>=0.0.1
++langchain-google-genai>=0.0.1
+ ```
+ 
+-### 2.2 コード重複解消（input_handler.py）
+-
+-#### 修正対象: 基底クラス `InputHandler` に共通メソッドを追加
+-
+-**追加するメソッド（行23付近に追加）:**
+-```python
+-def _get_column_names(self, df: pd.DataFrame) -> Tuple[str, str, Optional[str]]:
+-    """Excelファイルの列名を取得・検証"""
+-    if len(df.columns) < 2:
+-        raise ValueError("Input file must have at least 2 columns (Number and Query)")
+-
+-    number_col = df.columns[0]
+-    query_col = df.columns[1]
+-    answer_col = df.columns[2] if len(df.columns) > 2 else None
+-    logger.info(f"Using columns: Number='{number_col}', Query='{query_col}', Answer='{answer_col}'")
+-    return number_col, query_col, answer_col
+-
+-def _build_combined_text(self, hierarchy: str, query: str, answer: str) -> str:
+-    """結合テキストを生成"""
+-    text_parts = []
+-    if hierarchy and hierarchy.strip():
+-        text_parts.append(f"分類: {hierarchy}")
+-    if query and query.strip():
+-        text_parts.append(f"質問: {query}")
+-    if answer and answer.strip():
+-        text_parts.append(f"回答: {answer}")
+-    return " | ".join(text_parts) if text_parts else ""
+-```
+-
+-**削除対象:**
+-- `ExcelInputHandler._get_column_names()` (行138-147) - 基底クラスを使用
+-- `MultiFolderInputHandler._get_column_names()` (行404-413) - 基底クラスを使用
+-
+-### 2.3 マジックナンバー定数化
+-
+-#### 修正対象: `config.py` に定数追加（行30付近）
+-
+-```python
+-# バッチサイズ設定
+-EMBEDDING_BATCH_SIZE: int = 5
+-VECTOR_DB_BATCH_SIZE: int = 100
+-
+-# 検索設定
+-VECTOR_SEARCH_MULTIPLIER: int = 2
+-POSITION_WEIGHT: float = 1.2
+-
+-# 列名候補
+-QUERY_COLUMN_CANDIDATES: tuple = ('分割後質問', '問合せ内容', '質問内容', '問い合わせ', '質問', 'query', 'Query')
+-ANSWER_COLUMN_CANDIDATES: tuple = ('分割後回答', '回答', '既存回答', 'answer', 'Answer')
+-TAG_COLUMN_CANDIDATES: tuple = ('タグ付け', 'タグ', '分類', 'category', 'Category', 'tag', 'Tag')
+-
+-# 原則文判定マーカー
+-PRINCIPLE_MARKER: str = "以下の選択肢から選んでください"
+-```
+-
+-#### 各ファイルでの定数参照
+-
+-**gemini_embedding.py 行61:**
+-```python
+-# Before
+-batch_size = 5
+-
+-# After
+-batch_size = self.config.EMBEDDING_BATCH_SIZE
+-```
+-
+-**vector_db.py 行69:**
+-```python
+-# Before
+-batch_size = 100
+-
+-# After（コンストラクタにconfigを渡す方式に変更）
+-# __init__でconfigを受け取り、self.config.VECTOR_DB_BATCH_SIZEを使用
+-```
+-
+-**searcher.py 行117:**
+-```python
+-# Before
+-position_weight = 1.2
+-
+-# After
+-position_weight = self.config.POSITION_WEIGHT
+-```
+-
+-**searcher.py 行409:**
+-```python
+-# Before
+-n_results=self.config.top_k * 2
+-
+-# After
+-n_results=self.config.top_k * self.config.VECTOR_SEARCH_MULTIPLIER
+-```
+-
+-**input_handler.py 行213:**
+-```python
+-# Before
+-is_principle = "以下の選択肢から選んでください" in answer
+-
+-# After
+-is_principle = self.config.PRINCIPLE_MARKER in answer
+-```
+-
+-### 2.4 ロギング最適化
+-
+-#### 修正対象: `src/utils/logger.py`
+-
+-**修正後のコード（全体置換）:**
+-```python
+-# --- utils/logger.py ---
+-import logging
+-import os
+-
+-
+-def setup_logger(name):
+-    """ロガーの設定"""
+-    logger = logging.getLogger(name)
+-
+-    # 環境変数でログレベルを制御
+-    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+-    logger.setLevel(getattr(logging, log_level, logging.INFO))
+-
+-    # ハンドラの重複追加を防止
+-    if logger.handlers:
+-        return logger
+-
+-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+-
+-    log_dir = "logs"
+-    os.makedirs(log_dir, exist_ok=True)
+-    log_file = os.path.join(log_dir, 'app.log')
+-
+-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+-    file_handler.setFormatter(formatter)
+-
+-    stream_handler = logging.StreamHandler()
+-    stream_handler.setFormatter(formatter)
+-
+-    logger.addHandler(file_handler)
+-    logger.addHandler(stream_handler)
+-    return logger
+-```
+-
+-#### 修正対象: `src/core/searcher.py` - 詳細ログをdebugレベルに変更
+-
+-**行506-514 の詳細ログをdebugに変更:**
+-```python
+-# Before
+-logger.info(f"  【結果{i+1}】(i={i})")
+-logger.info(f"    Input_Number: {result_data['Input_Number']}")
+-...
+-
+-# After
+-logger.debug(f"  【結果{i+1}】(i={i})")
+-logger.debug(f"    Input_Number: {result_data['Input_Number']}")
+-...
+-```
+-
+-### 2.5 型ヒント統一
++---
+ 
+-#### 修正対象: `src/core/searcher.py`
++### 2. src/handlers/input_handler.py
++**変更内容**: ExcelInputHandlerとMultiFolderInputHandlerのload_data()メソッドでself.current_fileを設定
+ 
+-**行94:**
++**ExcelInputHandler.load_data() - 現在のコード** (Line 58-74):
+ ```python
+-# Before
+-def _extract_keywords(self, text: str, top_k: int = 5) -> list[str]:
+-
+-# After
+-def _extract_keywords(self, text: str, top_k: int = 5) -> List[str]:
++def load_data(self) -> list:
++    input_file = self._get_latest_file(self.input_dir, "*.xlsx")
++    logger.info(f"Processing input file: {os.path.basename(input_file)}")
++    input_df = pd.read_excel(input_file)
+ ```
+ 
+-**行109:**
++**ExcelInputHandler.load_data() - 実装すべきコード**:
+ ```python
+-# Before
+-def _calculate_keyword_similarity(self, query_keywords: list[str], reference_text: str) -> float:
+-
+-# After
+-def _calculate_keyword_similarity(self, query_keywords: List[str], reference_text: str) -> float:
++def load_data(self) -> list:
++    input_file = self._get_latest_file(self.input_dir, "*.xlsx")
++    self.current_file = os.path.basename(input_file)  # 追加: DB選択用
++    logger.info(f"Processing input file: {self.current_file}")
++    input_df = pd.read_excel(input_file)
+ ```
+ 
+-#### 修正対象: `src/handlers/input_handler.py`
+-
+-**行7:**
++**MultiFolderInputHandler.load_data() - 現在のコード** (Line 318-335):
+ ```python
+-# Before
+-from typing import List
+-
+-# After
+-from typing import List, Tuple, Optional, Dict, Any
++def load_data(self) -> list:
++    input_file = self._get_latest_file(self.input_dir, "*.xlsx")
++    logger.info(f"Processing input file: {os.path.basename(input_file)}")
++    input_df = pd.read_excel(input_file)
+ ```
+ 
+-**行138, 404:**
++**MultiFolderInputHandler.load_data() - 実装すべきコード**:
+ ```python
+-# Before
+-def _get_column_names(self, df: pd.DataFrame) -> tuple[str, str, str]:
+-
+-# After (基底クラスに移動後)
+-def _get_column_names(self, df: pd.DataFrame) -> Tuple[str, str, Optional[str]]:
++def load_data(self) -> list:
++    input_file = self._get_latest_file(self.input_dir, "*.xlsx")
++    self.current_file = os.path.basename(input_file)  # 追加: DB選択用
++    logger.info(f"Processing input file: {self.current_file}")
++    input_df = pd.read_excel(input_file)
+ ```
+ 
+ ---
+ 
+-## Phase 3: 中期対応
+-
+-### 3.1 search()メソッド分割
+-
+-#### 変更対象: `src/core/searcher.py`
+-
+-現状の`search()`メソッド（約186行）を以下のプライベートメソッドに分割：
+-
+-```python
+-def search(self, input_number: str, query_text: str, original_answer: str, input_file: str = None) -> List[Dict[str, Any]]:
+-    """メタデータ対応ハイブリッド検索を実行"""
+-    self._select_db_if_needed(input_file)
+-    search_query, query_for_vector = self._prepare_search_query(query_text)
+-    keywords = self._extract_keywords(query_text)
+-    search_results = self._execute_vector_search(query_for_vector)
+-    results = self._calculate_and_merge_scores(search_results, keywords)
+-    return self._format_final_results(results, input_number, query_text, original_answer, search_query)
+-
+-
+-def _select_db_if_needed(self, input_file: Optional[str]) -> None:
+-    """動的DB選択（入力ファイルが指定されている場合）"""
+-    # 行368-376 のロジックを移動
+-
+-
+-def _prepare_search_query(self, query_text: str) -> Tuple[str, str]:
+-    """検索クエリの生成（検索方式による分岐）"""
+-    # 行386-396 のロジックを移動
+-
++### 3. reference/scenario/ フォルダ
++**変更内容**: 空のフォルダを作成（将来のシナリオデータ用）
+ 
+-def _execute_vector_search(self, query_for_vector: str) -> List[Dict[str, Any]]:
+-    """ベクトル検索を実行"""
+-    # 行405-419 のロジックを移動
+-
+-
+-def _calculate_and_merge_scores(self, search_results: List[Dict[str, Any]], keywords: List[str]) -> List[Dict[str, Any]]:
+-    """スコア計算と結果統合"""
+-    # 行435-516 のロジックを移動
+-
+-
+-def _format_final_results(self, results: List[Dict[str, Any]], input_number: str, query_text: str, original_answer: str, search_query: str) -> List[Dict[str, Any]]:
+-    """結果の整形とソート"""
+-    # 行529-551 のロジックを移動
+-```
+-
+-### 3.2 依存性注入導入
+-
+-#### 変更対象: `src/core/searcher.py` の `__init__` メソッド
+-
+-**修正後のコード:**
+-```python
+-def __init__(self, config: SearchConfig,
+-             db_manager: Optional[DynamicDBManager] = None,
+-             embedding_model: Optional['GeminiEmbeddingModel'] = None):
+-    self.config = config
+-    self.tokenizer = Dictionary().create()
+-    self.mode = tokenizer.Tokenizer.SplitMode.C
+-
+-    # 依存性注入: 外部から注入されない場合はデフォルトを生成
+-    if embedding_model is None:
+-        from src.utils.gemini_embedding import GeminiEmbeddingModel
+-        embedding_model = GeminiEmbeddingModel(config)
+-    self.model = embedding_model
++---
+ 
+-    self.db_manager = db_manager or DynamicDBManager(config)
+-    self.current_db_path = None
+-    self.current_business_area = None
+-    logger.info("動的DB管理システムを初期化しました")
++### 4. README.md
++**変更内容**: パス名とコマンドを実コードに合わせて更新
+ 
+-    # LLM初期化（条件付き）
+-    if self.config.search_mode == "llm_enhanced" and self.config.enable_query_enhancement:
+-        self.llm = self._setup_llm()
+-        logger.info("LLM initialized for enhanced search mode")
+-    else:
+-        self.llm = None
+-        logger.info("LLM not initialized - using original search mode")
+-```
++| 変更前 | 変更後 |
++|--------|--------|
++| reference/マージシナリオ/ | reference/scenario/ |
++| reference/履歴データ/ | reference/faq_data/ |
++| reference/vector_cache/ | reference/vector_db/ |
++| streamlit run chat.py | streamlit run ui/chat.py |
+ 
+-### 3.3 バックアップファイル整理
++---
+ 
+-1. `backup/` フォルダをZIPアーカイブ
+-2. `old/` フォルダをZIPアーカイブ
+-3. `.gitignore` に追加:
+-```
+-backup/
+-old/
+-*.bak
+-```
++## 依存関係
++- searcher.py: LangChainのChatAnthropic, ChatOpenAIをimport（Line 12-16）
++- processor.py: input_handler.current_fileを参照（Line 47）
++- dynamic_db_manager.py: reference/scenario, reference/faq_dataを参照（Line 28-29）
+ 
+----
++## 制約
++- 既存の動作を壊さないこと
++- LLM拡張検索はconfig.pyでsearch_mode="llm_enhanced"の時のみ使用
+ 
+ ## 完了条件
+-
+-- [ ] Phase 1: デッドコード削除、ハードコード修正、エラーハンドリング改善
+-- [ ] Phase 2: 認証処理共通化、コード重複解消、定数化、ログ最適化、型ヒント統一
+-- [ ] Phase 3: search()分割、依存性注入、バックアップ整理
+-- [ ] Pythonエラーがない（`python -m py_compile`）
+-- [ ] 既存機能が正常動作
++- [ ] requirements.txtのLangChain依存関係が有効化されている
++- [ ] ExcelInputHandler.load_data()でself.current_fileが設定される
++- [ ] MultiFolderInputHandler.load_data()でself.current_fileが設定される
++- [ ] reference/scenario/フォルダが存在する
++- [ ] README.mdのパス名が実コードと一致している
++- [ ] pip install -r requirements.txtが成功する
+diff --git a/rag-gemini/README.md b/rag-gemini/README.md
+index d35cf0f..a090453 100644
+--- a/rag-gemini/README.md
++++ b/rag-gemini/README.md
+@@ -115,9 +115,9 @@ pip install -r requirements.txt
+ | --- | --- | --- |
+ | 📁 input/ | 入力ファイル用ディレクトリ | 質問データを含むExcelファイルを配置 |
+ | 📁 reference/ | 参照データ用ディレクトリ | 検索対象となる参照用Excelファイルを配置 |
+-| 📁 reference/マージシナリオ/ | マージ版シナリオ用ディレクトリ | 階層構造を持つExcelファイルを配置 |
+-| 📁 reference/履歴データ/ | 履歴データ用ディレクトリ | 従来の問合せ履歴データを配置 |
+-| 📁 reference/vector_cache/ | ベクトルキャッシュディレクトリ | 計算済みの参照データのベクトルをJSON形式で保存 |
++| 📁 reference/scenario/ | マージ版シナリオ用ディレクトリ | 階層構造を持つExcelファイルを配置 |
++| 📁 reference/faq_data/ | 履歴データ用ディレクトリ | 従来の問合せ履歴データを配置 |
++| 📁 reference/vector_db/ | ベクトルキャッシュディレクトリ | 計算済みの参照データのベクトルをJSON形式で保存 |
+ | 📁 prompt/ | プロンプトテンプレートディレクトリ | LLM用のプロンプトテンプレートファイル (.txt) を保存 |
+ | 📁 output/ | 出力ファイル用ディレクトリ | 検索結果のExcelファイルが出力される |
+ | 📁 logs/ | ログファイル用ディレクトリ | アプリケーションログ (app.log) の保存先 |
+@@ -157,14 +157,14 @@ OPENAI_API_KEY=your_openai_api_key
+ ### 3.2 参照データの配置
+ 
+ #### マージ版シナリオ（階層構造Excel）
+-- **配置場所**: `reference/マージシナリオ/`
++- **配置場所**: `reference/scenario/`
+ - **ファイル形式**: Excel (.xlsx)
+ - **構造**: Lv1, Lv2, Lv3... の階層列
+ - **処理**: 全シートを自動処理
+ - **特徴**: 原則文と通常の問答を自動判別
+ 
+ #### 履歴データ（従来形式）
+-- **配置場所**: `reference/履歴データ/`
++- **配置場所**: `reference/faq_data/`
+ - **ファイル形式**: Excel (.xlsx)
+ - **必須列**: 問合せ内容、回答
+ - **処理**: 従来通りの形式で処理
+@@ -178,8 +178,8 @@ OPENAI_API_KEY=your_openai_api_key
+ 1. 入力ファイルの配置
+    - 質問データを `input/` に配置
+ 2. 参照データの配置
+-   - マージ版シナリオを `reference/マージシナリオ/` に配置
+-   - 履歴データを `reference/履歴データ/` に配置
++   - マージ版シナリオを `reference/scenario/` に配置
++   - 履歴データを `reference/faq_data/` に配置
+ 3. 設定確認
+    - `config.py` で `reference_type: "multi_folder"` を確認
+ 4. コマンド実行
+@@ -195,7 +195,7 @@ OPENAI_API_KEY=your_openai_api_key
+    ```bash
+    python main.py interactive
+    # または
+-   streamlit run chat.py
++   streamlit run ui/chat.py
+    ```
+ 2. Web UI操作
+    - 質問を入力し「送信」をクリック
+@@ -488,8 +488,8 @@ pip install -r requirements.txt
+ 
+ キャッシュ関連のエラー:
+ 
+-- reference/vector_cache/ ディレクトリが存在することを確認してください。
+-- キャッシュファイル (reference/vector_cache/cache.json) を削除し、再生成を試みてください。
++- reference/vector_db/ ディレクトリが存在することを確認してください。
++- キャッシュファイル (reference/vector_db/cache.json) を削除し、再生成を試みてください。
+ 
+ メモリエラー:
+ 
+@@ -615,7 +615,7 @@ GitHub Issues にて受け付けています。バグ報告の際は、以下の
+   - Lv1, Lv2, Lv3... の階層列に対応
+ 
+ - **複数フォルダ対応**
+-  - `reference/マージシナリオ/` と `reference/履歴データ/` の統合処理
++  - `reference/scenario/` と `reference/faq_data/` の統合処理
+   - 各フォルダの最新ファイルを自動選択
+   - 943件の参照データを統合ベクトル化
+ 
+diff --git a/rag-gemini/requirements.txt b/rag-gemini/requirements.txt
+index 5d642f7..0c935cd 100644
+--- a/rag-gemini/requirements.txt
++++ b/rag-gemini/requirements.txt
+@@ -3,11 +3,11 @@ numpy>=1.24.0
+ sentence-transformers>=2.2.0
+ scikit-learn>=1.3.0
+ torch>=2.0.0
+-# LangChain関連を削除（タグレス対応）
+-# langchain>=0.1.0
+-# langchain-anthropic>=0.0.1
+-# langchain-openai>=0.0.1
+-# langchain-google-genai>=0.0.1
++# LangChain関連（LLM拡張検索機能用）
++langchain>=0.1.0
++langchain-anthropic>=0.0.1
++langchain-openai>=0.0.1
++langchain-google-genai>=0.0.1
+ google-generativeai>=0.3.0
+ google-cloud-aiplatform>=1.35.0
+ google-auth>=2.17.0
+diff --git a/rag-gemini/src/handlers/input_handler.py b/rag-gemini/src/handlers/input_handler.py
+index 52fcf96..2e256a4 100644
+--- a/rag-gemini/src/handlers/input_handler.py
++++ b/rag-gemini/src/handlers/input_handler.py
+@@ -57,7 +57,8 @@ class InputHandler:
+ class ExcelInputHandler(InputHandler):
+     def load_data(self) -> list:
+         input_file = self._get_latest_file(self.input_dir, "*.xlsx")
+-        logger.info(f"Processing input file: {os.path.basename(input_file)}")
++        self.current_file = os.path.basename(input_file)  # DB選択用
++        logger.info(f"Processing input file: {self.current_file}")
+         input_df = pd.read_excel(input_file)
+ 
+         # 列名チェックとデータ抽出
+@@ -314,11 +315,12 @@ class HierarchicalExcelInputHandler(InputHandler):
+ 
+ class MultiFolderInputHandler(InputHandler):
+     """複数フォルダから参照データを読み込むハンドラー"""
+-    
++
+     def load_data(self) -> list:
+         # 入力データの読み込み（従来通り）
+         input_file = self._get_latest_file(self.input_dir, "*.xlsx")
+-        logger.info(f"Processing input file: {os.path.basename(input_file)}")
++        self.current_file = os.path.basename(input_file)  # DB選択用
++        logger.info(f"Processing input file: {self.current_file}")
+         input_df = pd.read_excel(input_file)
+ 
+         # 列名チェックとデータ抽出
