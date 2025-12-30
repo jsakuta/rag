@@ -4,9 +4,10 @@ import glob
 import pandas as pd
 from config import SearchConfig
 from src.utils.logger import setup_logger
-from typing import List
+from typing import List, Tuple, Optional, Dict, Any
 
 logger = setup_logger(__name__)
+
 
 class InputHandler:
     def __init__(self, config: SearchConfig):
@@ -21,6 +22,28 @@ class InputHandler:
     def load_reference_data(self) -> dict:
         """参照データを読み込み、共通の形式に変換"""
         raise NotImplementedError
+
+    def _get_column_names(self, df: pd.DataFrame) -> Tuple[str, str, Optional[str]]:
+        """Excelファイルの列名を取得・検証"""
+        if len(df.columns) < 2:
+            raise ValueError("Input file must have at least 2 columns (Number and Query)")
+
+        number_col = df.columns[0]
+        query_col = df.columns[1]
+        answer_col = df.columns[2] if len(df.columns) > 2 else None
+        logger.info(f"Using columns: Number='{number_col}', Query='{query_col}', Answer='{answer_col}'")
+        return number_col, query_col, answer_col
+
+    def _build_combined_text(self, hierarchy: str, query: str, answer: str) -> str:
+        """結合テキストを生成"""
+        text_parts = []
+        if hierarchy and hierarchy.strip():
+            text_parts.append(f"分類: {hierarchy}")
+        if query and query.strip():
+            text_parts.append(f"質問: {query}")
+        if answer and answer.strip():
+            text_parts.append(f"回答: {answer}")
+        return " | ".join(text_parts) if text_parts else ""
 
     def _get_latest_file(self, directory: str, file_pattern: str) -> str:
         """指定ディレクトリ内の最新ファイルを検索"""
@@ -135,16 +158,6 @@ class ExcelInputHandler(InputHandler):
           'metadatas': metadatas
       }
 
-    def _get_column_names(self, df: pd.DataFrame) -> tuple[str, str, str]:
-        """Excelファイルの列名を取得・検証"""
-        if len(df.columns) < 2:
-            raise ValueError("Input file must have at least 2 columns (Number and Query)")
-
-        number_col = df.columns[0]
-        query_col = df.columns[1]
-        answer_col = df.columns[2] if len(df.columns) > 2 else None
-        logger.info(f"Using columns: Number='{number_col}', Query='{query_col}', Answer='{answer_col}'")
-        return number_col, query_col, answer_col
 
 class HierarchicalExcelInputHandler(InputHandler):
     """階層構造Excelファイルを読み込むハンドラー（位置ベースの質問・回答判定）"""
@@ -401,16 +414,6 @@ class MultiFolderInputHandler(InputHandler):
             'metadatas': all_metadatas
         }
 
-    def _get_column_names(self, df: pd.DataFrame) -> tuple[str, str, str]:
-        """Excelファイルの列名を取得・検証"""
-        if len(df.columns) < 2:
-            raise ValueError("Input file must have at least 2 columns (Number and Query)")
-
-        number_col = df.columns[0]
-        query_col = df.columns[1]
-        answer_col = df.columns[2] if len(df.columns) > 2 else None
-        logger.info(f"Using columns: Number='{number_col}', Query='{query_col}', Answer='{answer_col}'")
-        return number_col, query_col, answer_col
 
 # 他の入力形式 (CSV, JSONなど) のハンドラーもここに追加可能
 

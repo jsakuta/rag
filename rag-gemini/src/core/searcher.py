@@ -11,7 +11,6 @@ from datetime import datetime
 from sudachipy import Dictionary, tokenizer
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
-from langchain_google_vertexai import ChatVertexAI
 import vertexai
 from google.oauth2 import service_account
 from langchain.schema import HumanMessage, SystemMessage
@@ -19,6 +18,7 @@ from langchain.schema import HumanMessage, SystemMessage
 from config import SearchConfig
 from src.utils.logger import setup_logger
 from src.utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
+from src.utils.auth import initialize_vertex_ai
 
 logger = setup_logger(__name__)
 
@@ -43,10 +43,6 @@ class Searcher:
         else:
             self.llm = None
             logger.info("LLM not initialized - using original search mode")
-            
-        self.reference_vectors = None
-        self.reference_texts = None
-        self.reference_df = None # processor.pyから移動
 
     def _setup_llm(self):
         """LLM設定メソッド（LLM拡張検索用）"""
@@ -65,19 +61,8 @@ class Searcher:
         elif self.config.llm_provider == "gemini":
             # Vertex AI Gemini用の認証設定
             try:
-                # 認証情報を読み込み
-                credentials = service_account.Credentials.from_service_account_file(
-                    os.path.join(self.config.base_dir, "gemini_credentials.json"),
-                    scopes=['https://www.googleapis.com/auth/cloud-platform']
-            )
-            
-                # Vertex AI初期化
-                vertexai.init(
-                    project="pj-cbk001",
-                    location="us-central1",
-                    credentials=credentials
-                )
-                
+                initialize_vertex_ai(self.config)
+
                 # 正しく動作している環境の方式でモデル作成
                 from vertexai.generative_models import GenerativeModel
                 model = GenerativeModel(self.config.llm_model)
@@ -91,7 +76,7 @@ class Searcher:
         else:
             raise ValueError(f"Unsupported LLM provider: {self.config.llm_provider}")
 
-    def _extract_keywords(self, text: str, top_k: int = 5) -> list[str]:
+    def _extract_keywords(self, text: str, top_k: int = 5) -> List[str]:
         morphemes = self.tokenizer.tokenize(text, self.mode)
         keywords = []
         for m in morphemes:
@@ -106,7 +91,7 @@ class Searcher:
         filtered_words = {word: count for word, count in Counter(keywords).items() if word not in stop_words}
         return [word for word, _ in Counter(filtered_words).most_common(top_k)]
 
-    def _calculate_keyword_similarity(self, query_keywords: list[str], reference_text: str) -> float:
+    def _calculate_keyword_similarity(self, query_keywords: List[str], reference_text: str) -> float:
         ref_keywords = set(self._extract_keywords(reference_text))
         query_keywords_set = set(query_keywords)
         if not ref_keywords or not query_keywords_set:
@@ -114,7 +99,7 @@ class Searcher:
 
         intersection = ref_keywords.intersection(query_keywords_set)
         union = ref_keywords.union(query_keywords_set)
-        position_weight = 1.2
+        position_weight = self.config.POSITION_WEIGHT
         weighted_score = sum(position_weight if reference_text.find(kw) < len(reference_text) // 2 else 1 for kw in intersection)
         normalized_score = weighted_score / (len(union) * position_weight)
         return min(normalized_score, 1.0)
@@ -229,112 +214,6 @@ class Searcher:
         # データ変更チェックは動的DB管理システムで行われるため、ここではスキップ
         logger.info("ベクトル化処理は動的DB管理システムで実行済み")
 
-    def _is_data_unchanged(self, reference_data: dict) -> bool:
-        """参照データが変更されていないかチェック"""
-        cache_file = os.path.join(self.config.base_dir, "reference", "cache_info.json")
-        
-        if not os.path.exists(cache_file):
-            return False
-        
-        try:
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                cache_info = json.load(f)
-            
-            # ファイル更新日時チェック
-            if not self._check_file_timestamps(cache_info):
-                logger.info("Reference files have been updated. Regenerating vectors...")
-                return False
-            
-            # 結合テキストの内容を比較
-            current_texts = reference_data['combined_texts']
-            cached_texts = cache_info.get('combined_texts', [])
-            
-            if current_texts == cached_texts:
-                logger.info("Reference data unchanged. Using existing ChromaDB.")
-                return True
-            
-            logger.info("Reference data content has changed. Regenerating vectors...")
-            return False
-            
-        except Exception as e:
-            logger.warning(f"Cache validation failed: {e}")
-            return False
-
-    def _check_file_timestamps(self, cache_info: dict) -> bool:
-        """ファイル更新日時をチェック"""
-        import glob
-        
-        # キャッシュされたファイル情報を取得
-        cached_files = cache_info.get('files', {})
-        
-        # faq_dataファイルのチェック
-        faq_dir = os.path.join(self.config.base_dir, "reference", "faq_data")
-        if os.path.exists(faq_dir):
-            faq_files = glob.glob(os.path.join(faq_dir, "*.xlsx"))
-            for faq_file in faq_files:
-                file_name = os.path.basename(faq_file)
-                current_mtime = os.path.getmtime(faq_file)
-                cached_mtime = cached_files.get(f"faq_data/{file_name}")
-                
-                if cached_mtime is None or current_mtime > cached_mtime:
-                    logger.info(f"FAQ file updated: {file_name}")
-                    return False
-        
-        # scenarioファイルのチェック
-        scenario_dir = os.path.join(self.config.base_dir, "reference", "scenario")
-        if os.path.exists(scenario_dir):
-            scenario_files = glob.glob(os.path.join(scenario_dir, "*.xlsx"))
-            for scenario_file in scenario_files:
-                file_name = os.path.basename(scenario_file)
-                current_mtime = os.path.getmtime(scenario_file)
-                cached_mtime = cached_files.get(f"scenario/{file_name}")
-                
-                if cached_mtime is None or current_mtime > cached_mtime:
-                    logger.info(f"Scenario file updated: {file_name}")
-                    return False
-        
-        return True
-
-    def _get_file_timestamps(self) -> dict:
-        """現在のファイル更新日時を取得"""
-        import glob
-        
-        files = {}
-        
-        # faq_dataファイルの更新日時
-        faq_dir = os.path.join(self.config.base_dir, "reference", "faq_data")
-        if os.path.exists(faq_dir):
-            faq_files = glob.glob(os.path.join(faq_dir, "*.xlsx"))
-            for faq_file in faq_files:
-                file_name = os.path.basename(faq_file)
-                files[f"faq_data/{file_name}"] = os.path.getmtime(faq_file)
-        
-        # scenarioファイルの更新日時
-        scenario_dir = os.path.join(self.config.base_dir, "reference", "scenario")
-        if os.path.exists(scenario_dir):
-            scenario_files = glob.glob(os.path.join(scenario_dir, "*.xlsx"))
-            for scenario_file in scenario_files:
-                file_name = os.path.basename(scenario_file)
-                files[f"scenario/{file_name}"] = os.path.getmtime(scenario_file)
-        
-        return files
-
-    def _save_cache_info(self, reference_data: dict):
-        """キャッシュ情報を保存"""
-        cache_file = os.path.join(self.config.base_dir, "reference", "cache_info.json")
-        cache_info = {
-            'combined_texts': reference_data['combined_texts'],
-            'files': self._get_file_timestamps(),  # ファイル更新日時も保存
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        try:
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                json.dump(cache_info, f, ensure_ascii=False, indent=2)
-            logger.info("Cache info saved.")
-        except Exception as e:
-            logger.error(f"Failed to save cache info: {e}")
-
     def parse_enhanced_combined_text(self, combined_text: str) -> dict:
         """階層構造を含む結合テキストを解析（新形式：ラベル付き）"""
         # 新形式の解析：「分類: 階層 | 質問: 質問内容 | 回答: 回答内容」
@@ -406,7 +285,7 @@ class Searcher:
         query_vector = self.model.encode([query_for_vector], normalize_embeddings=True)[0]
         search_results = self.vector_db.search(
             query_embedding=query_vector,
-            n_results=self.config.top_k * 2,
+            n_results=self.config.top_k * self.config.VECTOR_SEARCH_MULTIPLIER,
             filter_metadata=filter_metadata
         )
         logger.info(f"  Vector search returned {len(search_results)} results")
@@ -502,16 +381,16 @@ class Searcher:
                 'Top_K': self.config.top_k
             }
             
-            # 詳細ログ出力
-            logger.info(f"  【結果{i+1}】(i={i})")
-            logger.info(f"    Input_Number: {result_data['Input_Number']}")
-            logger.info(f"    Original_Query: {result_data['Original_Query'][:50]}...")
-            logger.info(f"    Original_Answer: {result_data['Original_Answer'][:50]}...")
-            logger.info(f"    Search_Query: {result_data['Search_Query'][:50]}...")
-            logger.info(f"    Search_Result_Q: {result_data['Search_Result_Q'][:50]}...")
-            logger.info(f"    Search_Result_A: {result_data['Search_Result_A'][:50]}...")
-            logger.info(f"    Similarity: {result_data['Similarity']}")
-            logger.info(f"    i == 0? {i == 0}")
+            # 詳細ログ出力（デバッグレベル）
+            logger.debug(f"  【結果{i+1}】(i={i})")
+            logger.debug(f"    Input_Number: {result_data['Input_Number']}")
+            logger.debug(f"    Original_Query: {result_data['Original_Query'][:50]}...")
+            logger.debug(f"    Original_Answer: {result_data['Original_Answer'][:50]}...")
+            logger.debug(f"    Search_Query: {result_data['Search_Query'][:50]}...")
+            logger.debug(f"    Search_Result_Q: {result_data['Search_Result_Q'][:50]}...")
+            logger.debug(f"    Search_Result_A: {result_data['Search_Result_A'][:50]}...")
+            logger.debug(f"    Similarity: {result_data['Similarity']}")
+            logger.debug(f"    i == 0? {i == 0}")
             
             results.append(result_data)
         
