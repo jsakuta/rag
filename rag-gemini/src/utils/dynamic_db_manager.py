@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 import chromadb
 from chromadb.config import Settings
+from chromadb.errors import NotFoundError as ChromaNotFoundError
 from config import SearchConfig
 from src.utils.logger import setup_logger
 
@@ -303,7 +304,7 @@ class DynamicDBManager:
                 collection = client.get_collection(name=collection_name)
                 client.delete_collection(name=collection_name)
                 logger.info(f"ChromaDBコレクション削除: {collection_name}")
-            except:
+            except ChromaNotFoundError:
                 logger.info(f"ChromaDBコレクションは存在しません: {collection_name}")
                 
         except Exception as e:
@@ -332,7 +333,7 @@ class DynamicDBManager:
             logger.info(f"ベクトル化開始: {len(texts)}件のテキスト")
             
             # バッチサイズで分割してベクトル化
-            batch_size = 100
+            batch_size = self.config.VECTOR_DB_BATCH_SIZE
             all_embeddings = []
             
             for i in range(0, len(texts), batch_size):

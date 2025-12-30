@@ -1,10 +1,8 @@
-import os
 import numpy as np
 from typing import List, Union
-import vertexai
-from google.oauth2 import service_account
 from vertexai.language_models import TextEmbeddingModel
-from utils.logger import setup_logger
+from src.utils.logger import setup_logger
+from src.utils.auth import initialize_vertex_ai
 
 logger = setup_logger(__name__)
 
@@ -18,19 +16,8 @@ class GeminiEmbeddingModel:
     def _setup_model(self):
         """Gemini Embedding APIの初期化"""
         try:
-            # 認証情報を読み込み
-            credentials = service_account.Credentials.from_service_account_file(
-                os.path.join(self.config.base_dir, "gemini_credentials.json"),
-                scopes=['https://www.googleapis.com/auth/cloud-platform']
-            )
-            
-            # Vertex AI初期化
-            vertexai.init(
-                project=self.config.gemini_project_id,
-                location=self.config.gemini_location,
-                credentials=credentials
-            )
-            
+            initialize_vertex_ai(self.config)
+
             # gemini-embedding-001モデルの初期化
             model = TextEmbeddingModel.from_pretrained("gemini-embedding-001")
             
@@ -58,7 +45,7 @@ class GeminiEmbeddingModel:
                 texts = [texts]
             
             # バッチサイズで分割（API制限を回避）
-            batch_size = 5  # Gemini APIの推奨バッチサイズ
+            batch_size = self.config.EMBEDDING_BATCH_SIZE
             all_embeddings = []
             
             for i in range(0, len(texts), batch_size):

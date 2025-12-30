@@ -1,7 +1,7 @@
 # --- config.py ---
 from dataclasses import dataclass, field
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -29,7 +29,34 @@ class SearchConfig:
     
     # 動的DB管理設定
     DEFAULT_FORCE_DB_UPDATE: bool = False  # 強制DB更新フラグ
-    
+
+    # バッチサイズ設定
+    # EMBEDDING_BATCH_SIZE: Gemini APIのレート制限に基づく推奨値。
+    # 5を超えるとAPIエラーが発生する可能性があります。
+    EMBEDDING_BATCH_SIZE: int = 5
+    # VECTOR_DB_BATCH_SIZE: ChromaDBへの一括書き込み時のバッチサイズ。
+    # 大きすぎるとメモリエラーの原因になります。100-500が推奨範囲。
+    VECTOR_DB_BATCH_SIZE: int = 100
+
+    # 検索設定
+    # VECTOR_SEARCH_MULTIPLIER: top_k に対する取得倍率。
+    # リランキング用に多めに取得します。2-3が推奨。
+    VECTOR_SEARCH_MULTIPLIER: int = 2
+    # POSITION_WEIGHT: キーワードがテキスト前半にある場合の重み係数。
+    # 1.0より大きいと前半マッチを優先。1.0-1.5が推奨範囲。
+    POSITION_WEIGHT: float = 1.2
+
+    # 列名候補
+    # Excel/CSVファイルから質問・回答・タグ列を自動検出する際の候補名。
+    # 優先順位順に検索され、最初にマッチした列が使用されます。
+    QUERY_COLUMN_CANDIDATES: Tuple[str, ...] = ('分割後質問', '問合せ内容', '質問内容', '問い合わせ', '質問', 'query', 'Query')
+    ANSWER_COLUMN_CANDIDATES: Tuple[str, ...] = ('分割後回答', '回答', '既存回答', 'answer', 'Answer')
+    TAG_COLUMN_CANDIDATES: Tuple[str, ...] = ('タグ付け', 'タグ', '分類', 'category', 'Category', 'tag', 'Tag')
+
+    # 原則文判定マーカー
+    # このテキストを含む回答は「原則文」として特別扱いされます。
+    PRINCIPLE_MARKER: str = "以下の選択肢から選んでください"
+
     # ファイル名パターン（既存ファイル対応版）
     REFERENCE_FILE_PATTERN: str = r".*?([^_]+).*?(履歴データ|シナリオデータ).*?(\d{8})?.*?\.xlsx$"
     INPUT_FILE_PATTERN: str = r"^([^_]+)_(\d{8})\.xlsx$"
