@@ -3,7 +3,7 @@
 データベースの内容と重複を確認するスクリプト
 """
 
-from utils.vector_db import MetadataVectorDB
+from src.utils.vector_db import MetadataVectorDB
 from collections import Counter
 
 def check_db_content():

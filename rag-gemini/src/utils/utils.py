@@ -5,7 +5,7 @@ from typing import Optional
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 from google.oauth2 import service_account
-from utils.logger import setup_logger
+from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 

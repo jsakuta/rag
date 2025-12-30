@@ -325,7 +325,7 @@ class DynamicDBManager:
             reference_data = self._prepare_reference_data_for_vectorization()
             
             # ベクトル化モデルの初期化
-            from utils.gemini_embedding import GeminiEmbeddingModel
+            from src.utils.gemini_embedding import GeminiEmbeddingModel
             embedding_model = GeminiEmbeddingModel(self.config)
             
             # テキストのベクトル化
@@ -349,7 +349,7 @@ class DynamicDBManager:
             logger.info(f"ベクトル化完了: {len(embeddings)}件のベクトル")
             
             # 既存のMetadataVectorDBクラスを使用してベクトルDBに追加
-            from utils.vector_db import MetadataVectorDB
+            from src.utils.vector_db import MetadataVectorDB
             vector_db = MetadataVectorDB(self.config.base_dir, collection_name)
             
             # メタデータの準備
@@ -459,7 +459,7 @@ class DynamicDBManager:
         logger.info("動的DB管理システム用の参照データ準備開始（既存実装を活用）")
         
         # 既存のMultiFolderInputHandlerを使用してデータを読み込み
-        from input_handler import MultiFolderInputHandler
+        from src.handlers.input_handler import MultiFolderInputHandler
         input_handler = MultiFolderInputHandler(self.config)
         
         # 参照データの読み込み

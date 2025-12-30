@@ -183,7 +183,7 @@ class Searcher:
 
     def prepare_search(self, reference_data):
         """検索の準備（メタデータ対応ベクトルDB + キャッシュ）"""
-        from utils.vector_db import MetadataVectorDB
+        from src.utils.vector_db import MetadataVectorDB
         
         self.reference_texts = reference_data['combined_texts']  # 結合テキストをベクトル化対象に
         self.reference_queries = reference_data['queries']  # 個別の質問（表示用）
@@ -542,7 +542,7 @@ class Searcher:
             english_name = self.db_manager._translate_business_area(business_area)
             
             # ChromaDBクライアントの切り替え
-            from utils.vector_db import MetadataVectorDB
+            from src.utils.vector_db import MetadataVectorDB
             self.vector_db = MetadataVectorDB(
                 base_dir=self.config.base_dir,
                 collection_name=f"{english_name}_DB"
