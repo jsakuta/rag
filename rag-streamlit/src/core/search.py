@@ -10,7 +10,7 @@ from config import SearchConfig
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 import os
-from utils import setup_logger
+from src.utils.utils import setup_logger
 
 logger = setup_logger(__name__)
 
