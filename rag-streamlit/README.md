@@ -274,7 +274,7 @@ python main.py interactive
 ┌─────────────────────────────────────────────┐
 │ 候補 1 (類似度: 0.9234)                     │
 ├─────────────────────────────────────────────┤
-│ 類似質問内容:                               │
+│ 類似質問:                               │
 │ ATMでの現金処理時に操作を誤った場合は？     │
 ├─────────────────────────────────────────────┤
 │ 回答:                                       │
@@ -486,7 +486,7 @@ def format_response_card(number, similarity, query, answer):
                 候補 {number} (類似度: {similarity:.4f})
             </div>
             <div style="...">
-                <div>類似質問内容:</div>
+                <div>類似質問:</div>
                 <div>{query}</div>
             </div>
             <div style="...">
