@@ -1,646 +1,761 @@
-# rag-gemini
+# RAG-Gemini
 
-## 他プロジェクトとの違い
-- **特徴**: Vertex AI Gemini埋め込みモデル、ChromaDB永続化、LLM拡張検索（デュアルモード）、動的DB管理システム
-- **代替プロジェクト**:
-  - シンプルなバッチ処理の場合: [rag-batch](../rag-batch/)
-  - 対話的UIが必要な場合: [rag-streamlit](../rag-streamlit/)
-  - プロジェクト全体の比較: [ルートREADME](../README.md)
+**Vertex AI Gemini と ChromaDB を活用した次世代 RAG システム**
+
+[![Python](https://img.shields.io/badge/Python-3.7+-blue)](https://www.python.org/)
+[![Vertex AI](https://img.shields.io/badge/Vertex_AI-Gemini-orange)](https://cloud.google.com/vertex-ai)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-1.0+-purple)](https://www.trychroma.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-0.1.0+-green)](https://python.langchain.com/)
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-[![Python](https://img.shields.io/badge/Python-3.7+-blue)](https://www.python.org/)
-[![Sentence Transformers](https://img.shields.io/badge/SentenceTransformers-2.2.0+-blue)](https://www.sbert.net/)
-[![LangChain](https://img.shields.io/badge/LangChain-0.1.0+-blue)](https://python.langchain.com/)
-[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-
-## 概要
-本システムは、大規模言語モデル(LLM)とベクトル検索、キーワード検索を組み合わせたハイブリッド検索システムです。質問文から類似度の高い参照データを検索し、高精度な回答を生成・提供します。
-
-**V2の新機能：**
-- **マージ版シナリオ対応**：階層構造を持つExcelファイルの全シート処理
-- **複数フォルダ対応**：マージシナリオと履歴データの統合処理
-- **自動フォルダ検出**：新しいデータフォルダの自動認識
-- **カバレッジ大幅向上**：943件の参照データを統合処理
-- **🆕 タグレス対応**：タグ列なしExcelファイルでのベクトル化対応（2025年8月実装）
-
-### 主な機能
-- **🔍 次世代ハイブリッド検索**:
-    - **デュアル検索モード**：原文検索 ↔ LLM拡張検索の切り替え可能
-    - **ベクトル類似度検索**：Gemini Embedding API (`gemini-embedding-001`) によるベクトル化
-    - **キーワード類似度検索**：SudachiPy による日本語形態素解析
-    - **検索スコアの重み付け統合**：ベクトル検索とキーワード検索の最適な組み合わせ
-    - **ChromaDB永続化**：高速なベクトル検索とメタデータフィルタリング
-- **🤖 LLM拡張検索**:
-    - **検索クエリ生成**：LLMが質問文から最適な検索クエリを自動生成
-    - **複数LLMプロバイダー対応**：Gemini, Anthropic Claude, OpenAI ChatGPT
-    - **プロンプトエンジニアリング**：専用プロンプトファイル (`summarize_v1.0.txt`) による高精度化
-    - **エラーハンドリング**：LLM API障害時の自動フォールバック機能
-- **2つの実行モード**:
-    - **バッチ処理モード**: Excel一括処理
-    - **インタラクティブモード**: StreamlitベースのWeb UI
-- **高度な最適化**:
-    - **ChromaDBベクトルキャッシング**：永続化されたベクトルデータベース
-    - **進捗表示**：tqdmによるプログレスバー
-    - **詳細なロギング**：検索方式やクエリ生成プロセスの完全トレース
-- **V2新機能**:
-    - **階層構造Excelファイルの全シート処理**
-    - **複数フォルダからの参照データ統合**
-    - **自動フォルダ検出と最新ファイル選択**
-
-### 技術スタック
-- **Core**: Python 3.7+, pandas, numpy
-- **ベクトル検索**: ChromaDB (永続化ベクトルDB), Gemini Embedding API (`gemini-embedding-001`)
-- **LLM統合**: LangChain (Anthropic Claude, OpenAI ChatGPT, Google Gemini対応)
-- **日本語処理**: SudachiPy, sudachidict-core (形態素解析・キーワード抽出)
-- **UI/UX**: Streamlit (インタラクティブWebUI), tqdm (プログレスバー)
-- **ファイル処理**: xlsxwriter, openpyxl (Excel読み書き), pymupdf4llm (PDF処理)
-- **セキュリティ**: python-dotenv (環境変数管理), Azure Key Vault (認証情報管理)
-
 ## 目次
 
-1. [システム要件](#システム要件)
-2. [セットアップ](#セットアップ)
-3. [使用方法](#使用方法)
-    - [3.1 入力ファイル要件](#31-入力ファイル要件)
-    - [3.2 参照データの配置](#32-参照データの配置)
-    - [3.3 バッチモード実行手順](#33-バッチモード実行手順)
-    - [3.4 インタラクティブモード実行手順](#34-インタラクティブモード実行手順)
-4. [ベクトル検索実装](#ベクトル検索実装)
-5. [設定パラメータ](#設定パラメータ)
-6. [入出力形式の変更](#入出力形式の変更)
-7. [開発](#開発)
-    - [7.1 開発環境構築](#71-開発環境構築)
-    - [7.2 コーディング規約](#72-コーディング規約)
-8. [トラブルシューティング](#トラブルシューティング)
-9. [セキュリティ](#セキュリティ)
-10. [ライセンス](#ライセンス)
-11. [バグ報告・機能要望](#バグ報告機能要望)
-12. [変更履歴](#変更履歴)
+- [他プロジェクトとの違い](#他プロジェクトとの違い)
+- [概要](#概要)
+- [アーキテクチャ](#アーキテクチャ)
+- [クイックスタート](#クイックスタート)
+- [詳細セットアップガイド](#詳細セットアップガイド)
+- [検索エンジン仕様](#検索エンジン仕様)
+- [データベース管理](#データベース管理)
+- [入出力フォーマット](#入出力フォーマット)
+- [使用方法](#使用方法)
+- [トラブルシューティング](#トラブルシューティング)
+- [パフォーマンス最適化](#パフォーマンス最適化)
+- [変更履歴](#変更履歴)
+- [依存パッケージ・セキュリティ](#依存パッケージセキュリティ)
 
-## 1. システム要件
+---
 
-### 1.1 必要な環境
+## 他プロジェクトとの違い
 
-- OS: Windows, macOS, Linux
-- Python 3.7以上
+| 特徴 | rag-gemini | rag-batch | rag-streamlit |
+|------|------------|-----------|---------------|
+| **主な用途** | 最新技術・高精度 | バッチ処理 | 対話的検索 |
+| **ベクトルDB** | ChromaDB（永続化） | JSON キャッシュ | JSON キャッシュ |
+| **埋め込みモデル** | Gemini Embedding | multilingual-e5 | multilingual-e5 |
+| **検索モード** | 原文 / LLM拡張 | LLM要約 | LLM要約 |
+| **動的DB管理** | あり | なし | なし |
 
-### 1.2 依存関係
+**関連プロジェクト:**
 
-- pandas
-- sentence-transformers
-- streamlit
-- xlsxwriter
-- python-dotenv
-- tqdm
-- langchain
-- langchain-anthropic (LLMプロバイダーとしてAnthropicを使用する場合)
-- langchain-openai (LLMプロバイダーとしてOpenAIを使用する場合)
-- openpyxl
-- sudachipy
-- sudachidict-core
-- pymupdf4llm
+- シンプルなバッチ処理の場合: [rag-batch](../rag-batch/)
+- 対話的 UI が必要な場合: [rag-streamlit](../rag-streamlit/)
 
-以下のコマンドで依存関係をインストールできます:
+---
+
+## 概要
+
+RAG-Gemini は、Google Vertex AI の Gemini Embedding API と ChromaDB を活用した高精度ハイブリッド検索システムです。銀行預金業務における問い合わせ対応に最適化されています。
+
+### 主な機能
+
+| 機能 | 説明 |
+|------|------|
+| **デュアル検索モード** | 原文検索 ↔ LLM 拡張検索の切り替え |
+| **Gemini Embedding** | 768次元高精度ベクトル化 |
+| **ChromaDB 永続化** | メタデータ対応ベクトルデータベース |
+| **動的 DB 管理** | 業務領域別の自動 DB 管理 |
+| **複数フォルダ対応** | シナリオ + FAQ 履歴の統合処理 |
+| **マルチ LLM 対応** | Gemini / Claude / ChatGPT |
+
+---
+
+## アーキテクチャ
+
+```mermaid
+graph TB
+    subgraph 入力層
+        A1[Excel入力ハンドラ<br/>単一Excel]
+        A2[階層構造ハンドラ<br/>シナリオ階層構造]
+        A3[複数フォルダハンドラ<br/>scenario+faq_data]
+    end
+
+    subgraph 動的DB管理
+        B1[業務領域抽出]
+        B2[タイムスタンプ検証]
+        B3[DB更新/再ベクトル化]
+        B4[預金_DB / 融資_DB / 外貨_DB / 投信_DB ...]
+    end
+
+    subgraph 検索層
+        C1[ベクトル検索<br/>Gemini Embedding 768次元]
+        C2[ChromaDB<br/>コサイン類似度]
+        D1[キーワード検索<br/>SudachiPy 形態素解析]
+        D2[重み付き Jaccard 類似度]
+        E[スコア統合<br/>combined = vw × vec + kw × keyword]
+    end
+
+    A1 --> B1
+    A2 --> B1
+    A3 --> B1
+    B1 --> B2 --> B3 --> B4
+    B4 --> C1
+    B4 --> D1
+    C1 --> C2 --> E
+    D1 --> D2 --> E
+```
+
+### 処理フロー説明
+
+1. **入力層**: Excel ファイルを読み込み、形式に応じたハンドラを選択
+2. **動的DB管理**: 業務領域を抽出し、タイムスタンプを検証して必要に応じて再ベクトル化
+3. **検索層**: ベクトル検索とキーワード検索を並列実行し、重み付けでスコアを統合
+
+---
+
+## クイックスタート
+
+**5分で開始できる簡潔版です。詳細は[詳細セットアップガイド](#詳細セットアップガイド)を参照してください。**
+
+### 1. 環境構築
 
 ```bash
+git clone <repository-url>
+cd rag-gemini
+python -m venv venv && source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## 2. セットアップ
+### 2. 認証設定
 
-### 2.1 システムコンポーネント
+```bash
+cp your_credentials.json gemini_credentials.json
+cp .env.example .env
+# .env を編集して GEMINI_PROJECT_ID を設定
+```
 
-| ファイル/ディレクトリ | 説明 | 用途 |
-| --- | --- | --- |
-| 📁 input/ | 入力ファイル用ディレクトリ | 質問データを含むExcelファイルを配置 |
-| 📁 reference/ | 参照データ用ディレクトリ | 検索対象となる参照用Excelファイルを配置 |
-| 📁 reference/scenario/ | マージ版シナリオ用ディレクトリ | 階層構造を持つExcelファイルを配置 |
-| 📁 reference/faq_data/ | 履歴データ用ディレクトリ | 従来の問合せ履歴データを配置 |
-| 📁 reference/vector_db/ | ベクトルキャッシュディレクトリ | 計算済みの参照データのベクトルをJSON形式で保存 |
-| 📁 prompt/ | プロンプトテンプレートディレクトリ | LLM用のプロンプトテンプレートファイル (.txt) を保存 |
-| 📁 output/ | 出力ファイル用ディレクトリ | 検索結果のExcelファイルが出力される |
-| 📁 logs/ | ログファイル用ディレクトリ | アプリケーションログ (app.log) の保存先 |
-| 📄 config.py | 設定管理モジュール | システム全体の設定 (検索パラメータ, LLM設定など) をPythonコードで管理 |
+### 3. データ配置と実行
 
-| 📄 main.py | エントリーポイント | プログラムの開始点 (バッチモード or インタラクティブモードの選択) |
-| 📄 processor.py | データ処理モジュール | メインの処理ロジック (入力読み込み, 検索, 結果出力) を実装 |
-| 📄 searcher.py | 検索エンジンモジュール | ハイブリッド検索 (ベクトル検索 + キーワード検索) のコア機能を実装 |
-| 📄 input_handler.py | 入力処理モジュール | 入力ファイルの読み込みと複数フォルダ対応を担当 |
-| 📄 output_handler.py | 出力処理モジュール | 結果の出力 (現在はExcelのみ) を担当 |
-| 📄 chat.py | Streamlit UIモジュール | インタラクティブモードのWeb UIを提供 |
-| 📄 .env | 環境変数ファイル (オプション) | APIキーなどの機密情報を管理 (利用は任意) |
-| 📄 requirements.txt | 依存パッケージリスト | 必要なPythonパッケージを記載 |
-| 📄 utils/logger.py | ロガー設定 | ログレベルや出力形式を設定 |
-| 📄 README_V2.md | このファイル | プロジェクトの説明、使用方法、開発ガイドなど |
+```bash
+mkdir -p reference/scenario reference/faq_data input
+cp scenario_data.xlsx reference/scenario/
+cp faq_history.xlsx reference/faq_data/
+cp input_data.xlsx input/
 
-### 2.2 環境変数の設定 (オプション)
+# バッチモード
+python main.py
 
-LLMプロバイダーとしてOpenAIまたはAnthropicを使用し、APIキーが必要な場合は、.envファイルを作成し、以下のようにAPIキーを設定します:
+# インタラクティブモード
+python main.py interactive
+```
+
+---
+
+## 詳細セットアップガイド
+
+### 環境構築
+
+```bash
+# リポジトリのクローン
+git clone <repository-url>
+cd rag-gemini
+
+# 仮想環境の作成・有効化
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 依存パッケージのインストール
+pip install -r requirements.txt
+```
+
+### Google Cloud 認証設定
+
+#### 1. サービスアカウント作成
+
+1. [Google Cloud Console](https://console.cloud.google.com/) にアクセス
+2. IAM & Admin → Service Accounts → 「サービスアカウントを作成」
+3. 役割を付与:
+   - `Vertex AI User`
+   - `AI Platform Admin`
+4. キーを作成（JSON 形式）
+
+#### 2. 認証ファイル配置
+
+```bash
+# プロジェクトルートに配置
+cp downloaded_key.json gemini_credentials.json
+
+# .gitignore に追加（重要）
+echo "gemini_credentials.json" >> .gitignore
+```
+
+#### 3. 環境変数設定
+
+`.env` ファイルを編集:
 
 ```env
-# .env ファイルの内容 (例)
-ANTHROPIC_API_KEY=your_anthropic_api_key
-OPENAI_API_KEY=your_openai_api_key
+# Gemini 認証（必須）
+GEMINI_CREDENTIALS_PATH=gemini_credentials.json
+GEMINI_PROJECT_ID=your-project-id
+GEMINI_LOCATION=us-central1
+
+# LLM API キー（オプション）
+ANTHROPIC_API_KEY=sk-ant-your_key
+OPENAI_API_KEY=sk-your_key
 ```
 
-重要: .env ファイルは .gitignore に追加されており、Gitリポジトリには含まれません。機密情報が誤って公開されるのを防ぐためです。
+#### 4. Azure Key Vault 連携（オプション）
 
-## 3. 使用方法
+本番環境での認証情報管理:
 
-### 3.1 入力ファイル要件
-
-| ファイルタイプ | 場所 | 必須列 | 形式 |
-|--------------|------|--------|------|
-| 質問データ | input/ | 1列目: 番号<br>2列目: 質問内容<br>3列目: 回答(任意) | Excel (.xlsx) |
-
-### 3.2 参照データの配置
-
-#### マージ版シナリオ（階層構造Excel）
-- **配置場所**: `reference/scenario/`
-- **ファイル形式**: Excel (.xlsx)
-- **構造**: Lv1, Lv2, Lv3... の階層列
-- **処理**: 全シートを自動処理
-- **特徴**: 原則文と通常の問答を自動判別
-
-#### 履歴データ（従来形式）
-- **配置場所**: `reference/faq_data/`
-- **ファイル形式**: Excel (.xlsx)
-- **必須列**: 問合せ内容、回答
-- **処理**: 従来通りの形式で処理
-
-#### 自動処理ルール
-- 各フォルダ内の最新ファイルを自動選択
-- 複数フォルダのデータを統合してベクトル化
-- 新しいフォルダを追加すると自動認識
-
-### 3.3 バッチモード実行手順
-1. 入力ファイルの配置
-   - 質問データを `input/` に配置
-2. 参照データの配置
-   - マージ版シナリオを `reference/scenario/` に配置
-   - 履歴データを `reference/faq_data/` に配置
-3. 設定確認
-   - `config.py` で `reference_type: "multi_folder"` を確認
-4. コマンド実行
-   ```bash
-   python main.py
-   ```
-5. 結果確認
-   - `output/` に `output_batch_v{ベクトルの重み}_k{キーワードの重み}_{タイムスタンプ}.xlsx` が生成
-   - `logs/app.log` に処理ログが出力
-
-### 3.4 インタラクティブモード実行手順
-1. 起動コマンド実行（いずれか）
-   ```bash
-   python main.py interactive
-   # または
-   streamlit run ui/chat.py
-   ```
-2. Web UI操作
-   - 質問を入力し「送信」をクリック
-   - 類似質問と回答が表示
-   - 「チャット履歴を保存」で対話履歴をExcel保存（ `output/` に `output_chat_v{ベクトルの重み}_k{キーワードの重み}_{タイムスタンプ}.xlsx` が生成）
-
-## 4. ベクトル検索実装
-
-### 4.1 ベクトル検索アーキテクチャ
-
-本システムは、**デュアル検索モード**と**ChromaDBベースの永続化ベクトル検索**を組み合わせた次世代RAGシステムです。
-
-```mermaid
-graph TD
-    A[質問文入力] --> B{検索モード選択}
-    B -->|原文検索| C[質問文を直接ベクトル化]
-    B -->|LLM拡張検索| D[LLMで検索クエリ生成]
-    D --> E[生成クエリをベクトル化]
-    C --> F[ChromaDBベクトル検索]
-    E --> F
-    F --> G[メタデータフィルタリング]
-    G --> H[キーワード類似度計算]
-    H --> I[ハイブリッドスコア統合]
-    I --> J[検索結果出力]
+```env
+AZURE_KEY_VAULT_URL=https://your-vault.vault.azure.net/
+AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
 ```
 
-### 4.2 検索モードの詳細
+### データ配置
 
-#### 4.2.1 原文検索モード (`search_mode = "original"`)
+```bash
+# 参照データを配置
+mkdir -p reference/scenario reference/faq_data
+cp scenario_data.xlsx reference/scenario/
+cp faq_history.xlsx reference/faq_data/
+
+# 入力データを配置
+mkdir -p input
+cp input_data.xlsx input/
+```
+
+### Docker デプロイ
+
+#### ビルド
+
+```bash
+docker build -t rag-gemini:latest .
+```
+
+#### バッチモード実行
+
+```bash
+docker run --rm \
+  -v $(pwd)/input:/app/input \
+  -v $(pwd)/reference:/app/reference \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/gemini_credentials.json:/app/gemini_credentials.json:ro \
+  -e GEMINI_CREDENTIALS_PATH=/app/gemini_credentials.json \
+  -e GEMINI_PROJECT_ID=your-project-id \
+  rag-gemini:latest main.py
+```
+
+#### インタラクティブモード実行
+
+```bash
+docker run -p 8501:8501 \
+  -v $(pwd)/reference:/app/reference \
+  -v $(pwd)/gemini_credentials.json:/app/gemini_credentials.json:ro \
+  -e GEMINI_CREDENTIALS_PATH=/app/gemini_credentials.json \
+  -e GEMINI_PROJECT_ID=your-project-id \
+  rag-gemini:latest bash -c "streamlit run ui/chat.py --server.address 0.0.0.0"
+```
+
+---
+
+## 検索エンジン仕様
+
+### 検索モード
+
+#### 原文検索モード（デフォルト）
+
 ```python
 # config.py
-DEFAULT_SEARCH_MODE: str = "original"
-DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = False
+DEFAULT_SEARCH_MODE = "original"
+DEFAULT_ENABLE_QUERY_ENHANCEMENT = False
 ```
 
 **特徴:**
 - 質問文をそのままベクトル化
-- 高速処理（LLM API呼び出しなし）
+- LLM API 呼び出しなし（高速）
 - 直接的な類似性検索
 
 **処理フロー:**
-1. 質問文 → 直接ベクトル化 (`GeminiEmbeddingModel`)
-2. ChromaDBでベクトル検索実行
-3. キーワード類似度計算と統合
+```
+質問文 → Gemini Embedding → ChromaDB 検索 → 結果
+```
 
-#### 4.2.2 LLM拡張検索モード (`search_mode = "llm_enhanced"`)
+#### LLM 拡張検索モード
+
 ```python
 # config.py
-DEFAULT_SEARCH_MODE: str = "llm_enhanced"
-DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = True
+DEFAULT_SEARCH_MODE = "llm_enhanced"
+DEFAULT_ENABLE_QUERY_ENHANCEMENT = True
 ```
 
 **特徴:**
-- LLMが質問の意図を理解し、最適な検索クエリを生成
+- LLM が質問の意図を理解して検索クエリを生成
 - 高精度検索（質問の背後にある意図を抽出）
 - プロンプトエンジニアリング対応
 
 **処理フロー:**
-1. 質問文 → LLM (`summarize_v1.0.txt` プロンプト使用)
-2. 生成された検索クエリ → ベクトル化
-3. ChromaDBでベクトル検索実行
-4. 結果の `Search_Query` 列に生成クエリを記録
+```
+質問文 → LLM (クエリ生成) → Gemini Embedding → ChromaDB 検索 → 結果
+```
 
-### 4.3 ベクトル化システム
+**生成クエリ例:**
+```
+入力: "口座開設の手続きについて教えてください"
+出力: "検索クエリ: 銀行口座 新規開設 必要書類 手続き 流れ"
+```
 
-#### 4.3.1 Gemini Embedding API
+### Gemini Embedding API
+
 ```python
-# utils/gemini_embedding.py
+# src/utils/gemini_embedding.py
 class GeminiEmbeddingModel:
-    def __init__(self, config):
+    def __init__(self):
         self.model = TextEmbeddingModel.from_pretrained("gemini-embedding-001")
-    
+
     def encode(self, texts, normalize_embeddings=True):
-        # バッチサイズ5での分割処理
-        # L2正規化による統一
-        # 768次元ベクトル生成
+        # バッチサイズ 5 で API 制限対応
+        embeddings = []
+        for batch in chunks(texts, 5):
+            result = self.model.get_embeddings(batch)
+            embeddings.extend([e.values for e in result])
+        return np.array(embeddings)
 ```
 
 **技術仕様:**
-- **モデル**: `gemini-embedding-001`
-- **次元数**: 768次元
-- **正規化**: L2正規化
-- **バッチサイズ**: 5（API制限対応）
-- **認証**: Vertex AI Service Account
 
-#### 4.3.2 ChromaDBベクトルデータベース
-```python
-# utils/vector_db.py
-class MetadataVectorDB:
-    def __init__(self, base_dir=".", collection_name="rag_collection"):
-        self.client = chromadb.PersistentClient(path=self.db_path)
-        self.collection = self.client.get_or_create_collection(name=collection_name)
+| 項目 | 値 |
+|------|-----|
+| モデル | gemini-embedding-001 |
+| 次元数 | 768 |
+| 正規化 | L2 正規化 |
+| バッチサイズ | 5（API レート制限対応） |
+| 認証 | Vertex AI サービスアカウント |
+
+### LLM プロバイダー
+
+| プロバイダー | モデル | 用途 |
+|-------------|--------|------|
+| Gemini | gemini-2.0-flash-001 | クエリ生成（UI デフォルト） |
+| Anthropic | claude-3-5-sonnet-20241022 | クエリ生成（config デフォルト） |
+| OpenAI | gpt-4o | クエリ生成（代替） |
+
+### 設定パラメータ
+
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|-----|-----------|------|
+| `top_k` | int | 4 | 返却する類似文書数 |
+| `vector_weight` | float | 0.9 (batch) / 0.7 (UI) | ベクトル検索の重み |
+| `llm_provider` | str | anthropic | LLM プロバイダー |
+| `llm_model` | str | claude-3-5-sonnet-20241022 | LLM モデル |
+| `embedding_provider` | str | vertex_ai | 埋め込みプロバイダー |
+| `embedding_model` | str | gemini-embedding-001 | 埋め込みモデル |
+| `search_mode` | str | original | 検索モード |
+| `enable_query_enhancement` | bool | False | LLM クエリ拡張 |
+| `reference_type` | str | multi_folder | 参照データ形式 |
+
+**参照データ形式:**
+
+| 値 | 説明 |
+|----|------|
+| `excel` | 単一 Excel ファイル |
+| `hierarchical_excel` | 階層構造シナリオのみ |
+| `multi_folder` | scenario/ + faq_data/ 統合（推奨） |
+
+---
+
+## データベース管理
+
+### ChromaDB 構造
+
+**永続化場所:** `reference/vector_db/`
+
+```text
+reference/vector_db/
+├── chroma.sqlite3              # メインデータベース
+├── {collection_id}/            # コレクションデータ
+│   ├── data_level0.bin
+│   ├── header.bin
+│   └── length.bin
+└── update_timestamps.json      # 更新タイムスタンプ
 ```
 
-**特徴:**
-- **永続化**: データベースファイル (`reference/vector_db/`) への自動保存
-- **メタデータ対応**: 文書の出典、階層構造、タグ情報を保持
-- **高速検索**: コサイン類似度による近似最近傍検索
-- **スケーラブル**: 943件の参照データに対応
+### コレクション命名
 
-### 4.4 ハイブリッド検索アルゴリズム
+業務領域から ASCII コレクション名に変換:
 
-#### 4.4.1 検索スコア統合
-```python
-# searcher.py の search メソッド
-combined_score = (
-    self.config.vector_weight * vector_similarity +
-    self.config.keyword_weight * keyword_similarity
-)
-```
+| 日本語 | コレクション名 |
+|--------|----------------|
+| 預金 | deposit_DB |
+| 融資 | loan_DB |
+| 外貨 | foreign_currency_DB |
+| 投信 | investment_trust_DB |
+| 住宅ローン | housing_loan_DB |
+| カード | card_DB |
+| 保険 | insurance_DB |
+| 年金 | pension_DB |
 
-**重み設定:**
-- **バッチ処理**: `vector_weight = 0.9`, `keyword_weight = 0.1`
-- **UI処理**: `vector_weight = 0.7`, `keyword_weight = 0.3`
+### メタデータ構造
 
-#### 4.4.2 キーワード類似度計算
-```python
-def _calculate_keyword_similarity(self, query_keywords, reference_text):
-    # SudachiPy形態素解析
-    # 名詞抽出（固有名詞 weight=2, 一般名詞 weight=1）
-    # Jaccard類似度 + 位置重み
-    # ストップワード除去
-```
-
-**技術仕様:**
-- **形態素解析**: SudachiPy (SplitMode.C)
-- **品詞フィルタ**: 名詞のみ抽出
-- **重要度重み付け**: 固有名詞×2, 一般名詞×1
-- **類似度計算**: Jaccard係数 + 位置重み
-
-### 4.5 LLMプロバイダー対応
-
-#### 4.5.1 対応プロバイダー
-```python
-# searcher.py の _setup_llm メソッド
-if self.config.llm_provider == "gemini":
-    # Vertex AI Gemini
-    model = GenerativeModel(self.config.llm_model)
-elif self.config.llm_provider == "anthropic":
-    # Anthropic Claude
-    return ChatAnthropic(model=self.config.llm_model)
-elif self.config.llm_provider == "openai":
-    # OpenAI ChatGPT
-    return ChatOpenAI(model=self.config.llm_model)
-```
-
-**対応モデル:**
-- **Gemini**: `gemini-2.0-flash-001` (デフォルト)
-- **Anthropic**: `claude-3-5-sonnet-20241022`
-- **OpenAI**: `gpt-4o`, `gpt-3.5-turbo`
-
-#### 4.5.2 プロンプトエンジニアリング
-```plaintext
-# prompt/summarize_v1.0.txt
-#命令
-あなたは、与えられたユーザーの質問を理解し、その質問の背後にある意図を汲み取って、
-検索クエリに変換するエキスパートです。
-
-ユーザーの質問文からだけでなく、その意図も考慮して、
-より関連性の高い情報を見つけるための検索クエリを生成してください。
-```
-
-### 4.6 メタデータとフィルタリング
-
-#### 4.6.1 メタデータ構造
 ```python
 metadata = {
-    'source': 'scenario' | 'faq_data',        # データソース
-    'hierarchy': 'Lv0 > Lv1 > Lv2',          # 階層構造
-    'tags': 'tag1 | tag2 | tag3',            # タグ情報
-    'file_name': 'data.xlsx',                # ファイル名
-    'sheet_name': 'Sheet1',                  # シート名
-    'row_index': 42                          # 行番号
+    'source': 'scenario',           # or 'faq_data'
+    'hierarchy': 'Lv0 > Lv1 > Lv2', # 階層構造
+    'tags': 'tag1 | tag2 | tag3',   # タグ（パイプ区切り）
+    'date': '2025-12-30',           # 日付
+    'sheet_name': 'Sheet1',         # シート名
+    'row_index': 42                 # 行番号
 }
 ```
 
-#### 4.6.2 検索結果形式
-```python
-result = {
-    'Input_Number': '1',                      # 入力番号
-    'Original_Query': '元の質問文',           # 元の質問
-    'Original_Answer': '元の回答',            # 元の回答
-    'Search_Query': 'LLM生成検索クエリ',      # 実際に使用した検索クエリ
-    'Search_Result_Q': '類似質問',            # 検索結果の質問
-    'Search_Result_A': '類似回答',            # 検索結果の回答
-    'Similarity': 0.9234,                    # 統合類似度スコア
-    'Vector_Weight': 0.9,                    # ベクトル重み
-    'Top_K': 4                               # 検索件数
+### 動的 DB 管理システム
+
+業務領域ごとに独立したベクトルコレクションを管理し、参照データの更新を自動検知します。
+
+```mermaid
+flowchart TD
+    A[入力ファイル名解析] --> B[業務領域抽出<br/>例: 預金_20250101.xlsx → 預金]
+    B --> C[タイムスタンプ確認<br/>update_timestamps.json]
+    C -->|ファイル変更あり| D[DB リセット & 再ベクトル化]
+    C -->|ファイル変更なし| E[既存 DB 使用]
+```
+
+**タイムスタンプ管理ファイル:** `reference/vector_db/update_timestamps.json`
+
+```json
+{
+  "faq": {
+    "deposit": 1735567200.0,
+    "loan": 1735567200.0
+  },
+  "scenario": {
+    "deposit": 1735567200.0,
+    "loan": 1735567200.0
+  }
 }
 ```
 
-### 4.7 パフォーマンス最適化
+---
 
-#### 4.7.1 キャッシング戦略
-- **ベクトルキャッシュ**: ChromaDBによる永続化
-- **ファイル更新検知**: タイムスタンプベースの差分更新
-- **バッチ処理**: API制限を考慮した効率的な分割処理
+## 入出力フォーマット
 
-#### 4.7.2 ログ出力
+### 入力ファイル
+
+**場所:** `input/` ディレクトリ
+
+**形式:** Excel (.xlsx)
+
+| 列 | 必須 | 説明 |
+|----|------|------|
+| 1列目 | はい | 番号/ID |
+| 2列目 | はい | 質問内容 |
+| 3列目 | いいえ | オリジナル回答 |
+
+### 参照データ
+
+**シナリオデータ:** `reference/scenario/`
+
+| 列 | 説明 |
+|----|------|
+| 日付 | 作成日 |
+| Lv1, Lv2, Lv3... | 階層構造 |
+| 質問内容 | 質問文（自動検出） |
+| 回答 | 回答文（自動検出） |
+
+**FAQ 履歴:** `reference/faq_data/`
+
+| 列名 | 必須 | 説明 |
+|------|------|------|
+| 問合せ内容 | はい | 質問文 |
+| 回答 | はい | 回答文 |
+| タグ | いいえ | 分類タグ |
+
+### 出力ファイル
+
+**ファイル名規則:**
+```
+output_batch_v{vw}_k{kw}_{hierarchy}_{mode}_{timestamp}.xlsx
+例: output_batch_v0.9_k0.1_nh_orig_20250101_120000.xlsx
+  - v0.9_k0.1: vector_weight / keyword_weight
+  - nh: include_hierarchy なし（h: あり）
+  - orig: 原文検索（llm: LLM拡張）
+```
+
+| 列名 | 説明 |
+|------|------|
+| # | 入力番号 |
+| ユーザーの質問 | 元の質問文 |
+| 検索クエリ | LLM 生成または原文 |
+| 類似質問 | 検索結果の質問 |
+| 類似回答 | 検索結果の回答 |
+| 類似度 | 統合スコア（0.0-1.0） |
+| ベクトルの重み | vector_weight |
+| 候補数 | top_k |
+
+---
+
+## 使用方法
+
+### バッチモード
+
 ```bash
-# logs/app.log の出力例
+python main.py
+```
+
+**ログ出力例:**
+
+```text
+2025-01-01 12:00:00 - INFO - main - Starting batch processing...
+2025-01-01 12:00:01 - INFO - dynamic_db_manager - Analyzing reference files...
+2025-01-01 12:00:02 - INFO - dynamic_db_manager - deposit: update needed (file changed)
+2025-01-01 12:00:03 - INFO - gemini_embedding - Vectorizing 943 documents...
+2025-01-01 12:00:30 - INFO - vector_db - Added 943 documents to deposit_DB
+2025-01-01 12:00:31 - INFO - processor - Processing row 1/100...
+
 Row (No.1):
-  Search mode: llm_enhanced
-  Query enhancement enabled: True
+  Search mode: original
   Original query: 口座開設の手続きについて教えてください
-  Using LLM-enhanced search mode
-  Generated search query: 銀行口座 新規開設 必要書類 手続き 流れ
   Extracted keywords: ['口座', '開設', '手続き']
   Vector search returned 8 results
   Search results by source: {'scenario': 5, 'faq_data': 3}
+  Final results: 4 items (limited to top_k=4)
 ```
 
-## 5. 設定パラメータ
-
-### 5.1 基本設定 (config.py)
-
-| パラメータ | 説明 | デフォルト値 | 設定可能な値 |
-|-----------|------|------------|------------|
-| top_k | 類似文書の取得件数 | 4 | 1以上の整数 |
-| model_name | 埋め込みモデル | gemini-embedding-001 | SentenceTransformersの対応モデル |
-| vector_weight | ベクトル検索の重み | 0.9 (バッチ)<br>0.7 (UI) | 0.0～1.0 |
-| llm_provider | LLMプロバイダ | anthropic | anthropic, openai |
-| llm_model | 使用モデル | claude-3-5-sonnet-20241022 | プロバイダの対応モデル |
-| base_dir | 基準ディレクトリ | "." | 有効なパス |
-| input_type | 入力形式 | excel | excel (※将来的に拡張予定) |
-| output_type | 出力形式 | excel | excel (※将来的に拡張予定) |
-
-### 5.5 参照データ形式設定 (config.py)
-
-| 設定値 | 説明 | 用途 |
-|--------|------|------|
-| excel | 従来の問合せ履歴データ形式 | 履歴データのみを処理 |
-| hierarchical_excel | マージ版シナリオの階層構造形式 | マージ版シナリオのみを処理 |
-| multi_folder | 複数フォルダから参照データを読み込み | マージシナリオ + 履歴データの統合処理 |
-
-**設定方法:**
-```python
-# config.py内のSearchConfigクラス
-reference_type: str = "multi_folder"  # 複数フォルダ統合処理
-```
-
-### 設定方法
-1. **直接編集**: `config.py` の `SearchConfig` クラスを編集
-2. **環境変数**: `.env` ファイルで指定（APIキーのみ）
-   ```env
-   ANTHROPIC_API_KEY=your_api_key
-   OPENAI_API_KEY=your_api_key  # OpenAI使用時
-   ```
-
-## 5. 入出力形式の変更
-
-現状では、入力・出力ともにExcel形式のみをサポートしています。 将来的には、input_handler.py と output_handler.py を拡張することで、CSVやJSONなど他の形式にも対応可能です。
-
-## 6. 開発
-
-### 6.1 開発環境構築
-
-リポジトリをクローン:
+### インタラクティブモード
 
 ```bash
-git clone https://github.com/jsakuta/rag_yokin.git
-cd rag_yokin
+python main.py interactive
 ```
 
-仮想環境を作成し、アクティベート:
+ブラウザで http://localhost:8501 にアクセス
+
+**UI 機能:**
+
+| コンポーネント | 説明 |
+|---------------|------|
+| **パラメータ設定** | vector_weight、top_k スライダー |
+| **チャット入力** | 質問入力フォーム |
+| **結果表示** | 類似度スコア付きカード表示 |
+| **履歴保存** | Excel エクスポート |
+
+---
+
+## トラブルシューティング
+
+共通の問題については [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) を参照してください。
+
+### よくある問題
+
+| 問題 | 原因 | 解決策 |
+|------|------|--------|
+| Gemini 認証エラー | 認証ファイル未設定 | `gemini_credentials.json` 確認 |
+| ChromaDB エラー | vector_db/ 破損 | `rm -rf reference/vector_db/` |
+| メモリエラー | 大量データ処理 | バッチサイズ縮小 |
+| API レート制限 | Gemini API 制限 | 待機時間追加 |
+| コレクション名エラー | 日本語文字 | 自動変換で対応済み |
+
+### ログの確認
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-venv\Scripts\activate     # Windows
+# リアルタイムログ
+tail -f logs/app.log
+
+# デバッグレベル有効化
+export LOG_LEVEL=DEBUG
+python main.py
 ```
 
-依存関係をインストール:
+### DB 内容確認
 
 ```bash
-pip install -r requirements.txt
+python scripts/check_db_content.py
 ```
 
-### 6.2 コーディング規約
+出力例:
 
-- PEP 8 に準拠します。
-- コメント、docstringは日本語で記述します。
-- 関数、クラスにはdocstringを付与し、型ヒントを積極的に使用します。
-- 長い行は80文字以内で折り返します。
-- コミットメッセージも日本語で記述してかまいませんが、具体的かつ簡潔に記述してください。
+```text
+=== ChromaDB Content Analysis ===
+Collection: deposit_DB
+Total documents: 943
+Unique documents: 943
+Duplicate documents: 0
 
-## 7. トラブルシューティング
+Source distribution:
+  scenario: 816
+  faq_data: 127
+```
 
-### 7.1 よくある問題と解決方法
+---
 
-キャッシュ関連のエラー:
+## パフォーマンス最適化
 
-- reference/vector_db/ ディレクトリが存在することを確認してください。
-- キャッシュファイル (reference/vector_db/cache.json) を削除し、再生成を試みてください。
+### ベクトル化
 
-メモリエラー:
+| 項目 | 値 |
+|------|-----|
+| バッチサイズ | 5（Gemini API 制限対応） |
+| 初回ベクトル化 | 5-10分（943件） |
+| 以降 | タイムスタンプ検証のみ（秒単位） |
 
-- 非常に大きなExcelファイルを処理する場合、より高性能なマシンを使用するか、将来的に分割処理の実装を検討してください。
+### 検索
 
-APIクレジット不足:
+| 項目 | 値 |
+|------|-----|
+| ChromaDB 検索 | ミリ秒単位 |
+| キーワード類似度 | 並列計算 |
+| Top-K 倍率 | 2（リランキング用に多めに取得） |
 
-- Anthropic APIのクレジットが不足している場合、要約機能が使用できませんが、ベクトル検索とキーワード検索は正常に動作します。
-- APIクレジットを追加するか、要約機能を無効化して運用してください。
+### メモリ
 
-### 7.2 ログの確認
+| 項目 | 推奨値 |
+|------|--------|
+| 最小 | 8GB |
+| 大規模データ | 16GB |
+| ストレージ | ChromaDB 永続化でディスク使用 |
 
-アプリケーションのログは logs/app.log に出力されます。
+---
 
-ログレベルは utils/logger.py で変更できます (デフォルトはINFO)。問題が発生した場合は、ログレベルをDEBUGに変更して詳細な情報を確認してください。
+## 変更履歴
 
-## 8. セキュリティ
+### V2.3 (最新)
 
-⚠️ 重要な注意事項:
+- LLM 拡張検索モード実装
+- デュアル検索モード切り替え
+- 詳細ログ出力
+- エラーハンドリング強化
 
-- APIキーなどの機密情報は .env ファイルで管理し、絶対に Git リポジトリに含めないでください。
-- 定期的に依存パッケージを更新し、セキュリティ脆弱性を解消してください。
-- 本システムを本番環境で利用する場合は、入力データの検証、アクセス制御、適切な認証・認可の仕組みを導入するなど、セキュリティ対策を講じてください。
+### V2.2
 
-## 9. ライセンス
+- タグレス対応
+- LLM タグ生成削除
+- 処理速度 30-40% 向上
 
-このプロジェクトはMITライセンスの下で公開されています。詳細は LICENSE ファイルをご覧ください。
+### V2.1
 
-## 10. バグ報告・機能要望
+- Gemini API 統合
+- gemini-embedding-001 採用
+- ChromaDB 永続化
 
-GitHub Issues にて受け付けています。バグ報告の際は、以下の情報を含めてください:
+### V2.0
 
-- エラーメッセージ
-- logs/app.log の内容 (可能な限り)
-- 再現手順
+- マージ版シナリオ対応
+- 複数フォルダ統合処理
+- カバレッジ 18 倍向上（52→943件）
 
-## 11. 変更履歴
+---
 
-### V2.3 (2025-08-27)
+## 依存パッケージ・セキュリティ
 
-#### 🚀 LLM拡張検索実装（デュアル検索モード）
-- **デュアル検索モード**
-  - 原文検索 (`search_mode = "original"`) とLLM拡張検索 (`search_mode = "llm_enhanced"`) の選択可能
-  - config.pyの28-29行目で簡単切り替え
-  - LLM API障害時の自動フォールバック機能
+### 主要パッケージ
 
-- **LLM検索クエリ生成**
-  - 複数LLMプロバイダー対応：Gemini (`gemini-2.0-flash-001`), Anthropic Claude, OpenAI ChatGPT
-  - 専用プロンプトファイル (`prompt/summarize_v1.0.txt`) による高精度クエリ生成
-  - 質問の背後にある意図を理解して最適な検索クエリを自動生成
-  - 結果の `Search_Query` 列に実際に使用した検索クエリを記録
+```text
+# Google Cloud
+google-cloud-aiplatform>=1.35.0
+google-auth>=2.17.0
+google-generativeai>=0.3.0
 
-- **ChromaDBベクトルデータベース統合**
-  - 従来のJSONキャッシュからChromaDBへの完全移行
-  - 永続化ベクトルデータベース (`reference/vector_db/`) への自動保存
-  - メタデータ対応：データソース、階層構造、タグ情報の完全保持
-  - 高速検索：コサイン類似度による近似最近傍検索
+# ベクトルDB
+chromadb>=1.0.15
 
-- **詳細ログ出力とトレーサビリティ**
-  - 検索方式、クエリ生成プロセス、検索結果の完全トレース
-  - LLMによる検索クエリ生成の詳細記録
-  - デバッグとパフォーマンス分析のための包括的ログ
+# LangChain
+langchain>=0.1.0
+langchain-anthropic>=0.0.1
+langchain-openai>=0.0.1
+langchain-google-genai>=0.0.1
 
-- **技術仕様**
-  - Gemini Embedding API (`gemini-embedding-001`): 768次元ベクトル、L2正規化
-  - ハイブリッド検索：ベクトル類似度 + キーワード類似度の重み付け統合
-  - バッチ処理最適化：API制限を考慮した効率的な分割処理
+# 埋め込み
+sentence-transformers>=2.2.0
+torch>=2.0.0
 
-### V2.2 (2025-08-25)
+# 日本語 NLP
+sudachipy>=0.6.8
+sudachidict-core>=20230927
 
-#### 🎯 タグレス対応（コスト削減・高速化）
-- **タグ機能完全削除**
-  - タグ列の読み込み・格納処理を削除
-  - LLMベースのタグ生成API呼び出しを除去
-  - メタデータフィルタリング機能を無効化
-  - LangChain依存関係を完全削除
+# データ処理
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.2
+xlsxwriter>=3.1.0
 
-- **ベクトルデータ化の簡素化**
-  - タグ列なしExcelファイルでもベクトル化可能
-  - 質問・回答・階層構造のみで動作
-  - 処理速度向上（API呼び出し削減）
-  - シンプルなメタデータ構造
+# Web UI
+streamlit>=1.30.0
 
-- **コスト削減効果**
-  - タグ生成LLM API呼び出し：0回（削除前：N回）
-  - 依存パッケージ削減：4つ（langchain関連）
-  - 処理時間短縮：約30-40%向上
+# ユーティリティ
+python-dotenv>=1.0.0
+tqdm
+```
 
-- **後方互換性**
-  - 既存のベクトルDBは継続使用可能
-  - タグメタデータは保持（使用しないのみ）
-  - 既存の検索機能は正常動作
+### セキュリティ
 
-### V2.1 (2025-01-XX)
+詳細は [docs/SECURITY.md](../docs/SECURITY.md) を参照してください。
 
-#### AIモデルアップデート
-- **Gemini API統合**
-  - Google Gemini APIの正式対応
-  - `gemini-embedding-001` 埋め込みモデルの採用
-  - 高精度なベクトル化による検索精度向上
-  - 日本語テキスト処理の最適化
+**重要な注意事項:**
 
-#### 認証・セキュリティ強化
-- **環境変数による認証**
-  - `.env` ファイルでのAPIキー管理
-  - 複数プロバイダー対応（Anthropic、OpenAI、Gemini）
-  - セキュアな認証情報の管理
-  - 本番環境での安全な運用
+- `gemini_credentials.json` は絶対に Git にコミットしない
+- `.env` ファイルも Git に含めない
+- サービスアカウントキーは定期的にローテーション
+- 最小権限の原則を適用
 
-#### 技術的改善
-- **gemini_credentials.json** による認証設定
-- **gemini_setup_guide.md** によるセットアップガイド追加
-- 環境変数による柔軟な設定管理
-- セキュリティベストプラクティスの適用
+**.gitignore 設定:**
 
-### V2.0 (2025-07-15)
+```text
+.env
+*.env
+gemini_credentials.json
+input/
+output/
+reference/
+logs/
+__pycache__/
+.venv/
+```
 
-#### 新機能追加
-- **マージ版シナリオ対応**
-  - 階層構造を持つExcelファイルの処理
-  - 全シートの自動処理（4シート、816件のデータ抽出）
-  - 原則文と通常の問答の自動判別
-  - Lv1, Lv2, Lv3... の階層列に対応
+---
 
-- **複数フォルダ対応**
-  - `reference/scenario/` と `reference/faq_data/` の統合処理
-  - 各フォルダの最新ファイルを自動選択
-  - 943件の参照データを統合ベクトル化
+## プロジェクト構成
 
-- **自動フォルダ検出**
-  - 新しいフォルダの自動認識
-  - フォルダ名に応じた適切なハンドラー選択
-  - 設定変更なしでの拡張性
+```text
+rag-gemini/
+├── main.py                       # エントリーポイント
+├── config.py                     # 設定管理（SearchConfig dataclass）
+├── requirements.txt              # Python 依存パッケージ
+├── .env.example                  # 環境変数テンプレート
+├── Dockerfile                    # Docker コンテナ設定
+├── gemini_credentials.json       # Google Cloud 認証（.gitignore）
+│
+├── src/
+│   ├── core/
+│   │   ├── processor.py          # データ処理エンジン
+│   │   └── searcher.py           # ハイブリッド検索エンジン
+│   │
+│   ├── handlers/
+│   │   ├── input_handler.py      # 入力処理
+│   │   └── output_handler.py     # 出力処理
+│   │
+│   └── utils/
+│       ├── auth.py               # Google Cloud 認証
+│       ├── gemini_embedding.py   # Gemini 埋め込みモデル
+│       ├── vector_db.py          # ChromaDB ラッパー
+│       ├── dynamic_db_manager.py # 動的 DB 管理
+│       ├── logger.py             # ログ設定
+│       └── utils.py              # Azure Key Vault 連携
+│
+├── ui/
+│   └── chat.py                   # Streamlit チャット UI
+│
+├── prompt/                       # プロンプトテンプレート
+├── scripts/                      # ユーティリティスクリプト
+├── input/                        # 入力ファイル
+├── reference/                    # 参照データ + vector_db/
+├── output/                       # 出力ファイル
+└── logs/                         # アプリケーションログ
+```
 
-#### 技術的改善
-- **MultiFolderInputHandler** の新規作成
-- **HierarchicalExcelInputHandler** の全シート対応
-- **config.py** による統合設定管理
-- 出力ファイルから不要な「オリジナルの回答」列を削除
+---
 
-#### パフォーマンス向上
-- カバレッジの大幅向上（52件 → 943件、約18倍）
-- 検索精度の向上（類似度1.0000の完全一致を多数検出）
-- ベクトルキャッシュの効率化
+## ライセンス
 
-#### 設定変更
-- `config.py` で `reference_type: "multi_folder"` に設定
-- フォルダ構造の整理（マージシナリオ、履歴データの分離）
+MIT License
 
-### V1.0 (初期リリース)
-- 基本的なハイブリッド検索機能
-- バッチ処理モードとインタラクティブモード
-- Excel形式の入出力対応
-- ベクトルキャッシュ機能 
+---
+
+## 関連プロジェクト
+
+| プロジェクト | 説明 | 状態 |
+|-------------|------|------|
+| [rag-reranker](../rag-reranker/) | Cross-Encoder Reranking 版 | Deprecated |
+| [rag-batch](../rag-batch/) | バッチ処理特化版 | Active |
+| [rag-streamlit](../rag-streamlit/) | 対話的 UI 版 | Active |

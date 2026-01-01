@@ -1,20 +1,20 @@
-# Archived Directories
+# アーカイブされたディレクトリ
 
-This directory contains the original project directories before renaming.
+このディレクトリには、リネーム前のオリジナルプロジェクトディレクトリが含まれています。
 
-## Directory Mapping
+## ディレクトリマッピング
 
-| Old Name | New Name | Status |
-|----------|----------|--------|
-| old | rag-reranker | Deprecated |
+| 旧名 | 新名 | 状態 |
+|------|------|------|
+| old | rag-reranker | 非推奨 |
 | RAG_yokin | rag-streamlit | Active |
 | rag_v1.0 | rag-batch | Active |
 | rag_v2.1 | rag-gemini | Active |
 
-## Important
+## 重要
 
-**These directories are deprecated.** Please use the new directory names in the parent directory.
+**これらのディレクトリは非推奨です。** 親ディレクトリの新しいディレクトリ名を使用してください。
 
-## Migration Date
+## 移行日
 
 2025-12-30
