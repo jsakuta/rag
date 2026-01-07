@@ -108,7 +108,7 @@ class Searcher:
                 if len(word) > 1:
                     keywords.extend([word] * weight)
 
-        stop_words = {'こと', 'もの', 'これ', 'それ', 'ところ', '方','する', 'ある', 'いる', 'れる', 'られる', 'なる', 'その', 'これ', 'それ'}
+        stop_words = set(self.config.STOP_WORDS)
         filtered_words = {word: count for word, count in Counter(keywords).items() if word not in stop_words}
         return [word for word, _ in Counter(filtered_words).most_common(top_k)]
 
@@ -402,7 +402,13 @@ class Searcher:
 
         Returns:
             List[Dict]: 検索結果のリスト
+
+        Raises:
+            DynamicDBError: VectorDBが初期化されていない場合
         """
+        if self.vector_db is None:
+            raise DynamicDBError("VectorDB not initialized. Call prepare_search() and _select_db_for_business() first.")
+
         query_vector = self.model.encode([query_for_vector], normalize_embeddings=True)[0]
         search_results = self.vector_db.search(
             query_embedding=query_vector,

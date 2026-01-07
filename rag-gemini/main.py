@@ -83,12 +83,21 @@ def main():
 
     if len(sys.argv) > 1 and sys.argv[1] == "interactive":
         logger.info("Starting in interactive mode")
-        config.is_interactive = True
         config.vector_weight = config.DEFAULT_UI_VECTOR_WEIGHT
-        mode = "chat"
         try:
             # subprocessを使用してStreamlitを起動（セキュリティ向上）
-            subprocess.Popen([sys.executable, "-m", "streamlit", "run", "ui/chat.py"])
+            import time
+            process = subprocess.Popen([sys.executable, "-m", "streamlit", "run", "ui/chat.py"])
+            # プロセスが起動したか確認（最大5秒待機）
+            startup_timeout = 5
+            poll_interval = 0.5
+            elapsed = 0
+            while elapsed < startup_timeout:
+                if process.poll() is not None:
+                    logger.error(f"Streamlit process exited with code: {process.returncode}")
+                    sys.exit(1)
+                time.sleep(poll_interval)
+                elapsed += poll_interval
             logger.info("Streamlit app started successfully")
             sys.exit(0)
         except Exception as e:
@@ -96,10 +105,8 @@ def main():
             sys.exit(1)
     else:
         logger.info("Starting in batch mode")
-        config.is_interactive = False
-        mode = "batch"
         processor = Processor(config)
-        processor.process_data(mode=mode)
+        processor.process_data(mode="batch")
 
 if __name__ == "__main__":
     main()

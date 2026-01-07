@@ -36,7 +36,7 @@ class Processor:
             all_results = []
             # tqdmを使用してプログレスバーを表示
             for item in tqdm(input_data, desc="Processing data"):
-                # 必須フィールドの取得（KeyError防止）
+                # 必須フィールドの取得（Noneチェック）
                 query_number = item.get("number")
                 query_text = item.get("query")
                 if query_number is None or query_text is None:

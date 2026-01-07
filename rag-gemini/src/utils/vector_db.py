@@ -64,9 +64,9 @@ class MetadataVectorDB:
                 # 日付の場合は文字列に変換
                 if isinstance(value, datetime):
                     normalized_metadata[key] = value.strftime("%Y/%m/%d")
-                # リストの場合は文字列に結合
+                # リストの場合は文字列に結合（要素を文字列に変換）
                 elif isinstance(value, list):
-                    normalized_metadata[key] = " | ".join(value) if value else ""
+                    normalized_metadata[key] = " | ".join(str(v) for v in value if v is not None) if value else ""
                 else:
                     normalized_metadata[key] = str(value) if value is not None else ""
             normalized_metadatas.append(normalized_metadata)

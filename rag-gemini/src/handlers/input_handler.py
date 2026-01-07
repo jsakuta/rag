@@ -48,8 +48,11 @@ class InputHandler:
     def _get_latest_file(self, directory: str, file_pattern: str) -> str:
         """指定ディレクトリ内の最新ファイルを検索"""
         files = glob.glob(os.path.join(directory, file_pattern))
-        # 一時ファイル（~$で始まるファイル）を除外
-        files = [f for f in files if not os.path.basename(f).startswith('~$')]
+        # 一時ファイル・隠しファイルを除外
+        files = [f for f in files
+                 if not os.path.basename(f).startswith('~$')
+                 and not f.endswith('.tmp')
+                 and not os.path.basename(f).startswith('.')]
         if not files:
             raise FileNotFoundError(f"No files found matching pattern '{file_pattern}' in {directory}")
         return max(files, key=os.path.getctime)

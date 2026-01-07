@@ -62,12 +62,16 @@ def format_response_card(number, similarity, query, answer):
 def process_query(query: str):
     st.session_state.processing_query = True
     try:
-        processor = Processor(st.session_state.config)
-        # Load reference data only once
-        reference_data = processor.reference_handler.load_reference_data()
-        processor.searcher.prepare_search(reference_data)
-        processor.searcher._select_db_for_business(st.session_state.business_area)
+        # Processorをキャッシュ（業務分野変更時は再初期化）
+        # Note: vector_weight/top_kはconfig参照経由で動的に反映されるため再初期化不要
+        if "processor" not in st.session_state or st.session_state.get("last_business_area") != st.session_state.business_area:
+            st.session_state.processor = Processor(st.session_state.config)
+            reference_data = st.session_state.processor.reference_handler.load_reference_data()
+            st.session_state.processor.searcher.prepare_search(reference_data)
+            st.session_state.processor.searcher._select_db_for_business(st.session_state.business_area)
+            st.session_state.last_business_area = st.session_state.business_area
 
+        processor = st.session_state.processor
         query_number = len(st.session_state.chat_history) // 2 + 1
         results = processor.searcher.search(str(query_number), query, "")
 
