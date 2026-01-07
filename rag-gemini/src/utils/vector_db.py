@@ -1,6 +1,7 @@
 import os
 import chromadb
 from chromadb.config import Settings
+from chromadb.errors import NotFoundError as ChromaNotFoundError
 from typing import List, Dict, Any, Optional
 import numpy as np
 from datetime import datetime
@@ -33,12 +34,17 @@ class MetadataVectorDB:
         try:
             self.collection = self.client.get_collection(name=self.collection_name)
             logger.info(f"Existing collection '{self.collection_name}' loaded")
-        except:
+        except (ValueError, ChromaNotFoundError) as e:
+            # コレクションが存在しない場合（ChromaDBのバージョンにより例外型が異なる）
+            logger.debug(f"Collection not found, creating new one: {e}")
             self.collection = self.client.create_collection(
                 name=self.collection_name,
                 metadata={"description": f"RAG system vector database for {self.collection_name}"}
             )
             logger.info(f"New collection '{self.collection_name}' created")
+        except Exception as e:
+            logger.error(f"Unexpected error accessing collection '{self.collection_name}': {e}")
+            raise
     
     def add_documents(self, 
                      texts: List[str], 
@@ -139,9 +145,12 @@ class MetadataVectorDB:
         """コレクションをリセット（削除して再作成）"""
         try:
             self.delete_collection()
-        except:
-            pass
-        
+        except ValueError:
+            # コレクションが存在しない場合は無視
+            logger.debug(f"Collection '{self.collection_name}' did not exist, creating new one")
+        except Exception as e:
+            logger.warning(f"Error deleting collection '{self.collection_name}': {e}")
+
         self.collection = self.client.create_collection(
             name=self.collection_name,
             metadata={"description": "RAG system vector database with metadata"}

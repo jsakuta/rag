@@ -1,24 +1,20 @@
 # --- searcher.py ---
 import os
 import re
-import json
 import numpy as np
 import pandas as pd
 from collections import Counter
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
-from datetime import datetime
 from sudachipy import Dictionary, tokenizer
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
-import vertexai
-from google.oauth2 import service_account
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import SearchConfig
 from src.utils.logger import setup_logger
 from src.utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
-from src.utils.auth import initialize_vertex_ai
 from src.utils.gemini_embedding import GeminiEmbeddingModel
 
 logger = setup_logger(__name__)
@@ -52,8 +48,13 @@ class Searcher:
 
         self.current_db_path = None
         self.current_business_area = None
+
+        # プロンプトファイルのキャッシュ（パフォーマンス向上）
+        self._latest_prompt_cache: Optional[str] = None
+        self._summarize_prompt_cache: Optional[str] = None
+
         logger.info("Searcherを初期化しました（依存性注入対応）")
-        
+
         # LLM初期化（条件付き：LLM拡張検索が有効な場合のみ）
         if self.config.search_mode == "llm_enhanced" and self.config.enable_query_enhancement:
             self.llm = self._setup_llm()
@@ -65,32 +66,34 @@ class Searcher:
     def _setup_llm(self):
         """LLM設定メソッド（LLM拡張検索用）"""
         if self.config.llm_provider == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
             return ChatAnthropic(
-                anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+                anthropic_api_key=api_key,
                 model=self.config.llm_model,
                 temperature=0
             )
         elif self.config.llm_provider == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is not set")
             return ChatOpenAI(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            model=self.config.llm_model,
-            temperature=0
-        )
+                api_key=api_key,
+                model=self.config.llm_model,
+                temperature=0
+            )
         elif self.config.llm_provider == "gemini":
-            # Vertex AI Gemini用の認証設定
-            try:
-                initialize_vertex_ai(self.config)
+            # Langchain ChatGoogleGenerativeAI を使用（統一されたインターフェース）
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError("GOOGLE_API_KEY environment variable is not set")
 
-                # 正しく動作している環境の方式でモデル作成
-                from vertexai.generative_models import GenerativeModel
-                model = GenerativeModel(self.config.llm_model)
-                chat = model.start_chat()
-                
-                logger.info("Gemini authentication configured successfully")
-                return chat
-            except Exception as e:
-                logger.error(f"Failed to configure Gemini authentication: {e}")
-                raise
+            return ChatGoogleGenerativeAI(
+                model=self.config.llm_model,
+                google_api_key=api_key,
+                temperature=0
+            )
         else:
             raise ValueError(f"Unsupported LLM provider: {self.config.llm_provider}")
 
@@ -110,6 +113,15 @@ class Searcher:
         return [word for word, _ in Counter(filtered_words).most_common(top_k)]
 
     def _calculate_keyword_similarity(self, query_keywords: List[str], reference_text: str) -> float:
+        """キーワード類似度を計算（Jaccard-like正規化）
+
+        Args:
+            query_keywords: クエリから抽出されたキーワードリスト
+            reference_text: 参照テキスト
+
+        Returns:
+            float: 0.0〜1.0の類似度スコア
+        """
         ref_keywords = set(self._extract_keywords(reference_text))
         query_keywords_set = set(query_keywords)
         if not ref_keywords or not query_keywords_set:
@@ -117,13 +129,24 @@ class Searcher:
 
         intersection = ref_keywords.intersection(query_keywords_set)
         union = ref_keywords.union(query_keywords_set)
+        if not union:
+            return 0.0
+
         position_weight = self.config.POSITION_WEIGHT
-        weighted_score = sum(position_weight if reference_text.find(kw) < len(reference_text) // 2 else 1 for kw in intersection)
-        normalized_score = weighted_score / (len(union) * position_weight)
+        # 交差したキーワードにのみ位置の重みを適用
+        weighted_score = sum(
+            position_weight if reference_text.find(kw) < len(reference_text) // 2 else 1.0
+            for kw in intersection
+        )
+        # 分母は素のunionサイズ（Jaccard-like正規化）
+        normalized_score = weighted_score / len(union)
         return min(normalized_score, 1.0)
 
     def _load_latest_prompt(self) -> str:
-        """最新のプロンプトファイルを読み込む"""
+        """最新のプロンプトファイルを読み込む（キャッシュ対応）"""
+        if self._latest_prompt_cache is not None:
+            return self._latest_prompt_cache
+
         prompt_dir = os.path.join(self.config.base_dir, "prompt")
         prompt_files = [f for f in os.listdir(prompt_dir) if os.path.isfile(os.path.join(prompt_dir, f))]
         if not prompt_files:
@@ -133,52 +156,68 @@ class Searcher:
         logger.info(f"Using prompt file: {latest_prompt_file}")
 
         with open(os.path.join(prompt_dir, latest_prompt_file), 'r', encoding='utf-8') as f:
-            return f.read()
-    
+            self._latest_prompt_cache = f.read()
+        return self._latest_prompt_cache
+
     def _load_summarize_prompt(self) -> str:
-        """検索クエリ生成用のプロンプトファイル（summarize_v1.0.txt）を読み込む"""
+        """検索クエリ生成用のプロンプトファイルを読み込む（キャッシュ対応）"""
+        if self._summarize_prompt_cache is not None:
+            return self._summarize_prompt_cache
+
         prompt_dir = os.path.join(self.config.base_dir, "prompt")
         summarize_prompt_file = os.path.join(prompt_dir, "summarize_v1.0.txt")
-        
+
         if not os.path.exists(summarize_prompt_file):
             raise FileNotFoundError(f"Summarize prompt file not found: {summarize_prompt_file}")
-        
+
         logger.info(f"Using summarize prompt file: summarize_v1.0.txt")
-        
+
         with open(summarize_prompt_file, 'r', encoding='utf-8') as f:
-            return f.read()
+            self._summarize_prompt_cache = f.read()
+        return self._summarize_prompt_cache
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
+    def _invoke_llm_with_retry(self, messages: list):
+        """LLM呼び出しをリトライロジック付きで実行
+
+        Args:
+            messages: LLMに送信するメッセージリスト
+
+        Returns:
+            LLMレスポンス
+
+        Raises:
+            Exception: 3回のリトライ後も失敗した場合
+        """
+        return self.llm.invoke(messages)
 
     def summarize_text(self, text: str) -> str:
-        """LLMを使用してテキストを要約して検索クエリを生成"""
+        """LLMを使用してテキストを要約して検索クエリを生成
+
+        すべてのLLMプロバイダーでLangchainの統一されたinvoke()メソッドを使用。
+        リトライロジック付きで一時的なAPI障害に対応。
+        """
         if self.llm is None:
             raise RuntimeError("LLM is not initialized. Set search_mode to 'llm_enhanced' in config.")
-        
+
         prompt_template = self._load_summarize_prompt()
-        
-        # Vertex AI Gemini用のメッセージ形式調整
-        if self.config.llm_provider == "gemini":
-            # Vertex AIは単一テキスト形式
-            full_prompt = f"{prompt_template}\n\n{text}"
-            try:
-                response = self.llm.send_message(full_prompt)
-                return response.text.strip()
-            except Exception as e:
-                logger.error(f"Error during summarization: {str(e)}")
-                logger.info("LLM API error - stopping processing as configured")
-                raise
-        else:
-            # 他のLLM用
-            messages = [
-                SystemMessage(content=prompt_template),
-                HumanMessage(content=text)
-            ]
-            try:
-                response = self.llm.invoke(messages)
-                return response.content.strip()
-            except Exception as e:
-                logger.error(f"Error during summarization: {str(e)}")
-                logger.info("LLM API error - stopping processing as configured")
-                raise
+
+        # 統一されたLangchainインターフェースを使用
+        messages = [
+            SystemMessage(content=prompt_template),
+            HumanMessage(content=text)
+        ]
+        try:
+            response = self._invoke_llm_with_retry(messages)
+            return response.content.strip()
+        except Exception as e:
+            logger.error(f"Error during summarization after retries: {str(e)}")
+            logger.info("LLM API error - stopping processing as configured")
+            raise
 
 
     def prepare_search(self, reference_data):
@@ -299,8 +338,17 @@ class Searcher:
 
         Args:
             input_file: 入力ファイル名
+
+        Raises:
+            DynamicDBError: input_fileがNoneでvector_dbも未初期化の場合
         """
         if not input_file:
+            if self.vector_db is None:
+                raise DynamicDBError(
+                    "VectorDB not initialized. input_file is required for dynamic DB selection, "
+                    "or prepare_search() must be called first."
+                )
+            logger.info("  No input_file provided, using existing DB.")
             return
 
         try:
@@ -470,6 +518,7 @@ class Searcher:
                 self.config.vector_weight * vector_sim +
                 self.config.keyword_weight * keyword_sim
             )
+            combined_score = max(0.0, min(1.0, combined_score))  # 0〜1にクリップ
             max_similarity = max(max_similarity, combined_score)
 
             result_data = self._build_result_data(search_result, combined_score)

@@ -1,4 +1,5 @@
 # --- processor.py ---
+import logging
 import pandas as pd
 import os
 import json
@@ -8,7 +9,7 @@ from src.handlers.input_handler import InputHandlerFactory
 from src.handlers.output_handler import OutputHandlerFactory
 from src.core.searcher import Searcher
 from src.utils.logger import setup_logger
-from tqdm import tqdm # Added missing import for tqdm
+from tqdm import tqdm
 
 logger = setup_logger(__name__)
 
@@ -35,50 +36,54 @@ class Processor:
             all_results = []
             # tqdmを使用してプログレスバーを表示
             for item in tqdm(input_data, desc="Processing data"):
-                # 検索実行
-                query_number = item["number"]
-                query_text = item["query"]
-                original_answer = item.get("answer", "") # 回答がない場合も考慮
+                # 必須フィールドの取得（KeyError防止）
+                query_number = item.get("number")
+                query_text = item.get("query")
+                if query_number is None or query_text is None:
+                    logger.warning(f"Skipping malformed item (missing 'number' or 'query'): {item}")
+                    continue
+                original_answer = item.get("answer", "")
 
-                logger.info(f"=== 質問{query_number}の処理開始 ===")
-                logger.info(f"質問内容: {query_text[:100]}...")
-                
+                logger.debug(f"=== 質問{query_number}の処理開始 ===")
+                logger.debug(f"質問内容: {query_text[:100]}...")
+
                 # 入力ファイル名を取得（動的DB選択用）
                 input_file = getattr(self.input_handler, 'current_file', None)
-                
+
                 results = self.searcher.search(query_number, query_text, original_answer, input_file)
-                
-                logger.info(f"質問{query_number}の検索結果数: {len(results)}")
-                logger.info(f"all_resultsに追加前の総数: {len(all_results)}")
-                
+
+                logger.debug(f"質問{query_number}の検索結果数: {len(results)}")
+                logger.debug(f"all_resultsに追加前の総数: {len(all_results)}")
+
                 all_results.extend(results)
-                
-                logger.info(f"all_resultsに追加後の総数: {len(all_results)}")
-                
-                # 質問ごとのall_results詳細確認
-                logger.info(f"=== 質問{query_number}のall_results詳細確認 ===")
-                logger.info(f"質問{query_number}で追加された結果数: {len(results)}")
-                
-                # 質問ごとに追加された結果の詳細を確認
-                start_idx = len(all_results) - len(results)
-                for i, result in enumerate(results):
-                    abs_idx = start_idx + i
-                    logger.info(f"  all_results[{abs_idx}]: Input_Number='{result.get('Input_Number', 'MISSING')}', Original_Query='{result.get('Original_Query', '')[:50]}...', Search_Result_Q='{result.get('Search_Result_Q', '')[:50]}...'")
-                
-                # 質問ごとの集計確認
-                current_question_count = sum(1 for item in all_results if item.get('Input_Number') == str(query_number))
-                empty_count_for_question = sum(1 for item in all_results[-len(results):] if item.get('Input_Number') == '')
-                
-                logger.info(f"質問{query_number}の総件数（all_results内）: {current_question_count}")
-                logger.info(f"質問{query_number}で追加された空Input_Number数: {empty_count_for_question}")
-                
-                logger.info(f"=== 質問{query_number}の処理完了 ===")
-                
-                # 最後の数件の結果を確認
-                if len(all_results) > 0:
-                    logger.info(f"最新の結果サンプル:")
-                    for i, result in enumerate(all_results[-min(3, len(all_results)):]):
-                        logger.info(f"  結果{len(all_results)-min(3, len(all_results))+i+1}: Input_Number={result.get('Input_Number', 'N/A')}, Original_Query={result.get('Original_Query', 'N/A')[:30]}...")
+
+                logger.debug(f"all_resultsに追加後の総数: {len(all_results)}")
+
+                # 質問ごとのall_results詳細確認（DEBUGレベル）
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"=== 質問{query_number}のall_results詳細確認 ===")
+                    logger.debug(f"質問{query_number}で追加された結果数: {len(results)}")
+
+                    # 質問ごとに追加された結果の詳細を確認
+                    start_idx = len(all_results) - len(results)
+                    for i, result in enumerate(results):
+                        abs_idx = start_idx + i
+                        logger.debug(f"  all_results[{abs_idx}]: Input_Number='{result.get('Input_Number', 'MISSING')}', Original_Query='{result.get('Original_Query', '')[:50]}...', Search_Result_Q='{result.get('Search_Result_Q', '')[:50]}...'")
+
+                    # 質問ごとの集計確認（O(N)処理をDEBUGのみで実行）
+                    current_question_count = sum(1 for item in all_results if item.get('Input_Number') == str(query_number))
+                    empty_count_for_question = sum(1 for item in all_results[-len(results):] if item.get('Input_Number') == '')
+
+                    logger.debug(f"質問{query_number}の総件数（all_results内）: {current_question_count}")
+                    logger.debug(f"質問{query_number}で追加された空Input_Number数: {empty_count_for_question}")
+
+                    # 最後の数件の結果を確認
+                    if len(all_results) > 0:
+                        logger.debug(f"最新の結果サンプル:")
+                        for i, result in enumerate(all_results[-min(3, len(all_results)):]):
+                            logger.debug(f"  結果{len(all_results)-min(3, len(all_results))+i+1}: Input_Number={result.get('Input_Number', 'N/A')}, Original_Query={result.get('Original_Query', 'N/A')[:30]}...")
+
+                logger.info(f"質問{query_number}の処理完了（結果数: {len(results)}）")
 
             logger.info(f"=== 全処理完了 ===")
             logger.info(f"最終的なall_resultsの総数: {len(all_results)}")

@@ -1,6 +1,7 @@
 # --- main.py ---
 import sys
 import os
+import subprocess
 from dotenv import load_dotenv
 from config import SearchConfig
 from src.core.processor import Processor
@@ -14,6 +15,49 @@ logger = setup_logger(__name__)
 def main():
     # 設定の初期化
     config = SearchConfig(base_dir=os.path.dirname(os.path.abspath(__file__)))
+
+    # プレフライト（DB更新の事前チェック）
+    if len(sys.argv) > 1 and sys.argv[1] == "preflight":
+        import argparse
+
+        parser = argparse.ArgumentParser(description="DB更新プレフライト（本番更新は行いません）")
+        parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（例: 預金）")
+        parser.add_argument("--sample-size", dest="sample_size", type=int, default=5, help="検証に使うサンプル件数")
+        args = parser.parse_args(sys.argv[2:])
+
+        try:
+            logger.info("動的DB管理システムを初期化中（preflight）...")
+            db_manager = DynamicDBManager(config)
+            reference_files = db_manager.analyze_reference_files()
+
+            if args.business:
+                targets = {k: v for k, v in reference_files.items() if k == args.business}
+                if not targets:
+                    logger.error(f"指定された業務分野が見つかりません: {args.business}")
+                    logger.info(f"検出された業務分野: {list(reference_files.keys())}")
+                    sys.exit(1)
+            else:
+                targets = reference_files
+
+            for business_area, files in targets.items():
+                logger.info(f"業務分野 '{business_area}' のプレフライト開始")
+                result = db_manager.preflight_business_db(
+                    business_area=business_area,
+                    files=files,
+                    sample_size=args.sample_size,
+                )
+                logger.info(
+                    f"プレフライトOK: {result['business_area']} (sample={result['sample_size']}, dim={result['embedding_dim']})"
+                )
+
+            logger.info("プレフライト完了: すべてOK")
+            sys.exit(0)
+        except DynamicDBError as e:
+            logger.error(f"プレフライト失敗: {e}")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"予期しないエラー（preflight）: {e}")
+            sys.exit(1)
 
     # 動的DB管理システムの初期化
     try:
@@ -42,7 +86,14 @@ def main():
         config.is_interactive = True
         config.vector_weight = config.DEFAULT_UI_VECTOR_WEIGHT
         mode = "chat"
-        os.system("streamlit run ui/chat.py")
+        try:
+            # subprocessを使用してStreamlitを起動（セキュリティ向上）
+            subprocess.Popen([sys.executable, "-m", "streamlit", "run", "ui/chat.py"])
+            logger.info("Streamlit app started successfully")
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Failed to start Streamlit: {e}")
+            sys.exit(1)
     else:
         logger.info("Starting in batch mode")
         config.is_interactive = False

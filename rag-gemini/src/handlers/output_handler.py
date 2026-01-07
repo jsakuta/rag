@@ -46,7 +46,8 @@ class ExcelOutputHandler(OutputHandler):
                 self._format_excel(writer, df)  # processor.py から移動
             logger.info(f"Results saved to: {output_file}")
         except Exception as e:
-            logger.error(f"Error saving data to Excel: {e}")
+            logger.error(f"Error saving data to Excel: {e}", exc_info=True)
+            raise  # 呼び出し元に例外を伝播
 
     def _format_excel(self, writer: pd.ExcelWriter, df: pd.DataFrame):
         """Excelファイルの書式設定 (processor.pyから移動、調整)"""

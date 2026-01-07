@@ -29,3 +29,5 @@ azure-keyvault-secrets>=4.7.0
 chromadb>=1.0.15
 # 新規追加: Gemini Embedding API用
 google-cloud-aiplatform[vertexai]>=1.35.0
+# 新規追加: リトライロジック用（API一時障害対応）
+tenacity>=8.0.0

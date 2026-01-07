@@ -1,5 +1,8 @@
 # --- chat.py (旧 ui.py) ---
 import streamlit as st
+from dotenv import load_dotenv
+load_dotenv()  # .envファイルから環境変数を読み込み
+
 from config import SearchConfig
 from src.core.processor import Processor
 from src.utils.logger import setup_logger
@@ -24,6 +27,8 @@ def initialize_session_state():
             embedding_model="gemini-embedding-001",
             base_dir="."
         )
+    if "business_area" not in st.session_state:
+        st.session_state.business_area = "預金"
 
 def format_message(message, is_user=False):
     style = f"""
@@ -59,8 +64,9 @@ def process_query(query: str):
     try:
         processor = Processor(st.session_state.config)
         # Load reference data only once
-        reference_data = processor.input_handler.load_reference_data()
+        reference_data = processor.reference_handler.load_reference_data()
         processor.searcher.prepare_search(reference_data)
+        processor.searcher._select_db_for_business(st.session_state.business_area)
 
         query_number = len(st.session_state.chat_history) // 2 + 1
         results = processor.searcher.search(str(query_number), query, "")
@@ -128,12 +134,18 @@ def run_streamlit_ui():
     with st.sidebar:
         st.title("設定")
         with st.expander("パラメータ調整", expanded=True):
+            business_areas = ["預金", "融資", "外貨", "投信", "住宅ローン", "カード", "保険", "年金", "総則"]
+            st.session_state.business_area = st.selectbox(
+                "業務分野",
+                business_areas,
+                index=business_areas.index(st.session_state.business_area)
+            )
             st.session_state.config.vector_weight = st.slider("ベクトルの重み", 0.0, 1.0, st.session_state.config.vector_weight, 0.1)
             st.session_state.config.top_k = st.number_input("表示する候補数", min_value=1, max_value=10, value=st.session_state.config.top_k, step=1)
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
             save_chat_history()
 
-    st.title("類似回答検索ボット【預金】")
+    st.title(f"類似回答検索ボット【{st.session_state.business_area}】")
     chat_container = st.container()
     with chat_container:
         for msg in st.session_state.chat_history:

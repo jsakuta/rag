@@ -27,18 +27,27 @@ class DynamicDBManager:
         self.base_db_path = os.path.join(config.base_dir, "reference", "vector_db")
         self.reference_faq_path = os.path.join(config.base_dir, "reference", "faq_data")
         self.reference_scenario_path = os.path.join(config.base_dir, "reference", "scenario")
-        
+
         # ディレクトリの作成
         os.makedirs(self.base_db_path, exist_ok=True)
         os.makedirs(self.reference_faq_path, exist_ok=True)
         os.makedirs(self.reference_scenario_path, exist_ok=True)
-        
+
+        # ChromaDBクライアントを一度だけ初期化（パフォーマンス向上）
+        self._chroma_client = chromadb.PersistentClient(
+            path=self.base_db_path,
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
+        )
+
         # 更新日時記録ファイルのパス
         self.update_timestamp_file = os.path.join(self.base_db_path, "update_timestamps.json")
-        
+
         # 更新日時の読み込み
         self._load_update_timestamps()
-        
+
         # 既存DBの移行（初回のみ）
         self._migrate_existing_db()
     
@@ -72,7 +81,33 @@ class DynamicDBManager:
             logger.info(f"更新日時記録を保存: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件")
         except Exception as e:
             logger.warning(f"更新日時記録の保存エラー: {e}")
-    
+
+    def _update_timestamps_after_success(
+        self, business_area: str, latest_faq: Optional[str], latest_scenario: Optional[str]
+    ) -> None:
+        """DB更新成功後にタイムスタンプを記録・永続化
+
+        Args:
+            business_area: 業務分野名
+            latest_faq: 最新の履歴データファイル名
+            latest_scenario: 最新のシナリオデータファイル名
+        """
+        # FAQファイルのタイムスタンプ更新
+        if latest_faq:
+            faq_path = os.path.join(self.reference_faq_path, latest_faq)
+            if os.path.exists(faq_path):
+                self._last_faq_mtime[business_area] = os.path.getmtime(faq_path)
+
+        # シナリオファイルのタイムスタンプ更新
+        if latest_scenario:
+            scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
+            if os.path.exists(scenario_path):
+                self._last_scenario_mtime[business_area] = os.path.getmtime(scenario_path)
+
+        # タイムスタンプを永続化
+        self._save_update_timestamps()
+        logger.info(f"業務分野 '{business_area}' のタイムスタンプを更新しました")
+
     def _migrate_existing_db(self):
         """既存のDB移行処理（現在は不要）"""
         # rag_collectionは完全に廃止、移行処理は不要
@@ -142,24 +177,13 @@ class DynamicDBManager:
             logger.info(f"DBが存在しないため新規作成: {db_path}")
             return True
         
-        # ChromaDBコレクションの存在確認
+        # ChromaDBコレクションの存在確認（キャッシュされたクライアントを使用）
         try:
-            import chromadb
-            from chromadb.config import Settings
-            
-            client = chromadb.PersistentClient(
-                path=self.base_db_path,
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
-            )
-            
             # コレクション名を取得（パスから抽出）
             collection_name = os.path.basename(db_path)
             
             try:
-                collection = client.get_collection(name=collection_name)
+                collection = self._chroma_client.get_collection(name=collection_name)
                 logger.info(f"コレクション存在確認: {collection_name}")
                 
                 # ファイル更新日時の比較
@@ -191,9 +215,7 @@ class DynamicDBManager:
                         if faq_mtime > last_mtime:
                             needs_update = True
                             logger.info(f"履歴データファイルの更新日時が変更されたため、DB更新が必要 (前回: {last_mtime}, 現在: {faq_mtime})")
-                            self._last_faq_mtime[business_area] = faq_mtime
-                            # 更新日時を永続化
-                            self._save_update_timestamps()
+                            # 注: タイムスタンプはupdate_business_db()成功後に更新する
                         elif not db_is_current:
                             needs_update = True
                             logger.info("履歴データファイルが存在するが、DBが最新でないため更新が必要")
@@ -209,9 +231,7 @@ class DynamicDBManager:
                         if scenario_mtime > last_mtime:
                             needs_update = True
                             logger.info(f"シナリオデータファイルの更新日時が変更されたため、DB更新が必要 (前回: {last_mtime}, 現在: {scenario_mtime})")
-                            self._last_scenario_mtime[business_area] = scenario_mtime
-                            # 更新日時を永続化
-                            self._save_update_timestamps()
+                            # 注: タイムスタンプはupdate_business_db()成功後に更新する
                         elif not db_is_current:
                             needs_update = True
                             logger.info("シナリオデータファイルが存在するが、DBが最新でないため更新が必要")
@@ -254,12 +274,137 @@ class DynamicDBManager:
             try:
                 # DBリセットと再ベクトル化
                 self._reset_and_revectorize(db_path, business_area, latest_faq, latest_scenario)
+
+                # 更新成功後にタイムスタンプを記録・永続化
+                self._update_timestamps_after_success(business_area, latest_faq, latest_scenario)
+
                 logger.info(f"業務分野 '{business_area}' のDB更新完了")
             except Exception as e:
                 logger.error(f"DB更新エラー: {e}")
                 raise DynamicDBError(f"DB更新に失敗しました: {e}")
         else:
             logger.info(f"業務分野 '{business_area}' のDBは最新です")
+
+    def preflight_business_db(
+        self,
+        business_area: str,
+        files: Dict[str, List[Tuple[str, str]]],
+        sample_size: int = 5,
+    ) -> Dict[str, object]:
+        """DB更新の事前チェック（プレフライト）
+
+        本番コレクション（例: deposit_DB）には触らず、
+        参照データ読込 → 埋め込み生成 → ChromaDBへ少量書込/検索 → クリーンアップ
+        までを通して、更新が通りそうかを検証します。
+
+        Args:
+            business_area: 業務分野名（日本語）
+            files: analyze_reference_files() の戻り値（業務分野別のファイル一覧）
+            sample_size: 事前検証に使うサンプル件数
+
+        Returns:
+            実施結果のサマリ辞書
+        """
+        if sample_size <= 0:
+            raise DynamicDBError("sample_size must be > 0")
+
+        # 最新ファイルの選択（存在確認も兼ねる）
+        latest_faq = self.get_latest_file(files.get("faq", []))
+        latest_scenario = self.get_latest_file(files.get("scenario", []))
+
+        if latest_faq:
+            faq_path = os.path.join(self.reference_faq_path, latest_faq)
+            if not os.path.exists(faq_path):
+                raise DynamicDBError(f"FAQファイルが見つかりません: {faq_path}")
+        if latest_scenario:
+            scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
+            if not os.path.exists(scenario_path):
+                raise DynamicDBError(f"シナリオファイルが見つかりません: {scenario_path}")
+
+        # 書き込み権限の軽い検証（ディレクトリに一時ファイルを作れるか）
+        try:
+            os.makedirs(self.base_db_path, exist_ok=True)
+            probe_path = os.path.join(self.base_db_path, ".write_probe")
+            with open(probe_path, "w", encoding="utf-8") as f:
+                f.write("ok")
+            os.remove(probe_path)
+        except Exception as e:
+            raise DynamicDBError(f"DB保存先への書き込み権限/ロックを確認してください: {e}")
+
+        # 参照データの読み込み（実際の更新と同じ経路）
+        reference_data = self._prepare_reference_data_for_vectorization()
+        texts: List[str] = reference_data.get("combined_texts", [])
+        metadatas: List[dict] = reference_data.get("metadatas", [])
+
+        if not texts:
+            raise DynamicDBError("参照データが空です（combined_texts が 0 件）")
+
+        if metadatas and len(metadatas) != len(texts):
+            raise DynamicDBError(
+                f"参照データ不整合: combined_texts={len(texts)}件, metadatas={len(metadatas)}件"
+            )
+
+        effective_sample_size = min(sample_size, len(texts))
+        sample_texts = texts[:effective_sample_size]
+        if metadatas:
+            sample_metadatas = metadatas[:effective_sample_size]
+        else:
+            sample_metadatas = [{"source": "preflight"} for _ in range(effective_sample_size)]
+
+        # 埋め込み生成（API到達性 + 形状検証）
+        try:
+            from src.utils.gemini_embedding import GeminiEmbeddingModel
+
+            embedding_model = GeminiEmbeddingModel(self.config)
+            sample_embeddings = embedding_model.encode(sample_texts, normalize_embeddings=True)
+        except Exception as e:
+            raise DynamicDBError(f"埋め込み生成の事前検証に失敗しました: {e}")
+
+        if getattr(sample_embeddings, "ndim", 0) != 2 or sample_embeddings.shape[0] != effective_sample_size:
+            raise DynamicDBError(f"埋め込みの形状が不正です: shape={getattr(sample_embeddings, 'shape', None)}")
+
+        # ChromaDBへの少量書込/検索/削除（本番コレクションは触らない）
+        english_name = self._translate_business_area(business_area)
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        # ChromaDB のコレクション名制約: 3-512 chars in [a-zA-Z0-9._-] かつ先頭末尾が英数字
+        temp_collection_name = f"preflight_{english_name}_DB_{timestamp}"
+
+        try:
+            from src.utils.vector_db import MetadataVectorDB
+
+            vector_db = MetadataVectorDB(self.config.base_dir, temp_collection_name)
+            vector_db.add_documents(
+                texts=sample_texts,
+                embeddings=sample_embeddings.tolist(),
+                metadatas=sample_metadatas,
+                ids=[f"preflight_{i}" for i in range(effective_sample_size)],
+            )
+
+            # 1件だけ検索して、クエリが動作するか確認
+            query_embedding = sample_embeddings[0].tolist()
+            results = vector_db.search(query_embedding=query_embedding, n_results=min(3, effective_sample_size))
+            if not results:
+                raise DynamicDBError("ChromaDBへの書込は成功したが、検索結果が0件でした")
+
+        except Exception as e:
+            raise DynamicDBError(f"ChromaDB書込/検索の事前検証に失敗しました: {e}")
+        finally:
+            # 一時コレクションを必ず削除
+            try:
+                self._chroma_client.delete_collection(name=temp_collection_name)
+            except Exception:
+                pass
+
+        return {
+            "business_area": business_area,
+            "latest_faq": latest_faq,
+            "latest_scenario": latest_scenario,
+            "reference_texts": len(texts),
+            "sample_size": effective_sample_size,
+            "embedding_dim": int(sample_embeddings.shape[1]),
+            "temp_collection": temp_collection_name,
+            "status": "ok",
+        }
     
     def _reset_and_revectorize(self, db_path: str, business_area: str, 
                               latest_faq: Optional[str], latest_scenario: Optional[str]):
@@ -281,32 +426,20 @@ class DynamicDBManager:
         self._vectorize_data(db_path, business_area, latest_faq, latest_scenario)
     
     def _delete_chromadb_collection(self, business_area: str):
-        """ChromaDBのコレクションを削除"""
+        """ChromaDBのコレクションを削除（キャッシュされたクライアントを使用）"""
         try:
-            import chromadb
-            from chromadb.config import Settings
-            
-            # ChromaDBクライアントの初期化
-            client = chromadb.PersistentClient(
-                path=self.base_db_path,
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
-            )
-            
             # 英語名に変換
             english_name = self._translate_business_area(business_area)
             collection_name = f"{english_name}_DB"
-            
+
             # コレクションが存在する場合は削除
             try:
-                collection = client.get_collection(name=collection_name)
-                client.delete_collection(name=collection_name)
+                self._chroma_client.get_collection(name=collection_name)
+                self._chroma_client.delete_collection(name=collection_name)
                 logger.info(f"ChromaDBコレクション削除: {collection_name}")
             except ChromaNotFoundError:
                 logger.info(f"ChromaDBコレクションは存在しません: {collection_name}")
-                
+
         except Exception as e:
             logger.warning(f"ChromaDBコレクション削除エラー: {e}")
             # エラーが発生しても処理を続行

@@ -31,9 +31,9 @@ class SearchConfig:
     DEFAULT_FORCE_DB_UPDATE: bool = False  # 強制DB更新フラグ
 
     # バッチサイズ設定
-    # EMBEDDING_BATCH_SIZE: Gemini APIのレート制限に基づく推奨値。
-    # 5を超えるとAPIエラーが発生する可能性があります。
-    EMBEDDING_BATCH_SIZE: int = 5
+    # EMBEDDING_BATCH_SIZE: Vertex AI Embedding APIの1回あたりの最大テキスト数。
+    # APIの上限は250件。パフォーマンス向上のため最大値に設定。
+    EMBEDDING_BATCH_SIZE: int = 250
     # VECTOR_DB_BATCH_SIZE: ChromaDBへの一括書き込み時のバッチサイズ。
     # 大きすぎるとメモリエラーの原因になります。100-500が推奨範囲。
     VECTOR_DB_BATCH_SIZE: int = 100
@@ -88,9 +88,9 @@ class SearchConfig:
     reference_type: str = "multi_folder"  # "excel", "hierarchical_excel", "multi_folder"
     include_hierarchy_in_vector: bool = True  # 階層情報をベクトル化に含めるかどうか
     
-    # Vertex AI設定
+    # Vertex AI設定（セキュリティ向上: ハードコードされたプロジェクトIDを削除）
     gemini_credentials_path: str = field(default_factory=lambda: os.getenv("GEMINI_CREDENTIALS_PATH", "gemini_credentials.json"))
-    gemini_project_id: str = field(default_factory=lambda: os.getenv("GEMINI_PROJECT_ID", "pj-cbk001"))
+    gemini_project_id: str = field(default_factory=lambda: os.getenv("GEMINI_PROJECT_ID", ""))
     gemini_location: str = field(default_factory=lambda: os.getenv("GEMINI_LOCATION", "us-central1"))
     azure_key_vault_url: str = field(default_factory=lambda: os.getenv("AZURE_KEY_VAULT_URL", ""))
     azure_key_vault_scopes: str = field(default_factory=lambda: os.getenv("AZURE_KEY_VAULT_SCOPES", "https://www.googleapis.com/auth/cloud-platform"))
