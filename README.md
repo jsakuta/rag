@@ -157,7 +157,7 @@ graph LR
 
 | コンポーネント | rag-reranker | rag-streamlit | rag-batch | rag-gemini |
 |---------------|--------------|---------------|-----------|------------|
-| **埋め込みモデル** | multilingual-e5-base | multilingual-e5-base | multilingual-e5-base | **Gemini Embedding** |
+| **埋め込みモデル** | multilingual-e5-base | multilingual-e5-base | multilingual-e5-base | **Gemini Embedding (3072次元)** |
 | **ベクトル DB** | Pickle ファイル | JSON キャッシュ | JSON キャッシュ | **ChromaDB** |
 | **Reranking** | Cross-Encoder | なし | なし | なし |
 | **検索モード** | 原文のみ | 原文のみ | LLM 要約 | **原文 / LLM 拡張** |

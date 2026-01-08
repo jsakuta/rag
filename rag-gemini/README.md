@@ -54,7 +54,7 @@ RAG-Gemini は、Google Vertex AI の Gemini Embedding API と ChromaDB を活�
 | 機能 | 説明 |
 |------|------|
 | **デュアル検索モード** | 原文検索 ↔ LLM 拡張検索の切り替え |
-| **Gemini Embedding** | 768次元高精度ベクトル化 |
+| **Gemini Embedding** | 3072次元高精度ベクトル化（768/1536/3072選択可） |
 | **ChromaDB 永続化** | メタデータ対応ベクトルデータベース |
 | **動的 DB 管理** | 業務領域別の自動 DB 管理 |
 | **複数フォルダ対応** | シナリオ + FAQ 履歴の統合処理 |
@@ -80,7 +80,7 @@ graph TB
     end
 
     subgraph 検索層
-        C1[ベクトル検索<br/>Gemini Embedding 768次元]
+        C1[ベクトル検索<br/>Gemini Embedding 3072次元]
         C2[ChromaDB<br/>コサイン類似度]
         D1[キーワード検索<br/>SudachiPy 形態素解析]
         D2[重み付き Jaccard 類似度]
@@ -320,10 +320,22 @@ class GeminiEmbeddingModel:
 | 項目 | 値 |
 |------|-----|
 | モデル | gemini-embedding-001 |
-| 次元数 | 768 |
+| 次元数 | 3072（デフォルト、768/1536選択可） |
 | 正規化 | L2 正規化 |
-| バッチサイズ | 5（API レート制限対応） |
+| バッチサイズ | 250（API上限） |
 | 認証 | Vertex AI サービスアカウント |
+
+**次元数の選択（Matryoshka Representation Learning）:**
+
+gemini-embedding-001はMatryoshka Representation Learningを採用しており、用途に応じて出力次元数を選択できます：
+
+| 次元数 | 用途 | 特徴 |
+|--------|------|------|
+| 3072 | 最高精度 | デフォルト、重要なアプリケーション向け |
+| 1536 | バランス | 精度とパフォーマンスの両立 |
+| 768 | コスト最適化 | ストレージ効率重視 |
+
+次元数は`output_dimensionality`パラメータで制御可能です。
 
 ### LLM プロバイダー
 
