@@ -20,8 +20,12 @@ class SearchConfig:
     DEFAULT_UI_VECTOR_WEIGHT: float = 0.7 # UI用のデフォルト値
     
     # 検索方式設定（LLM拡張検索対応）
-    DEFAULT_SEARCH_MODE: str = "original"  # "original" or "llm_enhanced"
+    DEFAULT_SEARCH_MODE: str = "original"  # "original" | "llm_enhanced" | "multi_stage"
     DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = False
+
+    # 多段階検索設定
+    MULTI_STAGE_THRESHOLD: float = 0.5        # 統合スコアのしきい値
+    MULTI_STAGE_MAX_RESULTS: int = 100        # 各検索の最大結果数
     
     # 埋め込みモデル設定
     DEFAULT_EMBEDDING_PROVIDER: str = "vertex_ai"
@@ -78,6 +82,11 @@ class SearchConfig:
     # 検索方式設定
     search_mode: str = DEFAULT_SEARCH_MODE
     enable_query_enhancement: bool = DEFAULT_ENABLE_QUERY_ENHANCEMENT
+
+    # 多段階検索設定（インスタンス変数）
+    multi_stage_threshold: float = MULTI_STAGE_THRESHOLD
+    multi_stage_max_results: int = MULTI_STAGE_MAX_RESULTS
+    multi_stage_enable_llm_analysis: bool = True  # LLM影響分析の有効化
     
     # 埋め込みモデル設定
     embedding_provider: str = DEFAULT_EMBEDDING_PROVIDER
@@ -105,8 +114,8 @@ class SearchConfig:
         self.base_dir = os.path.abspath(self.base_dir)
         
         # 検索方式の検証
-        if self.search_mode not in ["original", "llm_enhanced"]:
-            raise ValueError("search_mode must be 'original' or 'llm_enhanced'")
+        if self.search_mode not in ["original", "llm_enhanced", "multi_stage"]:
+            raise ValueError("search_mode must be 'original', 'llm_enhanced', or 'multi_stage'")
             
         self._validate_vertex_ai_config() # 新規追加: Vertex AI設定の検証
 
@@ -122,5 +131,10 @@ class SearchConfig:
     def get_param_summary(self) -> str:
         """パラメータのサマリー文字列を生成（LLM拡張検索対応）"""
         hierarchy_flag = "h" if self.include_hierarchy_in_vector else "nh"
-        search_flag = "llm" if self.search_mode == "llm_enhanced" else "orig"
+        if self.search_mode == "multi_stage":
+            search_flag = "ms"
+        elif self.search_mode == "llm_enhanced":
+            search_flag = "llm"
+        else:
+            search_flag = "orig"
         return f"v{self.vector_weight:.1f}_k{self.keyword_weight:.1f}_{hierarchy_flag}_{search_flag}"

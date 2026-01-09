@@ -1,0 +1,858 @@
+diff --git a/rag-gemini/config.py b/rag-gemini/config.py
+index a7fa9f3..cd1eda1 100644
+--- a/rag-gemini/config.py
++++ b/rag-gemini/config.py
+@@ -20,8 +20,12 @@ class SearchConfig:
+     DEFAULT_UI_VECTOR_WEIGHT: float = 0.7 # UI用のデフォルト値
+     
+     # 検索方式設定（LLM拡張検索対応）
+-    DEFAULT_SEARCH_MODE: str = "original"  # "original" or "llm_enhanced"
++    DEFAULT_SEARCH_MODE: str = "original"  # "original" | "llm_enhanced" | "multi_stage"
+     DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = False
++
++    # 多段階検索設定
++    MULTI_STAGE_THRESHOLD: float = 0.5        # 統合スコアのしきい値
++    MULTI_STAGE_MAX_RESULTS: int = 100        # 各検索の最大結果数
+     
+     # 埋め込みモデル設定
+     DEFAULT_EMBEDDING_PROVIDER: str = "vertex_ai"
+@@ -78,6 +82,11 @@ class SearchConfig:
+     # 検索方式設定
+     search_mode: str = DEFAULT_SEARCH_MODE
+     enable_query_enhancement: bool = DEFAULT_ENABLE_QUERY_ENHANCEMENT
++
++    # 多段階検索設定（インスタンス変数）
++    multi_stage_threshold: float = MULTI_STAGE_THRESHOLD
++    multi_stage_max_results: int = MULTI_STAGE_MAX_RESULTS
++    multi_stage_enable_llm_analysis: bool = True  # LLM影響分析の有効化
+     
+     # 埋め込みモデル設定
+     embedding_provider: str = DEFAULT_EMBEDDING_PROVIDER
+@@ -105,8 +114,8 @@ class SearchConfig:
+         self.base_dir = os.path.abspath(self.base_dir)
+         
+         # 検索方式の検証
+-        if self.search_mode not in ["original", "llm_enhanced"]:
+-            raise ValueError("search_mode must be 'original' or 'llm_enhanced'")
++        if self.search_mode not in ["original", "llm_enhanced", "multi_stage"]:
++            raise ValueError("search_mode must be 'original', 'llm_enhanced', or 'multi_stage'")
+             
+         self._validate_vertex_ai_config() # 新規追加: Vertex AI設定の検証
+ 
+@@ -122,5 +131,10 @@ class SearchConfig:
+     def get_param_summary(self) -> str:
+         """パラメータのサマリー文字列を生成（LLM拡張検索対応）"""
+         hierarchy_flag = "h" if self.include_hierarchy_in_vector else "nh"
+-        search_flag = "llm" if self.search_mode == "llm_enhanced" else "orig"
++        if self.search_mode == "multi_stage":
++            search_flag = "ms"
++        elif self.search_mode == "llm_enhanced":
++            search_flag = "llm"
++        else:
++            search_flag = "orig"
+         return f"v{self.vector_weight:.1f}_k{self.keyword_weight:.1f}_{hierarchy_flag}_{search_flag}"
+diff --git a/rag-gemini/src/core/processor.py b/rag-gemini/src/core/processor.py
+index 6febfaa..6641991 100644
+--- a/rag-gemini/src/core/processor.py
++++ b/rag-gemini/src/core/processor.py
+@@ -8,6 +8,7 @@ from config import SearchConfig
+ from src.handlers.input_handler import InputHandlerFactory
+ from src.handlers.output_handler import OutputHandlerFactory
+ from src.core.searcher import Searcher
++from src.core.impact_analyzer import ImpactAnalyzer
+ from src.utils.logger import setup_logger
+ from tqdm import tqdm
+ 
+@@ -22,6 +23,13 @@ class Processor:
+         # 参照データ用のハンドラーを別途作成
+         self.reference_handler = InputHandlerFactory.create(config.reference_type, config)
+ 
++        # 多段階検索モードの場合、影響分析モジュールを初期化
++        if config.search_mode == "multi_stage":
++            self.impact_analyzer = ImpactAnalyzer(config)
++            logger.info("ImpactAnalyzer initialized for multi-stage search mode")
++        else:
++            self.impact_analyzer = None
++
+     def process_data(self, mode: str = "batch"):
+         """データ処理のメイン関数"""
+         try:
+@@ -87,10 +95,59 @@ class Processor:
+ 
+             logger.info(f"=== 全処理完了 ===")
+             logger.info(f"最終的なall_resultsの総数: {len(all_results)}")
+-            
+-            # 結果の保存
+-            self.output_handler.save_data(all_results, mode=mode)
++
++            # 多段階検索モードの場合は影響分析と3シート出力
++            if self.config.search_mode == "multi_stage":
++                self._process_multi_stage_results(all_results, input_data)
++            else:
++                # 通常モード: 従来の出力
++                self.output_handler.save_data(all_results, mode=mode)
+ 
+         except Exception as e:
+             logger.error(f"Error processing data: {str(e)}", exc_info=True)
+-            raise
+\ No newline at end of file
++            raise
++
++    def _process_multi_stage_results(self, results: list, input_data: list):
++        """多段階検索結果のLLM影響分析と3シート出力
++
++        Args:
++            results: 検索結果リスト
++            input_data: 入力データリスト（改定内容を含む）
++        """
++        logger.info("=== 多段階検索結果の後処理開始 ===")
++
++        # LLM影響分析の実行
++        if self.impact_analyzer and self.config.multi_stage_enable_llm_analysis:
++            logger.info("LLM影響分析を実行中...")
++
++            # 入力データごとに改定内容を取得してマッピング
++            revision_map = {
++                str(item.get("number")): item.get("query", "")
++                for item in input_data
++            }
++
++            # 各結果に対して影響分析を実行
++            for result in tqdm(results, desc="Analyzing impact"):
++                input_num = result.get('Input_Number', '')
++                revision_content = revision_map.get(input_num, result.get('Original_Query', ''))
++
++                analysis = self.impact_analyzer.analyze_impact(
++                    revision_content=revision_content,
++                    search_result_q=result.get('Search_Result_Q', ''),
++                    search_result_a=result.get('Search_Result_A', '')
++                )
++
++                result['Impact_Reason'] = analysis['impact_reason']
++                result['Modification_Suggestion'] = analysis['modification_suggestion']
++
++            logger.info("LLM影響分析完了")
++        else:
++            # LLM分析が無効の場合は空のフィールドを追加
++            for result in results:
++                result['Impact_Reason'] = ""
++                result['Modification_Suggestion'] = ""
++
++        # 3シート出力
++        logger.info("3シートExcel出力を実行中...")
++        self.output_handler.save_data_multi_stage(results, mode="multi_stage")
++        logger.info("=== 多段階検索結果の後処理完了 ===")
+\ No newline at end of file
+diff --git a/rag-gemini/src/core/searcher.py b/rag-gemini/src/core/searcher.py
+index 5a10d7b..5477170 100644
+--- a/rag-gemini/src/core/searcher.py
++++ b/rag-gemini/src/core/searcher.py
+@@ -55,10 +55,10 @@ class Searcher:
+ 
+         logger.info("Searcherを初期化しました（依存性注入対応）")
+ 
+-        # LLM初期化（条件付き：LLM拡張検索が有効な場合のみ）
+-        if self.config.search_mode == "llm_enhanced" and self.config.enable_query_enhancement:
++        # LLM初期化（条件付き：LLM拡張検索または多段階検索が有効な場合）
++        if self.config.search_mode in ["llm_enhanced", "multi_stage"] or self.config.enable_query_enhancement:
+             self.llm = self._setup_llm()
+-            logger.info("LLM initialized for enhanced search mode")
++            logger.info(f"LLM initialized for {self.config.search_mode} search mode")
+         else:
+             self.llm = None
+             logger.info("LLM not initialized - using original search mode")
+@@ -313,6 +313,12 @@ class Searcher:
+         # Step 1: 動的DB選択
+         self._select_db_if_needed(input_file)
+ 
++        # 多段階検索モードの場合は専用メソッドを使用
++        if self.config.search_mode == "multi_stage":
++            return self._execute_multi_stage_search(
++                input_number, query_text, original_answer
++            )
++
+         # Step 2: 検索クエリの準備
+         search_query, query_for_vector = self._prepare_search_query(
+             input_number, query_text, original_answer
+@@ -607,7 +613,199 @@ class Searcher:
+             self.current_business_area = business_area
+             
+             logger.info(f"DB切り替え完了: {english_name}_DB (業務分野: {business_area})")
+-            
++
+         except DynamicDBError as e:
+             logger.error(f"DB選択エラー: {e}")
+-            raise
+\ No newline at end of file
++            raise
++
++    # ========================================
++    # 多段階OR検索メソッド群
++    # ========================================
++
++    def _execute_multi_stage_search(
++        self, input_number: str, query_text: str, original_answer: str
++    ) -> List[Dict[str, Any]]:
++        """多段階OR検索を実行（原文検索 + LLMクエリ検索のOR結合）
++
++        Args:
++            input_number: 入力番号
++            query_text: 検索クエリテキスト（改定内容など）
++            original_answer: 元の回答
++
++        Returns:
++            List[Dict]: 3分類された検索結果リスト
++        """
++        logger.info(f"=== 多段階OR検索開始 (No.{input_number}) ===")
++        logger.info(f"  Threshold: {self.config.multi_stage_threshold}")
++        logger.info(f"  Max results per search: {self.config.multi_stage_max_results}")
++
++        # キーワード抽出（両検索で共通）
++        keywords = self._extract_keywords(query_text)
++        logger.info(f"  Extracted keywords: {keywords}")
++
++        # Stage 1: 原文検索（原文をそのまま使用）
++        logger.info("  [Stage 1] 原文検索を実行...")
++        original_results = self._execute_hybrid_search_with_threshold(
++            query_for_vector=query_text,
++            keywords=keywords,
++            threshold=self.config.multi_stage_threshold,
++            max_results=self.config.multi_stage_max_results
++        )
++        logger.info(f"  原文検索結果数: {len(original_results)}")
++
++        # Stage 2: LLMクエリ検索（LLMで検索クエリを生成）
++        logger.info("  [Stage 2] LLMクエリ検索を実行...")
++        try:
++            llm_query = self.summarize_text(query_text)
++            logger.info(f"  LLM生成クエリ: {llm_query[:100]}...")
++        except Exception as e:
++            logger.error(f"  LLMクエリ生成エラー: {e}")
++            llm_query = query_text  # フォールバック
++
++        llm_results = self._execute_hybrid_search_with_threshold(
++            query_for_vector=llm_query,
++            keywords=keywords,
++            threshold=self.config.multi_stage_threshold,
++            max_results=self.config.multi_stage_max_results
++        )
++        logger.info(f"  LLMクエリ検索結果数: {len(llm_results)}")
++
++        # Stage 3: OR結合と3分類
++        logger.info("  [Stage 3] OR結合と3分類を実行...")
++        merged_results = self._merge_multi_stage_results(
++            original_results=original_results,
++            llm_results=llm_results,
++            input_number=input_number,
++            query_text=query_text,
++            original_answer=original_answer,
++            llm_query=llm_query
++        )
++
++        logger.info(f"=== 多段階OR検索完了 ===")
++        logger.info(f"  総結果数: {len(merged_results)}")
++        category_counts = {}
++        for r in merged_results:
++            cat = r.get('Search_Category', 'Unknown')
++            category_counts[cat] = category_counts.get(cat, 0) + 1
++        logger.info(f"  カテゴリ別: {category_counts}")
++
++        return merged_results
++
++    def _execute_hybrid_search_with_threshold(
++        self,
++        query_for_vector: str,
++        keywords: List[str],
++        threshold: float,
++        max_results: int
++    ) -> List[Dict[str, Any]]:
++        """しきい値ベースのハイブリッド検索を実行
++
++        Args:
++            query_for_vector: ベクトル化する検索クエリ
++            keywords: 抽出されたキーワード
++            threshold: 統合スコアのしきい値（この値以上のみ返す）
++            max_results: 最大結果数
++
++        Returns:
++            List[Dict]: しきい値を超えた結果のリスト
++        """
++        if self.vector_db is None:
++            raise DynamicDBError("VectorDB not initialized.")
++
++        # ベクトル検索（多めに取得）
++        query_vector = self.model.encode([query_for_vector], normalize_embeddings=True)[0]
++        search_results = self.vector_db.search(
++            query_embedding=query_vector,
++            n_results=max_results,
++            filter_metadata=None
++        )
++
++        # キーワード類似度を計算
++        keyword_similarities = self._calculate_keyword_similarities(search_results, keywords)
++
++        # スコア計算とフィルタリング
++        filtered_results = []
++        for i, search_result in enumerate(search_results):
++            keyword_sim = keyword_similarities[i]
++            vector_sim = search_result['similarity']
++            combined_score = (
++                self.config.vector_weight * vector_sim +
++                self.config.keyword_weight * keyword_sim
++            )
++            combined_score = max(0.0, min(1.0, combined_score))
++
++            # しきい値チェック
++            if combined_score >= threshold:
++                result_data = self._build_result_data(search_result, combined_score)
++                result_data['_doc_id'] = search_result['id']  # マージ用に内部ID保持
++                filtered_results.append(result_data)
++
++        # スコアでソート
++        filtered_results.sort(key=lambda x: x['Similarity'], reverse=True)
++
++        return filtered_results
++
++    def _merge_multi_stage_results(
++        self,
++        original_results: List[Dict[str, Any]],
++        llm_results: List[Dict[str, Any]],
++        input_number: str,
++        query_text: str,
++        original_answer: str,
++        llm_query: str
++    ) -> List[Dict[str, Any]]:
++        """多段階検索結果をOR結合して3分類
++
++        Args:
++            original_results: 原文検索の結果
++            llm_results: LLMクエリ検索の結果
++            input_number: 入力番号
++            query_text: 元のクエリ
++            original_answer: 元の回答
++            llm_query: LLM生成クエリ
++
++        Returns:
++            List[Dict]: 3分類された結果リスト
++        """
++        # doc_idでインデックス化
++        original_ids = {r['_doc_id'] for r in original_results}
++        llm_ids = {r['_doc_id'] for r in llm_results}
++
++        # 3分類
++        both_ids = original_ids & llm_ids
++        original_only_ids = original_ids - llm_ids
++        llm_only_ids = llm_ids - original_ids
++
++        logger.info(f"    Both: {len(both_ids)}, Original_Only: {len(original_only_ids)}, LLM_Only: {len(llm_only_ids)}")
++
++        merged_results = []
++
++        # 結果をカテゴリ別に追加
++        def add_results_with_category(results: List[Dict], ids_set: set, category: str):
++            for result in results:
++                doc_id = result.get('_doc_id')
++                if doc_id in ids_set:
++                    result_copy = result.copy()
++                    result_copy['Search_Category'] = category
++                    result_copy['Input_Number'] = input_number
++                    result_copy['Original_Query'] = query_text
++                    result_copy['Original_Answer'] = original_answer
++                    result_copy['Search_Query'] = llm_query if category != 'Original_Only' else query_text
++                    # 内部ID削除
++                    result_copy.pop('_doc_id', None)
++                    merged_results.append(result_copy)
++                    ids_set.discard(doc_id)  # 重複防止
++
++        # Both（両方でヒット）- 原文検索結果から取得
++        add_results_with_category(original_results, both_ids.copy(), 'Both')
++
++        # Original_Only（原文検索のみ）
++        add_results_with_category(original_results, original_only_ids.copy(), 'Original_Only')
++
++        # LLM_Enhanced_Only（LLMクエリ検索のみ）
++        add_results_with_category(llm_results, llm_only_ids.copy(), 'LLM_Enhanced_Only')
++
++        # スコアでソート
++        merged_results.sort(key=lambda x: x['Similarity'], reverse=True)
++
++        return merged_results
+\ No newline at end of file
+diff --git a/rag-gemini/src/handlers/input_handler.py b/rag-gemini/src/handlers/input_handler.py
+index 7ec52a1..ac6427c 100644
+--- a/rag-gemini/src/handlers/input_handler.py
++++ b/rag-gemini/src/handlers/input_handler.py
+@@ -422,6 +422,64 @@ class MultiFolderInputHandler(InputHandler):
+ 
+ # 他の入力形式 (CSV, JSONなど) のハンドラーもここに追加可能
+ 
++class TextInputHandler(InputHandler):
++    """テキストファイル入力用ハンドラー（多段階検索の改定内容入力用）"""
++
++    def load_data(self) -> list:
++        """テキストファイルから改定内容を読み込み
++
++        1ファイル = 1件の改定内容として処理。
++        ファイル名の先頭数字を番号として使用（例: 01_改定内容.txt → number=01）
++
++        Returns:
++            list: [{"number": "01", "query": "改定内容全文", "answer": ""}]
++        """
++        # .txt ファイルを検索
++        txt_files = glob.glob(os.path.join(self.input_dir, "*.txt"))
++        txt_files = [f for f in txt_files
++                     if not os.path.basename(f).startswith('~')
++                     and not os.path.basename(f).startswith('.')]
++
++        if not txt_files:
++            raise FileNotFoundError(f"No .txt files found in {self.input_dir}")
++
++        # ファイル名でソート
++        txt_files.sort()
++
++        data = []
++        for i, txt_file in enumerate(txt_files, start=1):
++            filename = os.path.basename(txt_file)
++            self.current_file = filename  # DB選択用
++
++            # ファイル名から番号を抽出（先頭の数字部分）
++            import re
++            match = re.match(r'^(\d+)', filename)
++            if match:
++                number = match.group(1)
++            else:
++                number = str(i)  # 数字がなければ連番
++
++            # ファイル内容を読み込み
++            with open(txt_file, 'r', encoding='utf-8') as f:
++                content = f.read().strip()
++
++            if content:
++                data.append({
++                    "number": number,
++                    "query": content,
++                    "answer": ""  # 改定内容には回答なし
++                })
++                logger.info(f"Loaded text file: {filename} (number={number}, length={len(content)})")
++
++        logger.info(f"Total {len(data)} text files loaded")
++        return data
++
++    def load_reference_data(self) -> dict:
++        """テキスト入力では参照データをMultiFolderHandlerに委譲"""
++        multi_handler = MultiFolderInputHandler(self.config)
++        return multi_handler.load_reference_data()
++
++
+ class InputHandlerFactory:
+     @staticmethod
+     def create(input_type: str, config: SearchConfig) -> InputHandler:
+@@ -431,6 +489,8 @@ class InputHandlerFactory:
+             return HierarchicalExcelInputHandler(config)
+         elif input_type == "multi_folder":
+             return MultiFolderInputHandler(config)
++        elif input_type == "text":
++            return TextInputHandler(config)
+         # 他の入力形式に対応するハンドラーをここに追加
+         else:
+             raise ValueError(f"Unsupported input type: {input_type}")
+\ No newline at end of file
+diff --git a/rag-gemini/src/handlers/output_handler.py b/rag-gemini/src/handlers/output_handler.py
+index 6e36872..d599d82 100644
+--- a/rag-gemini/src/handlers/output_handler.py
++++ b/rag-gemini/src/handlers/output_handler.py
+@@ -101,6 +101,151 @@ class ExcelOutputHandler(OutputHandler):
+                 if pd.isna(value):
+                     value = ''
+                 worksheet.write(row_num + 1, col_num, value, cell_format)
++
++    def save_data_multi_stage(self, data: list, mode: str = "multi_stage"):
++        """多段階検索結果を3シートに分けて保存
++
++        Args:
++            data: 検索結果（Search_Category列を含む）
++            mode: 出力モード名
++        """
++        if not data:
++            logger.warning("No data to save.")
++            return
++
++        df = pd.DataFrame(data)
++
++        # カテゴリ別に分割
++        categories = {
++            'Both': df[df['Search_Category'] == 'Both'] if 'Search_Category' in df.columns else pd.DataFrame(),
++            'Original_Only': df[df['Search_Category'] == 'Original_Only'] if 'Search_Category' in df.columns else pd.DataFrame(),
++            'LLM_Enhanced_Only': df[df['Search_Category'] == 'LLM_Enhanced_Only'] if 'Search_Category' in df.columns else pd.DataFrame()
++        }
++
++        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
++        param_summary = self.config.get_param_summary()
++        output_file = os.path.join(
++            self.output_dir,
++            f"output_{mode}_{param_summary}_{timestamp}.xlsx"
++        )
++
++        writer_options = {
++            'engine': 'xlsxwriter',
++            'engine_kwargs': {'options': {'nan_inf_to_errors': True}}
++        }
++
++        try:
++            with pd.ExcelWriter(output_file, **writer_options) as writer:
++                for sheet_name, sheet_df in categories.items():
++                    if sheet_df.empty:
++                        # 空のシートでもヘッダーだけ出力
++                        empty_df = pd.DataFrame(columns=self._get_multi_stage_columns())
++                        empty_df.to_excel(writer, index=False, sheet_name=sheet_name)
++                    else:
++                        # Search_Category列を除外して出力
++                        output_df = sheet_df.drop(columns=['Search_Category'], errors='ignore')
++                        output_df.to_excel(writer, index=False, sheet_name=sheet_name)
++
++                    self._format_excel_multi_stage(writer, sheet_name)
++
++            logger.info(f"Multi-stage results saved to: {output_file}")
++            logger.info(f"  Both: {len(categories['Both'])} rows")
++            logger.info(f"  Original_Only: {len(categories['Original_Only'])} rows")
++            logger.info(f"  LLM_Enhanced_Only: {len(categories['LLM_Enhanced_Only'])} rows")
++
++        except Exception as e:
++            logger.error(f"Error saving multi-stage data to Excel: {e}", exc_info=True)
++            raise
++
++    def _get_multi_stage_columns(self):
++        """多段階検索出力の列名リスト"""
++        return [
++            'Input_Number',
++            'Original_Query',
++            'Original_Answer',
++            'Search_Query',
++            'Search_Result_Q',
++            'Search_Result_A',
++            'Similarity',
++            'Impact_Reason',
++            'Modification_Suggestion',
++            'Vector_Weight',
++            'Top_K'
++        ]
++
++    def _format_excel_multi_stage(self, writer: pd.ExcelWriter, sheet_name: str):
++        """多段階検索結果のExcel書式設定"""
++        worksheet = writer.sheets[sheet_name]
++        workbook = writer.book
++
++        cell_format = workbook.add_format({
++            'font_name': 'メイリオ',
++            'font_size': 10,
++            'border': 1,
++            'text_wrap': True,
++        })
++
++        header_format = workbook.add_format({
++            'font_name': 'メイリオ',
++            'font_size': 10,
++            'bold': True,
++            'border': 1,
++            'bg_color': '#D9D9D9',
++            'text_wrap': True,
++        })
++
++        # シート別の色分け
++        sheet_colors = {
++            'Both': '#E2EFDA',           # 緑系（両方でヒット）
++            'Original_Only': '#FFF2CC',  # 黄系（原文のみ）
++            'LLM_Enhanced_Only': '#DEEBF7'  # 青系（LLMのみ）
++        }
++
++        if sheet_name in sheet_colors:
++            header_format = workbook.add_format({
++                'font_name': 'メイリオ',
++                'font_size': 10,
++                'bold': True,
++                'border': 1,
++                'bg_color': sheet_colors[sheet_name],
++                'text_wrap': True,
++            })
++
++        # 列幅設定
++        worksheet.set_column('A:A', 8)   # Input_Number
++        worksheet.set_column('B:B', 50)  # Original_Query（改定内容）
++        worksheet.set_column('C:C', 30)  # Original_Answer
++        worksheet.set_column('D:D', 40)  # Search_Query
++        worksheet.set_column('E:E', 50)  # Search_Result_Q
++        worksheet.set_column('F:F', 50)  # Search_Result_A
++        worksheet.set_column('G:G', 10)  # Similarity
++        worksheet.set_column('H:H', 50)  # Impact_Reason
++        worksheet.set_column('I:I', 50)  # Modification_Suggestion
++        worksheet.set_column('J:J', 10)  # Vector_Weight
++        worksheet.set_column('K:K', 8)   # Top_K
++
++        # ヘッダー名のマッピング
++        header_names = {
++            'Input_Number': '#',
++            'Original_Query': '改定内容',
++            'Original_Answer': '元回答',
++            'Search_Query': '検索クエリ',
++            'Search_Result_Q': '検索結果Q',
++            'Search_Result_A': '検索結果A',
++            'Similarity': '類似度',
++            'Impact_Reason': '影響の根拠',
++            'Modification_Suggestion': '修正案',
++            'Vector_Weight': 'ベクトル重み',
++            'Top_K': '候補数'
++        }
++
++        # ヘッダー行の書式設定
++        columns = self._get_multi_stage_columns()
++        for col_num, col_name in enumerate(columns):
++            display_name = header_names.get(col_name, col_name)
++            worksheet.write(0, col_num, display_name, header_format)
++
++
+ # 他の出力形式 (CSV, JSONなど) のハンドラーもここに追加可能
+ 
+ class OutputHandlerFactory:
+# --- impact_analyzer.py ---
+"""
+LLMによる影響分析モジュール
+
+改定内容と既存QAを比較し、影響の根拠と修正案を生成する。
+"""
+import os
+from typing import List, Dict, Any, Optional
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, SystemMessage
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from config import SearchConfig
+from src.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
+
+class ImpactAnalyzer:
+    """LLMを使用して改定内容の影響分析を行うクラス"""
+
+    def __init__(self, config: SearchConfig):
+        """ImpactAnalyzerを初期化
+
+        Args:
+            config: 検索設定
+        """
+        self.config = config
+        self._prompt_cache: Optional[str] = None
+
+        # LLMの初期化
+        if config.multi_stage_enable_llm_analysis:
+            self.llm = self._setup_llm()
+            logger.info("ImpactAnalyzer: LLM initialized for impact analysis")
+        else:
+            self.llm = None
+            logger.info("ImpactAnalyzer: LLM analysis disabled")
+
+    def _setup_llm(self):
+        """LLM設定メソッド"""
+        if self.config.llm_provider == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+            return ChatAnthropic(
+                anthropic_api_key=api_key,
+                model=self.config.llm_model,
+                temperature=0
+            )
+        elif self.config.llm_provider == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is not set")
+            return ChatOpenAI(
+                api_key=api_key,
+                model=self.config.llm_model,
+                temperature=0
+            )
+        elif self.config.llm_provider == "gemini":
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError("GOOGLE_API_KEY environment variable is not set")
+            return ChatGoogleGenerativeAI(
+                model=self.config.llm_model,
+                google_api_key=api_key,
+                temperature=0
+            )
+        else:
+            raise ValueError(f"Unsupported LLM provider: {self.config.llm_provider}")
+
+    def _load_prompt(self) -> str:
+        """影響分析用プロンプトを読み込む（キャッシュ対応）"""
+        if self._prompt_cache is not None:
+            return self._prompt_cache
+
+        prompt_path = os.path.join(self.config.base_dir, "prompt", "impact_analysis_v1.0.txt")
+
+        if not os.path.exists(prompt_path):
+            logger.warning(f"Impact analysis prompt not found: {prompt_path}")
+            # デフォルトプロンプトを返す
+            return self._get_default_prompt()
+
+        with open(prompt_path, 'r', encoding='utf-8') as f:
+            self._prompt_cache = f.read()
+
+        logger.info(f"Loaded impact analysis prompt from: {prompt_path}")
+        return self._prompt_cache
+
+    def _get_default_prompt(self) -> str:
+        """デフォルトの影響分析プロンプト"""
+        return """あなたは業務システムの影響分析エキスパートです。
+
+【役割】
+改定内容（新しい規則やルール変更）が、既存のFAQやシナリオに与える影響を分析してください。
+改定によって回答内容の修正が必要かどうかを判断し、必要な場合は具体的な修正案を提示します。
+
+【出力形式】
+必ず以下の形式で出力してください：
+
+影響の根拠: <改定内容が検索結果に影響を与える理由を1-2文で簡潔に説明>
+修正案: <検索結果（FAQ/シナリオ）の回答をどう修正すべきか具体的に提案>
+
+【注意事項】
+- 影響がない場合は必ず「影響の根拠: 影響なし」「修正案: 修正不要」と出力すること
+"""
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
+    def _invoke_llm_with_retry(self, messages: list):
+        """LLM呼び出しをリトライロジック付きで実行"""
+        return self.llm.invoke(messages)
+
+    def analyze_impact(
+        self,
+        revision_content: str,
+        search_result_q: str,
+        search_result_a: str
+    ) -> Dict[str, str]:
+        """単一の検索結果に対する影響分析を実行
+
+        Args:
+            revision_content: 改定内容
+            search_result_q: 検索結果の質問
+            search_result_a: 検索結果の回答
+
+        Returns:
+            Dict: {"impact_reason": "...", "modification_suggestion": "..."}
+        """
+        if self.llm is None:
+            return {
+                "impact_reason": "LLM分析無効",
+                "modification_suggestion": ""
+            }
+
+        prompt_template = self._load_prompt()
+
+        # ユーザーメッセージを構築
+        user_message = f"""【改定内容】
+{revision_content}
+
+【検索結果（既存QA）】
+質問: {search_result_q}
+回答: {search_result_a}
+
+上記の改定内容が、この検索結果に影響を与えるか分析してください。"""
+
+        messages = [
+            SystemMessage(content=prompt_template),
+            HumanMessage(content=user_message)
+        ]
+
+        try:
+            response = self._invoke_llm_with_retry(messages)
+            return self._parse_response(response.content)
+        except Exception as e:
+            logger.error(f"Impact analysis error: {e}")
+            return {
+                "impact_reason": f"分析エラー: {str(e)[:50]}",
+                "modification_suggestion": ""
+            }
+
+    def _parse_response(self, response_text: str) -> Dict[str, str]:
+        """LLMレスポンスをパース
+
+        期待フォーマット:
+        影響の根拠: <内容>
+        修正案: <内容>
+        """
+        result = {
+            "impact_reason": "",
+            "modification_suggestion": ""
+        }
+
+        lines = response_text.strip().split('\n')
+        current_field = None
+        current_content = []
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith("影響の根拠:"):
+                if current_field and current_content:
+                    result[current_field] = "\n".join(current_content).strip()
+                current_field = "impact_reason"
+                current_content = [line.replace("影響の根拠:", "").strip()]
+            elif line.startswith("修正案:"):
+                if current_field and current_content:
+                    result[current_field] = "\n".join(current_content).strip()
+                current_field = "modification_suggestion"
+                current_content = [line.replace("修正案:", "").strip()]
+            elif current_field:
+                current_content.append(line)
+
+        # 最後のフィールドを保存
+        if current_field and current_content:
+            result[current_field] = "\n".join(current_content).strip()
+
+        return result
+
+    def analyze_batch(
+        self,
+        results: List[Dict[str, Any]],
+        revision_content: str
+    ) -> List[Dict[str, Any]]:
+        """バッチで影響分析を実行
+
+        Args:
+            results: 検索結果のリスト
+            revision_content: 改定内容
+
+        Returns:
+            List[Dict]: 影響分析結果を追加した検索結果リスト
+        """
+        if not self.config.multi_stage_enable_llm_analysis:
+            logger.info("LLM影響分析は無効です。スキップします。")
+            for result in results:
+                result['Impact_Reason'] = ""
+                result['Modification_Suggestion'] = ""
+            return results
+
+        logger.info(f"=== LLM影響分析開始 ({len(results)}件) ===")
+
+        for i, result in enumerate(results):
+            search_q = result.get('Search_Result_Q', '')
+            search_a = result.get('Search_Result_A', '')
+
+            logger.debug(f"  分析中: {i+1}/{len(results)}")
+
+            analysis = self.analyze_impact(
+                revision_content=revision_content,
+                search_result_q=search_q,
+                search_result_a=search_a
+            )
+
+            result['Impact_Reason'] = analysis['impact_reason']
+            result['Modification_Suggestion'] = analysis['modification_suggestion']
+
+        logger.info(f"=== LLM影響分析完了 ===")
+        return results

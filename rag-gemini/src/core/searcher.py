@@ -55,10 +55,10 @@ class Searcher:
 
         logger.info("Searcherを初期化しました（依存性注入対応）")
 
-        # LLM初期化（条件付き：LLM拡張検索が有効な場合のみ）
-        if self.config.search_mode == "llm_enhanced" and self.config.enable_query_enhancement:
+        # LLM初期化（条件付き：LLM拡張検索または多段階検索が有効な場合）
+        if self.config.search_mode in ["llm_enhanced", "multi_stage"] or self.config.enable_query_enhancement:
             self.llm = self._setup_llm()
-            logger.info("LLM initialized for enhanced search mode")
+            logger.info(f"LLM initialized for {self.config.search_mode} search mode")
         else:
             self.llm = None
             logger.info("LLM not initialized - using original search mode")
@@ -312,6 +312,12 @@ class Searcher:
         """
         # Step 1: 動的DB選択
         self._select_db_if_needed(input_file)
+
+        # 多段階検索モードの場合は専用メソッドを使用
+        if self.config.search_mode == "multi_stage":
+            return self._execute_multi_stage_search(
+                input_number, query_text, original_answer
+            )
 
         # Step 2: 検索クエリの準備
         search_query, query_for_vector = self._prepare_search_query(
@@ -607,7 +613,135 @@ class Searcher:
             self.current_business_area = business_area
             
             logger.info(f"DB切り替え完了: {english_name}_DB (業務分野: {business_area})")
-            
+
         except DynamicDBError as e:
             logger.error(f"DB選択エラー: {e}")
             raise
+
+    # ========================================
+    # 多段階OR検索メソッド群
+    # ========================================
+
+    def _execute_multi_stage_search(
+        self, input_number: str, query_text: str, original_answer: str
+    ) -> List[Dict[str, Any]]:
+        """多段階OR検索を実行（原文検索 + LLMクエリ検索のOR結合）"""
+        logger.info(f"=== 多段階OR検索開始 (No.{input_number}) ===")
+        logger.info(f"  Threshold: {self.config.multi_stage_threshold}, Max: {self.config.multi_stage_max_results}")
+
+        keywords = self._extract_keywords(query_text)
+        logger.info(f"  Keywords: {keywords}")
+
+        # Stage 1: 原文検索
+        original_results = self._execute_hybrid_search_with_threshold(
+            query_text, keywords,
+            self.config.multi_stage_threshold,
+            self.config.multi_stage_max_results
+        )
+        logger.info(f"  原文検索: {len(original_results)}件")
+
+        # Stage 2: LLMクエリ検索
+        try:
+            llm_query = self.summarize_text(query_text)
+        except Exception as e:
+            logger.error(f"  LLMクエリ生成エラー: {e}")
+            llm_query = query_text
+
+        llm_results = self._execute_hybrid_search_with_threshold(
+            llm_query, keywords,
+            self.config.multi_stage_threshold,
+            self.config.multi_stage_max_results
+        )
+        logger.info(f"  LLMクエリ検索: {len(llm_results)}件")
+
+        # Stage 3: OR結合と3分類
+        merged_results = self._merge_multi_stage_results(
+            original_results, llm_results,
+            input_number, query_text, original_answer, llm_query
+        )
+
+        category_counts = {}
+        for r in merged_results:
+            cat = r.get('Search_Category', 'Unknown')
+            category_counts[cat] = category_counts.get(cat, 0) + 1
+        logger.info(f"=== 多段階OR検索完了: {len(merged_results)}件 {category_counts} ===")
+
+        return merged_results
+
+    def _execute_hybrid_search_with_threshold(
+        self,
+        query_for_vector: str,
+        keywords: List[str],
+        threshold: float,
+        max_results: int
+    ) -> List[Dict[str, Any]]:
+        """しきい値ベースのハイブリッド検索を実行"""
+        if self.vector_db is None:
+            raise DynamicDBError("VectorDB not initialized.")
+
+        query_vector = self.model.encode([query_for_vector], normalize_embeddings=True)[0]
+        search_results = self.vector_db.search(
+            query_embedding=query_vector, n_results=max_results, filter_metadata=None
+        )
+
+        keyword_similarities = self._calculate_keyword_similarities(search_results, keywords)
+
+        filtered_results = []
+        for i, search_result in enumerate(search_results):
+            combined_score = (
+                self.config.vector_weight * search_result['similarity'] +
+                self.config.keyword_weight * keyword_similarities[i]
+            )
+            combined_score = max(0.0, min(1.0, combined_score))
+
+            if combined_score >= threshold:
+                result_data = self._build_result_data(search_result, combined_score)
+                result_data['_doc_id'] = search_result['id']
+                filtered_results.append(result_data)
+
+        filtered_results.sort(key=lambda x: x['Similarity'], reverse=True)
+        return filtered_results
+
+    def _merge_multi_stage_results(
+        self,
+        original_results: List[Dict[str, Any]],
+        llm_results: List[Dict[str, Any]],
+        input_number: str,
+        query_text: str,
+        original_answer: str,
+        llm_query: str
+    ) -> List[Dict[str, Any]]:
+        """多段階検索結果をOR結合して3分類"""
+        original_ids = {r['_doc_id'] for r in original_results}
+        llm_ids = {r['_doc_id'] for r in llm_results}
+
+        both_ids = original_ids & llm_ids
+        original_only_ids = original_ids - llm_ids
+        llm_only_ids = llm_ids - original_ids
+
+        logger.info(f"    Both: {len(both_ids)}, Original_Only: {len(original_only_ids)}, LLM_Only: {len(llm_only_ids)}")
+
+        merged_results = []
+
+        def add_with_category(results: List[Dict], ids_set: set, category: str):
+            for result in results:
+                doc_id = result.get('_doc_id')
+                if doc_id in ids_set:
+                    result_copy = result.copy()
+                    result_copy.update({
+                        'Search_Category': category,
+                        'Input_Number': input_number,
+                        'Original_Query': query_text,
+                        'Original_Answer': original_answer,
+                        'Search_Query': query_text if category == 'Original_Only' else llm_query
+                    })
+                    result_copy.pop('_doc_id', None)
+                    merged_results.append(result_copy)
+                    ids_set.discard(doc_id)
+
+        add_with_category(original_results, both_ids.copy(), 'Both')
+        add_with_category(original_results, original_only_ids.copy(), 'Original_Only')
+        add_with_category(llm_results, llm_only_ids.copy(), 'LLM_Enhanced_Only')
+
+        merged_results.sort(key=lambda x: x['Similarity'], reverse=True)
+        return merged_results

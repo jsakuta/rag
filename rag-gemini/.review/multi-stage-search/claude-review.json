@@ -1,0 +1,32 @@
+{
+  "issues": [
+    {
+      "file": "src/handlers/output_handler.py",
+      "line": 139,
+      "severity": "high",
+      "category": "bug",
+      "description": "DataFrame列順序がヘッダーと不一致",
+      "suggestion": "expected_columnsで列を並べ替え",
+      "status": "FIXED"
+    },
+    {
+      "file": "src/core/searcher.py",
+      "line": 59,
+      "severity": "low",
+      "category": "code-quality",
+      "description": "LLM初期化条件が複雑。search_modeとenable_query_enhancementの両方をチェック",
+      "suggestion": "条件を簡素化するか、コメントで意図を明確化",
+      "status": "OPEN"
+    },
+    {
+      "file": "src/core/impact_analyzer.py",
+      "line": 75,
+      "severity": "low",
+      "category": "error-handling",
+      "description": "プロンプトファイルが存在しない場合のデフォルトプロンプトが返される",
+      "suggestion": "意図通りの動作。ログレベルをINFOに変更検討",
+      "status": "OPEN"
+    }
+  ],
+  "summary": "実装は全体的に良好。Excel列順序バグを修正済み。LLM初期化条件とプロンプトフォールバックは軽微な改善点。"
+}

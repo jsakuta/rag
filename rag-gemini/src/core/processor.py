@@ -8,6 +8,7 @@ from config import SearchConfig
 from src.handlers.input_handler import InputHandlerFactory
 from src.handlers.output_handler import OutputHandlerFactory
 from src.core.searcher import Searcher
+from src.core.impact_analyzer import ImpactAnalyzer
 from src.utils.logger import setup_logger
 from tqdm import tqdm
 
@@ -21,6 +22,13 @@ class Processor:
         self.searcher = Searcher(config)
         # 参照データ用のハンドラーを別途作成
         self.reference_handler = InputHandlerFactory.create(config.reference_type, config)
+
+        # 多段階検索モードの場合、影響分析モジュールを初期化
+        if config.search_mode == "multi_stage":
+            self.impact_analyzer = ImpactAnalyzer(config)
+            logger.info("ImpactAnalyzer initialized for multi-stage search mode")
+        else:
+            self.impact_analyzer = None
 
     def process_data(self, mode: str = "batch"):
         """データ処理のメイン関数"""
@@ -87,10 +95,42 @@ class Processor:
 
             logger.info(f"=== 全処理完了 ===")
             logger.info(f"最終的なall_resultsの総数: {len(all_results)}")
-            
-            # 結果の保存
-            self.output_handler.save_data(all_results, mode=mode)
+
+            # 多段階検索モードの場合は影響分析と3シート出力
+            if self.config.search_mode == "multi_stage":
+                self._process_multi_stage_results(all_results, input_data)
+            else:
+                # 通常モード: 従来の出力
+                self.output_handler.save_data(all_results, mode=mode)
 
         except Exception as e:
             logger.error(f"Error processing data: {str(e)}", exc_info=True)
             raise
+
+    def _process_multi_stage_results(self, results: list, input_data: list):
+        """多段階検索結果のLLM影響分析と3シート出力"""
+        logger.info("=== 多段階検索結果の後処理開始 ===")
+
+        if self.impact_analyzer and self.config.multi_stage_enable_llm_analysis:
+            revision_map = {str(item.get("number")): item.get("query", "") for item in input_data}
+
+            for result in tqdm(results, desc="Analyzing impact"):
+                input_num = result.get('Input_Number', '')
+                analysis = self.impact_analyzer.analyze_impact(
+                    revision_map.get(input_num, result.get('Original_Query', '')),
+                    result.get('Search_Result_Q', ''),
+                    result.get('Search_Result_A', '')
+                )
+                result['Impact_Reason'] = analysis['impact_reason']
+                result['Modification_Suggestion'] = analysis['modification_suggestion']
+
+            logger.info("LLM影響分析完了")
+        else:
+            for result in results:
+                result['Impact_Reason'] = ""
+                result['Modification_Suggestion'] = ""
+
+        # 3シート出力
+        logger.info("3シートExcel出力を実行中...")
+        self.output_handler.save_data_multi_stage(results, mode="multi_stage")
+        logger.info("=== 多段階検索結果の後処理完了 ===")

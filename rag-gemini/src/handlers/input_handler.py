@@ -422,6 +422,44 @@ class MultiFolderInputHandler(InputHandler):
 
 # 他の入力形式 (CSV, JSONなど) のハンドラーもここに追加可能
 
+class TextInputHandler(InputHandler):
+    """テキストファイル入力用ハンドラー（多段階検索の改定内容入力用）"""
+
+    def load_data(self) -> list:
+        """テキストファイルから改定内容を読み込み"""
+        import re
+
+        txt_files = sorted([
+            f for f in glob.glob(os.path.join(self.input_dir, "*.txt"))
+            if not os.path.basename(f).startswith(('~', '.'))
+        ])
+
+        if not txt_files:
+            raise FileNotFoundError(f"No .txt files found in {self.input_dir}")
+
+        data = []
+        for i, txt_file in enumerate(txt_files, start=1):
+            filename = os.path.basename(txt_file)
+            self.current_file = filename
+
+            match = re.match(r'^(\d+)', filename)
+            number = match.group(1) if match else str(i)
+
+            with open(txt_file, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+
+            if content:
+                data.append({"number": number, "query": content, "answer": ""})
+                logger.info(f"Loaded: {filename} (number={number}, length={len(content)})")
+
+        logger.info(f"Total {len(data)} text files loaded")
+        return data
+
+    def load_reference_data(self) -> dict:
+        """テキスト入力では参照データをMultiFolderHandlerに委譲"""
+        return MultiFolderInputHandler(self.config).load_reference_data()
+
+
 class InputHandlerFactory:
     @staticmethod
     def create(input_type: str, config: SearchConfig) -> InputHandler:
@@ -431,6 +469,8 @@ class InputHandlerFactory:
             return HierarchicalExcelInputHandler(config)
         elif input_type == "multi_folder":
             return MultiFolderInputHandler(config)
+        elif input_type == "text":
+            return TextInputHandler(config)
         # 他の入力形式に対応するハンドラーをここに追加
         else:
             raise ValueError(f"Unsupported input type: {input_type}")

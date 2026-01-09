@@ -101,6 +101,118 @@ class ExcelOutputHandler(OutputHandler):
                 if pd.isna(value):
                     value = ''
                 worksheet.write(row_num + 1, col_num, value, cell_format)
+
+    def save_data_multi_stage(self, data: list, mode: str = "multi_stage"):
+        """多段階検索結果を3シートに分けて保存"""
+        if not data:
+            logger.warning("No data to save.")
+            return
+
+        df = pd.DataFrame(data)
+        has_category = 'Search_Category' in df.columns
+
+        categories = {
+            name: df[df['Search_Category'] == name] if has_category else pd.DataFrame()
+            for name in ['Both', 'Original_Only', 'LLM_Enhanced_Only']
+        }
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join(
+            self.output_dir,
+            f"output_{mode}_{self.config.get_param_summary()}_{timestamp}.xlsx"
+        )
+
+        try:
+            with pd.ExcelWriter(output_file, engine='xlsxwriter',
+                                engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
+                expected_columns = self._get_multi_stage_columns()
+
+                for sheet_name, sheet_df in categories.items():
+                    if sheet_df.empty:
+                        output_df = pd.DataFrame(columns=expected_columns)
+                    else:
+                        output_df = sheet_df.drop(columns=['Search_Category'], errors='ignore')
+                        available_cols = [c for c in expected_columns if c in output_df.columns]
+                        output_df = output_df[available_cols]
+
+                    output_df.to_excel(writer, index=False, sheet_name=sheet_name)
+                    self._format_excel_multi_stage(writer, sheet_name, output_df)
+
+            logger.info(f"Multi-stage results saved to: {output_file}")
+            for name, cat_df in categories.items():
+                logger.info(f"  {name}: {len(cat_df)} rows")
+
+        except Exception as e:
+            logger.error(f"Error saving multi-stage data to Excel: {e}", exc_info=True)
+            raise
+
+    def _get_multi_stage_columns(self):
+        """多段階検索出力の列名リスト"""
+        return [
+            'Input_Number',
+            'Original_Query',
+            'Original_Answer',
+            'Search_Query',
+            'Search_Result_Q',
+            'Search_Result_A',
+            'Similarity',
+            'Impact_Reason',
+            'Modification_Suggestion',
+            'Vector_Weight',
+            'Top_K'
+        ]
+
+    def _format_excel_multi_stage(self, writer: pd.ExcelWriter, sheet_name: str, df: pd.DataFrame):
+        """多段階検索結果のExcel書式設定"""
+        worksheet = writer.sheets[sheet_name]
+        workbook = writer.book
+
+        sheet_colors = {
+            'Both': '#E2EFDA',
+            'Original_Only': '#FFF2CC',
+            'LLM_Enhanced_Only': '#DEEBF7'
+        }
+
+        header_format = workbook.add_format({
+            'font_name': 'メイリオ',
+            'font_size': 10,
+            'bold': True,
+            'border': 1,
+            'bg_color': sheet_colors.get(sheet_name, '#D9D9D9'),
+            'text_wrap': True,
+        })
+
+        cell_format = workbook.add_format({
+            'font_name': 'メイリオ',
+            'font_size': 10,
+            'border': 1,
+            'text_wrap': True,
+        })
+
+        column_widths = [8, 50, 30, 40, 50, 50, 10, 50, 50, 10, 8]
+        for i, width in enumerate(column_widths):
+            worksheet.set_column(i, i, width)
+
+        header_names = {
+            'Input_Number': '#', 'Original_Query': '改定内容', 'Original_Answer': '元回答',
+            'Search_Query': '検索クエリ', 'Search_Result_Q': '検索結果Q', 'Search_Result_A': '検索結果A',
+            'Similarity': '類似度', 'Impact_Reason': '影響の根拠', 'Modification_Suggestion': '修正案',
+            'Vector_Weight': 'ベクトル重み', 'Top_K': '候補数'
+        }
+
+        # ヘッダー行の書式設定
+        for col_num, col_name in enumerate(self._get_multi_stage_columns()):
+            worksheet.write(0, col_num, header_names.get(col_name, col_name), header_format)
+
+        # データセルの書式設定
+        for row_num in range(len(df)):
+            for col_num in range(len(df.columns)):
+                value = df.iloc[row_num, col_num]
+                if pd.isna(value):
+                    value = ''
+                worksheet.write(row_num + 1, col_num, value, cell_format)
+
+
 # 他の出力形式 (CSV, JSONなど) のハンドラーもここに追加可能
 
 class OutputHandlerFactory:
