@@ -1,0 +1,49 @@
+コードの変更内容を確認しました。JSON形式でレビュー結果を報告します。
+
+```json
+{
+  "issues": [
+    {
+      "file": "ui/chat.py",
+      "line": 166,
+      "severity": "medium",
+      "category": "bug",
+      "description": "search_modeが不正な値の場合、index()でValueErrorが発生する可能性がある",
+      "suggestion": "try-exceptで囲むか、getメソッドでデフォルト値を設定: current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0 は良いが、config初期化前にアクセスする可能性を考慮"
+    },
+    {
+      "file": "ui/chat.py",
+      "line": 178,
+      "severity": "medium",
+      "category": "bug",
+      "description": "multi_stage_thresholdとmulti_stage_enable_llm_analysisがSearchConfigに存在しない場合AttributeErrorになる",
+      "suggestion": "SearchConfigクラスにこれらの属性が定義されているか確認し、getattr()でデフォルト値付きアクセスを検討: getattr(st.session_state.config, 'multi_stage_threshold', 0.5)"
+    },
+    {
+      "file": "ui/chat.py",
+      "line": 173,
+      "severity": "low",
+      "category": "ux",
+      "description": "検索モード変更時にProcessorが再初期化されるが、ユーザーへのフィードバックがない",
+      "suggestion": "st.toast()やst.info()で「検索モードを変更しました」等の通知を追加"
+    },
+    {
+      "file": "ui/chat.py",
+      "line": 44,
+      "severity": "low",
+      "category": "code-quality",
+      "description": "category_colorsとcategory_labelsが関数内で毎回定義される",
+      "suggestion": "モジュールレベルの定数として定義することでパフォーマンス向上: CATEGORY_COLORS = {...}, CATEGORY_LABELS = {...}"
+    },
+    {
+      "file": "ui/chat.py",
+      "line": 208,
+      "severity": "low",
+      "category": "code-quality",
+      "description": "response.get('Search_Category')のNoneチェックは良いが、コメントで多段階検索時のみと記載しているのでドキュメント性は良好",
+      "suggestion": "特になし（現状で問題なし）"
+    }
+  ],
+  "summary": "全体的に良い実装。主な懸念点は(1)SearchConfigに新属性multi_stage_threshold/multi_stage_enable_llm_analysisが定義されているか確認が必要、(2)検索モード変更時のユーザーフィードバック追加を推奨。後方互換性は維持されており、既存の検索機能への影響はない。session_stateの使用方法も適切。"
+}
+```

@@ -86,7 +86,8 @@ class SearchConfig:
     # 多段階検索設定（インスタンス変数）
     multi_stage_threshold: float = MULTI_STAGE_THRESHOLD
     multi_stage_max_results: int = MULTI_STAGE_MAX_RESULTS
-    multi_stage_enable_llm_analysis: bool = True  # LLM影響分析の有効化
+    multi_stage_enable_judgment_support: bool = True  # LLM判断支援の有効化
+    judgment_support_prompt_path: str = "prompt/judgment_support.txt"  # 判断支援プロンプトファイル
     
     # 埋め込みモデル設定
     embedding_provider: str = DEFAULT_EMBEDDING_PROVIDER

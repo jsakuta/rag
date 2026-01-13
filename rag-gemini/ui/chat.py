@@ -1,4 +1,8 @@
 # --- chat.py (旧 ui.py) ---
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import streamlit as st
 from dotenv import load_dotenv
 load_dotenv()  # .envファイルから環境変数を読み込み
@@ -8,6 +12,7 @@ from src.core.processor import Processor
 from src.utils.logger import setup_logger
 import datetime
 import os
+import html
 
 logger = setup_logger(__name__)
 
@@ -19,6 +24,7 @@ def initialize_session_state():
         st.session_state.processing_query = False
     if "config" not in st.session_state:
         st.session_state.config = SearchConfig(
+            search_mode="original",  # UIで切り替え可能
             top_k=3,
             llm_provider="gemini",
             llm_model="gemini-2.0-flash-001",
@@ -31,22 +37,44 @@ def initialize_session_state():
         st.session_state.business_area = "預金"
 
 def format_message(message, is_user=False):
+    escaped_message = html.escape(str(message))
     style = f"""
         <div style="display: flex; justify-content: {'flex-end' if is_user else 'flex-start'}; margin: 5px 0;">
             <div style="background-color: {'#e6f3ff' if is_user else '#f5f5f5'}; padding: 10px 15px;
                 border-radius: 15px; max-width: 80%; {'margin-left: auto;' if is_user else ''}">
-                {message}
+                {escaped_message}
             </div>
         </div>
     """
     return style
 
-def format_response_card(number, similarity, query, answer):
+def format_response_card(number, similarity, query, answer, category=None):
+    # XSS対策: ユーザー入力をエスケープ
+    query = html.escape(str(query))
+    answer = html.escape(str(answer))
+
+    # カテゴリバッジの色設定
+    category_colors = {
+        'Both': '#E2EFDA',
+        'Original_Only': '#FFF2CC',
+        'LLM_Enhanced_Only': '#DEEBF7'
+    }
+    category_labels = {
+        'Both': '両方',
+        'Original_Only': '原文のみ',
+        'LLM_Enhanced_Only': 'LLMのみ'
+    }
+    category_badge = ""
+    if category:
+        bg_color = category_colors.get(category, '#f0f0f0')
+        label = category_labels.get(category, category)
+        category_badge = f" <span style='background-color: {bg_color}; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;'>{label}</span>"
+
     return f"""
         <div class="response-card" style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 15px;
             margin: 10px 0; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <div style="color: #666; margin-bottom: 10px; font-size: 0.95em; padding-bottom: 8px;
-                border-bottom: 1px solid #eee;">候補 {number} (類似度: {similarity:.4f})
+                border-bottom: 1px solid #eee;">候補 {number} (類似度: {similarity:.4f}){category_badge}
             </div>
             <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin: 8px 0;">
                 <div style="font-weight: 600; margin-bottom: 5px;">類似質問内容:</div>
@@ -62,14 +90,19 @@ def format_response_card(number, similarity, query, answer):
 def process_query(query: str):
     st.session_state.processing_query = True
     try:
-        # Processorをキャッシュ（業務分野変更時は再初期化）
-        # Note: vector_weight/top_kはconfig参照経由で動的に反映されるため再初期化不要
-        if "processor" not in st.session_state or st.session_state.get("last_business_area") != st.session_state.business_area:
+        # Processorをキャッシュ（業務分野またはsearch_mode変更時は再初期化）
+        needs_reinit = (
+            "processor" not in st.session_state
+            or st.session_state.get("last_business_area") != st.session_state.business_area
+            or st.session_state.get("last_search_mode") != st.session_state.config.search_mode
+        )
+        if needs_reinit:
             st.session_state.processor = Processor(st.session_state.config)
             reference_data = st.session_state.processor.reference_handler.load_reference_data()
             st.session_state.processor.searcher.prepare_search(reference_data)
             st.session_state.processor.searcher._select_db_for_business(st.session_state.business_area)
             st.session_state.last_business_area = st.session_state.business_area
+            st.session_state.last_search_mode = st.session_state.config.search_mode
 
         processor = st.session_state.processor
         query_number = len(st.session_state.chat_history) // 2 + 1
@@ -138,6 +171,30 @@ def run_streamlit_ui():
     with st.sidebar:
         st.title("設定")
         with st.expander("パラメータ調整", expanded=True):
+            # 検索モード選択
+            search_modes = ["original", "llm_enhanced", "multi_stage"]
+            mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索", "multi_stage": "多段階OR検索"}
+            current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0
+            selected_mode = st.selectbox(
+                "検索モード",
+                search_modes,
+                format_func=lambda x: mode_labels[x],
+                index=current_mode_index
+            )
+            st.session_state.config.search_mode = selected_mode
+
+            # 多段階検索パラメータ（multi_stage時のみ表示）
+            if selected_mode == "multi_stage":
+                st.session_state.config.multi_stage_threshold = st.slider(
+                    "しきい値", 0.0, 1.0,
+                    st.session_state.config.multi_stage_threshold, 0.05
+                )
+                st.session_state.config.multi_stage_enable_judgment_support = st.checkbox(
+                    "LLM判断支援",
+                    value=st.session_state.config.multi_stage_enable_judgment_support
+                )
+
+            # 業務分野選択
             business_areas = ["預金", "融資", "外貨", "投信", "住宅ローン", "カード", "保険", "年金", "総則"]
             st.session_state.business_area = st.selectbox(
                 "業務分野",
@@ -158,7 +215,8 @@ def run_streamlit_ui():
             else:
                 if isinstance(msg["text"], list):
                     for idx, response in enumerate(msg["text"], 1):
-                        html = format_response_card(idx, response["Similarity"], response["Search_Result_Q"], response["Search_Result_A"])
+                        category = response.get("Search_Category")  # 多段階検索時のみ存在
+                        html = format_response_card(idx, response["Similarity"], response["Search_Result_Q"], response["Search_Result_A"], category)
                         st.markdown(html, unsafe_allow_html=True)
                 else:
                     st.markdown(format_message(msg["text"], False), unsafe_allow_html=True)

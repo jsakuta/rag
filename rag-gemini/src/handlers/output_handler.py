@@ -156,7 +156,8 @@ class ExcelOutputHandler(OutputHandler):
             'Search_Result_Q',
             'Search_Result_A',
             'Similarity',
-            'Impact_Reason',
+            'Relevance_Judgment',
+            'Judgment_Reason',
             'Modification_Suggestion',
             'Vector_Weight',
             'Top_K'
@@ -189,15 +190,15 @@ class ExcelOutputHandler(OutputHandler):
             'text_wrap': True,
         })
 
-        column_widths = [8, 50, 30, 40, 50, 50, 10, 50, 50, 10, 8]
+        column_widths = [8, 50, 30, 40, 50, 50, 10, 15, 50, 50, 10, 8]
         for i, width in enumerate(column_widths):
             worksheet.set_column(i, i, width)
 
         header_names = {
             'Input_Number': '#', 'Original_Query': '改定内容', 'Original_Answer': '元回答',
             'Search_Query': '検索クエリ', 'Search_Result_Q': '検索結果Q', 'Search_Result_A': '検索結果A',
-            'Similarity': '類似度', 'Impact_Reason': '影響の根拠', 'Modification_Suggestion': '修正案',
-            'Vector_Weight': 'ベクトル重み', 'Top_K': '候補数'
+            'Similarity': '類似度', 'Relevance_Judgment': '関連性判定', 'Judgment_Reason': '判定根拠',
+            'Modification_Suggestion': '修正案（参考）', 'Vector_Weight': 'ベクトル重み', 'Top_K': '候補数'
         }
 
         # ヘッダー行の書式設定

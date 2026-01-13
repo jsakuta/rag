@@ -8,7 +8,7 @@ from config import SearchConfig
 from src.handlers.input_handler import InputHandlerFactory
 from src.handlers.output_handler import OutputHandlerFactory
 from src.core.searcher import Searcher
-from src.core.impact_analyzer import ImpactAnalyzer
+from src.core.judgment_support import JudgmentSupport
 from src.utils.logger import setup_logger
 from tqdm import tqdm
 
@@ -23,12 +23,12 @@ class Processor:
         # 参照データ用のハンドラーを別途作成
         self.reference_handler = InputHandlerFactory.create(config.reference_type, config)
 
-        # 多段階検索モードの場合、影響分析モジュールを初期化
+        # 多段階検索モードの場合、判断支援モジュールを初期化
         if config.search_mode == "multi_stage":
-            self.impact_analyzer = ImpactAnalyzer(config)
-            logger.info("ImpactAnalyzer initialized for multi-stage search mode")
+            self.judgment_support = JudgmentSupport(config)
+            logger.info("JudgmentSupport initialized for multi-stage search mode")
         else:
-            self.impact_analyzer = None
+            self.judgment_support = None
 
     def process_data(self, mode: str = "batch"):
         """データ処理のメイン関数"""
@@ -108,26 +108,28 @@ class Processor:
             raise
 
     def _process_multi_stage_results(self, results: list, input_data: list):
-        """多段階検索結果のLLM影響分析と3シート出力"""
+        """多段階検索結果のLLM判断支援と3シート出力"""
         logger.info("=== 多段階検索結果の後処理開始 ===")
 
-        if self.impact_analyzer and self.config.multi_stage_enable_llm_analysis:
+        if self.judgment_support and self.config.multi_stage_enable_judgment_support:
             revision_map = {str(item.get("number")): item.get("query", "") for item in input_data}
 
-            for result in tqdm(results, desc="Analyzing impact"):
+            for result in tqdm(results, desc="Evaluating relevance"):
                 input_num = result.get('Input_Number', '')
-                analysis = self.impact_analyzer.analyze_impact(
+                evaluation = self.judgment_support.evaluate(
                     revision_map.get(input_num, result.get('Original_Query', '')),
                     result.get('Search_Result_Q', ''),
                     result.get('Search_Result_A', '')
                 )
-                result['Impact_Reason'] = analysis['impact_reason']
-                result['Modification_Suggestion'] = analysis['modification_suggestion']
+                result['Relevance_Judgment'] = evaluation['relevance_judgment']
+                result['Judgment_Reason'] = evaluation['judgment_reason']
+                result['Modification_Suggestion'] = evaluation['modification_suggestion']
 
-            logger.info("LLM影響分析完了")
+            logger.info("LLM判断支援完了")
         else:
             for result in results:
-                result['Impact_Reason'] = ""
+                result['Relevance_Judgment'] = ""
+                result['Judgment_Reason'] = ""
                 result['Modification_Suggestion'] = ""
 
         # 3シート出力
