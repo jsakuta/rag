@@ -202,7 +202,10 @@ def run_streamlit_ui():
                 index=business_areas.index(st.session_state.business_area)
             )
             st.session_state.config.vector_weight = st.slider("ベクトルの重み", 0.0, 1.0, st.session_state.config.vector_weight, 0.1)
-            st.session_state.config.top_k = st.number_input("表示する候補数", min_value=1, max_value=10, value=st.session_state.config.top_k, step=1)
+
+            # 多段階検索ではtop_kは使用しない（しきい値ベースのフィルタリング）
+            if selected_mode != "multi_stage":
+                st.session_state.config.top_k = st.number_input("表示する候補数", min_value=1, max_value=10, value=st.session_state.config.top_k, step=1)
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
             save_chat_history()
 

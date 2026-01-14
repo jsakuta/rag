@@ -4,19 +4,20 @@ import os
 from typing import List, Dict, Any, Optional
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import SearchConfig
 from src.utils.logger import setup_logger
+from src.utils.auth import initialize_vertex_ai
 
 logger = setup_logger(__name__)
 
+# Vertex AI以外のプロバイダー設定
 LLM_PROVIDERS = {
     "anthropic": ("ANTHROPIC_API_KEY", ChatAnthropic, "anthropic_api_key"),
     "openai": ("OPENAI_API_KEY", ChatOpenAI, "api_key"),
-    "gemini": ("GOOGLE_API_KEY", ChatGoogleGenerativeAI, "google_api_key"),
 }
 
 
@@ -37,6 +38,20 @@ class JudgmentSupport:
     def _setup_llm(self):
         """LLM設定メソッド"""
         provider = self.config.llm_provider
+
+        # Vertex AI (Gemini) の場合は専用の認証を使用
+        if provider == "gemini":
+            if not self.config.gemini_project_id:
+                raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
+            initialize_vertex_ai(self.config)
+            return ChatVertexAI(
+                model=self.config.llm_model,
+                temperature=0,
+                project=self.config.gemini_project_id,
+                location=self.config.gemini_location,
+            )
+
+        # その他のプロバイダー
         if provider not in LLM_PROVIDERS:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
