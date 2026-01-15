@@ -8,7 +8,8 @@ from typing import List, Dict, Any, Optional
 from sudachipy import Dictionary, tokenizer
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
+from src.utils.auth import initialize_vertex_ai, get_google_credentials
 from langchain_core.messages import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -84,15 +85,16 @@ class Searcher:
                 temperature=0
             )
         elif self.config.llm_provider == "gemini":
-            # Langchain ChatGoogleGenerativeAI を使用（統一されたインターフェース）
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY environment variable is not set")
-
-            return ChatGoogleGenerativeAI(
+            if not self.config.gemini_project_id:
+                raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
+            credentials = get_google_credentials(self.config)
+            initialize_vertex_ai(self.config, credentials)
+            return ChatVertexAI(
                 model=self.config.llm_model,
-                google_api_key=api_key,
-                temperature=0
+                temperature=0,
+                project=self.config.gemini_project_id,
+                location=self.config.gemini_location,
+                credentials=credentials,
             )
         else:
             raise ValueError(f"Unsupported LLM provider: {self.config.llm_provider}")
@@ -264,12 +266,9 @@ class Searcher:
         # 実際のDB選択は search メソッドで行われる
         self.vector_db = None  # 初期化時はNone、検索時に適切なコレクションを選択
         logger.info("動的DB管理システム用に初期化（コレクションは検索時に選択）")
-        
-        # データ変更チェックは動的DB管理システムで行われるため、ここではスキップ
-        logger.info("データ変更チェックは動的DB管理システムで実行済み")
-        
-        # データ変更チェックは動的DB管理システムで行われるため、ここではスキップ
-        logger.info("ベクトル化処理は動的DB管理システムで実行済み")
+
+        # 動的DB管理システムでベクトル化処理を実行
+        self._ensure_db_updated()
 
     def parse_enhanced_combined_text(self, combined_text: str) -> dict:
         """階層構造を含む結合テキストを解析（新形式：ラベル付き）"""
@@ -590,6 +589,34 @@ class Searcher:
             logger.debug(f"    最終結果{j+1}: Input_Number='{result.get('Input_Number', 'MISSING')}'")
 
         return results
+
+    def _ensure_db_updated(self) -> None:
+        """動的DB管理システムでベクトル化処理を実行
+
+        参照ファイルを分析し、必要に応じてDBを更新する。
+        """
+        if not self.db_manager:
+            logger.warning("db_managerが未設定のため、DB更新をスキップ")
+            return
+
+        try:
+            # 参照ファイルを業務分野ごとに分析
+            business_areas = self.db_manager.analyze_reference_files()
+
+            if not business_areas:
+                logger.warning("参照ファイルが見つかりませんでした")
+                return
+
+            # 各業務分野のDBを更新
+            for business_area, files in business_areas.items():
+                logger.info(f"業務分野 '{business_area}' のDB更新チェック中...")
+                self.db_manager.update_business_db(business_area, files)
+
+            logger.info("動的DB管理システムによるベクトル化処理が完了しました")
+
+        except DynamicDBError as e:
+            logger.error(f"動的DB更新エラー: {e}")
+            raise
 
     def _select_db_for_business(self, business_area: str):
         """業務分野に対応するDBを選択"""
