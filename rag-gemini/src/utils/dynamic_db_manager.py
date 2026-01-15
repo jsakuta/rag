@@ -150,13 +150,14 @@ class DynamicDBManager:
         return business_areas
     
     def _get_files_in_directory(self, directory: str) -> List[str]:
-        """ディレクトリ内のExcelファイルを取得"""
+        """ディレクトリ内のExcelファイルを取得（一時ファイルを除外）"""
         if not os.path.exists(directory):
             return []
-        
+
         files = []
         for file in os.listdir(directory):
-            if file.endswith('.xlsx'):
+            # Excelの一時ファイル（~$で始まる）を除外
+            if file.endswith('.xlsx') and not file.startswith('~$'):
                 files.append(file)
         return files
     

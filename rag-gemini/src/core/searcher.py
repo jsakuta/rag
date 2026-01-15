@@ -267,8 +267,8 @@ class Searcher:
         self.vector_db = None  # 初期化時はNone、検索時に適切なコレクションを選択
         logger.info("動的DB管理システム用に初期化（コレクションは検索時に選択）")
 
-        # 動的DB管理システムでベクトル化処理を実行
-        self._ensure_db_updated()
+        # ベクトル化処理は検索時に必要な業務分野のみ実行される
+        # （_select_db_for_business内でneeds_updateをチェック）
 
     def parse_enhanced_combined_text(self, combined_text: str) -> dict:
         """階層構造を含む結合テキストを解析（新形式：ラベル付き）"""
