@@ -10,7 +10,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import SearchConfig
 from src.utils.logger import setup_logger
-from src.utils.auth import initialize_vertex_ai
+from src.utils.auth import initialize_vertex_ai, get_google_credentials
 
 logger = setup_logger(__name__)
 
@@ -43,12 +43,14 @@ class JudgmentSupport:
         if provider == "gemini":
             if not self.config.gemini_project_id:
                 raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
-            initialize_vertex_ai(self.config)
+            credentials = get_google_credentials(self.config)
+            initialize_vertex_ai(self.config, credentials)
             return ChatVertexAI(
                 model=self.config.llm_model,
                 temperature=0,
                 project=self.config.gemini_project_id,
                 location=self.config.gemini_location,
+                credentials=credentials,
             )
 
         # その他のプロバイダー

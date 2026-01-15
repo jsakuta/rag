@@ -48,7 +48,8 @@ def format_message(message, is_user=False):
     """
     return style
 
-def format_response_card(number, similarity, query, answer, category=None):
+def format_response_card(number, similarity, query, answer, category=None,
+                         relevance_judgment=None, judgment_reason=None, modification_suggestion=None):
     # XSS対策: ユーザー入力をエスケープ
     query = html.escape(str(query))
     answer = html.escape(str(answer))
@@ -70,11 +71,51 @@ def format_response_card(number, similarity, query, answer, category=None):
         label = category_labels.get(category, category)
         category_badge = f" <span style='background-color: {bg_color}; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;'>{label}</span>"
 
+    # 関連性判定バッジの色設定
+    relevance_colors = {
+        '関連あり': '#c8e6c9',
+        '要確認': '#fff9c4',
+        '関連なし': '#ffcdd2',
+        '判断支援無効': '#e0e0e0',
+        'エラー': '#ffcdd2'
+    }
+    relevance_badge = ""
+    if relevance_judgment:
+        # 関連性判定の最初の単語を取得（「関連あり」「要確認」「関連なし」など）
+        judgment_key = relevance_judgment.split()[0] if relevance_judgment else ""
+        bg_color = relevance_colors.get(judgment_key, '#e0e0e0')
+        escaped_judgment = html.escape(str(relevance_judgment))
+        relevance_badge = f" <span style='background-color: {bg_color}; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;'>{escaped_judgment}</span>"
+
+    # LLM分析セクション（関連性判定がある場合のみ表示）
+    llm_analysis_section = ""
+    if relevance_judgment and relevance_judgment not in ['判断支援無効', '']:
+        escaped_reason = html.escape(str(judgment_reason)) if judgment_reason else ""
+        escaped_suggestion = html.escape(str(modification_suggestion)) if modification_suggestion else ""
+
+        llm_analysis_section = f"""
+            <div style="background-color: #e3f2fd; padding: 12px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #1976d2;">
+                <div style="font-weight: 600; margin-bottom: 8px; color: #1565c0;">LLM分析</div>
+                <div style="margin-bottom: 6px;">
+                    <span style="color: #666; font-size: 0.9em;">関連性:</span>
+                    <span style="margin-left: 8px;">{escaped_judgment}</span>
+                </div>
+                <div style="margin-bottom: 6px;">
+                    <span style="color: #666; font-size: 0.9em;">根拠:</span>
+                    <div style="margin-left: 8px; margin-top: 4px; white-space: pre-wrap;">{escaped_reason}</div>
+                </div>
+                <div>
+                    <span style="color: #666; font-size: 0.9em;">修正案:</span>
+                    <div style="margin-left: 8px; margin-top: 4px; white-space: pre-wrap;">{escaped_suggestion if escaped_suggestion else "なし"}</div>
+                </div>
+            </div>
+        """
+
     return f"""
         <div class="response-card" style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 15px;
             margin: 10px 0; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <div style="color: #666; margin-bottom: 10px; font-size: 0.95em; padding-bottom: 8px;
-                border-bottom: 1px solid #eee;">候補 {number} (類似度: {similarity:.4f}){category_badge}
+                border-bottom: 1px solid #eee;">候補 {number} (類似度: {similarity:.4f}){category_badge}{relevance_badge}
             </div>
             <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin: 8px 0;">
                 <div style="font-weight: 600; margin-bottom: 5px;">類似質問内容:</div>
@@ -84,17 +125,19 @@ def format_response_card(number, similarity, query, answer, category=None):
                 <div style="font-weight: 600; margin-bottom: 5px;">回答:</div>
                 <div style="white-space: pre-wrap;">{answer}</div>
             </div>
+            {llm_analysis_section}
         </div>
     """
 
 def process_query(query: str):
     st.session_state.processing_query = True
     try:
-        # Processorをキャッシュ（業務分野またはsearch_mode変更時は再初期化）
+        # Processorをキャッシュ（業務分野、search_mode、LLM判断支援設定変更時は再初期化）
         needs_reinit = (
             "processor" not in st.session_state
             or st.session_state.get("last_business_area") != st.session_state.business_area
             or st.session_state.get("last_search_mode") != st.session_state.config.search_mode
+            or st.session_state.get("last_judgment_support") != st.session_state.config.multi_stage_enable_judgment_support
         )
         if needs_reinit:
             st.session_state.processor = Processor(st.session_state.config)
@@ -103,15 +146,40 @@ def process_query(query: str):
             st.session_state.processor.searcher._select_db_for_business(st.session_state.business_area)
             st.session_state.last_business_area = st.session_state.business_area
             st.session_state.last_search_mode = st.session_state.config.search_mode
+            st.session_state.last_judgment_support = st.session_state.config.multi_stage_enable_judgment_support
 
         processor = st.session_state.processor
         query_number = len(st.session_state.chat_history) // 2 + 1
+
+        # ログ: 処理開始
+        is_multi_stage = st.session_state.config.search_mode == "multi_stage"
+        judgment_enabled = st.session_state.config.multi_stage_enable_judgment_support
+        logger.info(f"=== 質問 {query_number} の処理開始 ===")
+        logger.info(f"クエリ: {query[:80]}..." if len(query) > 80 else f"クエリ: {query}")
+        logger.info(f"検索モード: {st.session_state.config.search_mode} (LLM判断支援: {'有効' if judgment_enabled else '無効'})")
+
         results = processor.searcher.search(str(query_number), query, "")
 
         if results:
+            logger.info(f"検索結果数: {len(results)}件")
+            # 検索結果のログ出力
+            for i, result in enumerate(results, 1):
+                category = result.get('Search_Category', 'N/A')
+                similarity = result.get('Similarity', 0)
+                logger.info(f"  結果{i}: 類似度={similarity:.4f}, カテゴリ={category}")
+
+            # 最新の検索結果を保存（LLM分析用）
+            st.session_state.last_query = query
+            st.session_state.last_results = results
+
             st.session_state.chat_history.append({"type": "bot", "text": results})
         else:
+            logger.info("検索結果: 該当なし")
+            st.session_state.last_query = None
+            st.session_state.last_results = None
             st.session_state.chat_history.append({"type": "bot", "text": "該当する結果が見つかりませんでした。"})
+
+        logger.info(f"=== 質問 {query_number} の検索完了 ===")
 
     except Exception as e:
         error_message = f"エラーが発生しました: {str(e)}"
@@ -120,6 +188,48 @@ def process_query(query: str):
         st.session_state.chat_history.append({"type": "bot", "text": error_message})
     finally:
         st.session_state.processing_query = False
+
+
+def run_llm_analysis():
+    """最新の検索結果に対してLLM分析を実行"""
+    if "last_results" not in st.session_state or not st.session_state.last_results:
+        st.warning("分析対象の検索結果がありません。")
+        return
+
+    if "processor" not in st.session_state:
+        st.error("Processorが初期化されていません。")
+        return
+
+    processor = st.session_state.processor
+    if not hasattr(processor, 'judgment_support') or processor.judgment_support is None:
+        st.error("JudgmentSupportが初期化されていません。")
+        return
+
+    results = st.session_state.last_results
+    query = st.session_state.last_query
+    judgment_support = processor.judgment_support
+
+    logger.info(f"=== LLM分析開始 ({len(results)}件) ===")
+
+    for i, result in enumerate(results, 1):
+        evaluation = judgment_support.evaluate(
+            query,
+            result.get('Search_Result_Q', ''),
+            result.get('Search_Result_A', '')
+        )
+        result['Relevance_Judgment'] = evaluation['relevance_judgment']
+        result['Judgment_Reason'] = evaluation['judgment_reason']
+        result['Modification_Suggestion'] = evaluation['modification_suggestion']
+        logger.info(f"  結果{i}: → LLM判定: {evaluation['relevance_judgment']}")
+
+    # チャット履歴の最新の結果を更新
+    if st.session_state.chat_history:
+        for msg in reversed(st.session_state.chat_history):
+            if msg["type"] == "bot" and isinstance(msg["text"], list):
+                msg["text"] = results
+                break
+
+    logger.info("=== LLM分析完了 ===")
 
 def save_chat_history():
     """チャット履歴を保存"""
@@ -219,10 +329,32 @@ def run_streamlit_ui():
                 if isinstance(msg["text"], list):
                     for idx, response in enumerate(msg["text"], 1):
                         category = response.get("Search_Category")  # 多段階検索時のみ存在
-                        html = format_response_card(idx, response["Similarity"], response["Search_Result_Q"], response["Search_Result_A"], category)
-                        st.markdown(html, unsafe_allow_html=True)
+                        # LLM分析結果（多段階検索+LLM判断支援有効時のみ存在）
+                        relevance_judgment = response.get("Relevance_Judgment")
+                        judgment_reason = response.get("Judgment_Reason")
+                        modification_suggestion = response.get("Modification_Suggestion")
+                        card_html = format_response_card(
+                            idx, response["Similarity"],
+                            response["Search_Result_Q"], response["Search_Result_A"],
+                            category, relevance_judgment, judgment_reason, modification_suggestion
+                        )
+                        st.markdown(card_html, unsafe_allow_html=True)
                 else:
                     st.markdown(format_message(msg["text"], False), unsafe_allow_html=True)
+
+        # LLM分析ボタン（多段階検索+LLM判断支援有効+検索結果あり時のみ表示）
+        show_llm_button = (
+            st.session_state.config.search_mode == "multi_stage"
+            and st.session_state.config.multi_stage_enable_judgment_support
+            and st.session_state.get("last_results")
+            and not any(r.get("Relevance_Judgment") for r in st.session_state.get("last_results", []))
+        )
+        if show_llm_button:
+            if st.button("LLM分析を実行", use_container_width=True, type="primary"):
+                with st.spinner("LLM分析を実行中..."):
+                    run_llm_analysis()
+                st.rerun()
+
         st.markdown('<div style="height: 50px;"></div>', unsafe_allow_html=True)
 
     with st.form(key="chat_form", clear_on_submit=True):
