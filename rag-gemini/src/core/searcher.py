@@ -590,10 +590,11 @@ class Searcher:
 
         return results
 
-    def _ensure_db_updated(self) -> None:
-        """動的DB管理システムでベクトル化処理を実行
+    def _ensure_db_updated_for_business(self, business_area: str) -> None:
+        """特定の業務分野のDBを必要に応じて更新
 
-        参照ファイルを分析し、必要に応じてDBを更新する。
+        Args:
+            business_area: 更新対象の業務分野名
         """
         if not self.db_manager:
             logger.warning("db_managerが未設定のため、DB更新をスキップ")
@@ -601,44 +602,45 @@ class Searcher:
 
         try:
             # 参照ファイルを業務分野ごとに分析
-            business_areas = self.db_manager.analyze_reference_files()
+            all_business_areas = self.db_manager.analyze_reference_files()
 
-            if not business_areas:
-                logger.warning("参照ファイルが見つかりませんでした")
+            if business_area not in all_business_areas:
+                logger.warning(f"業務分野 '{business_area}' の参照ファイルが見つかりません")
                 return
 
-            # 各業務分野のDBを更新
-            for business_area, files in business_areas.items():
-                logger.info(f"業務分野 '{business_area}' のDB更新チェック中...")
-                self.db_manager.update_business_db(business_area, files)
-
-            logger.info("動的DB管理システムによるベクトル化処理が完了しました")
+            # 指定された業務分野のみ更新
+            files = all_business_areas[business_area]
+            logger.info(f"業務分野 '{business_area}' のDB更新チェック中...")
+            self.db_manager.update_business_db(business_area, files)
 
         except DynamicDBError as e:
             logger.error(f"動的DB更新エラー: {e}")
             raise
 
     def _select_db_for_business(self, business_area: str):
-        """業務分野に対応するDBを選択"""
+        """業務分野に対応するDBを選択（必要に応じて更新）"""
         if not self.db_manager:
             return
-        
+
         try:
+            # この業務分野のDB更新が必要かチェックして更新
+            self._ensure_db_updated_for_business(business_area)
+
             db_path = self.db_manager.get_db_path_for_business(business_area)
-            
+
             # 日本語の業務分野名を英語に変換
             english_name = self.db_manager._translate_business_area(business_area)
-            
+
             # ChromaDBクライアントの切り替え
             from src.utils.vector_db import MetadataVectorDB
             self.vector_db = MetadataVectorDB(
                 base_dir=self.config.base_dir,
                 collection_name=f"{english_name}_DB"
             )
-            
+
             self.current_db_path = db_path
             self.current_business_area = business_area
-            
+
             logger.info(f"DB切り替え完了: {english_name}_DB (業務分野: {business_area})")
 
         except DynamicDBError as e:
