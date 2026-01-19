@@ -9,9 +9,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import SearchConfig
 from src.utils.logger import setup_logger
-from src.utils.auth import create_llm
+from src.utils.auth import create_llm, create_embedding_model
 from src.utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
-from src.utils.gemini_embedding import GeminiEmbeddingModel
+from src.utils.base_embedding import BaseEmbeddingModel
 
 logger = setup_logger(__name__)
 
@@ -25,21 +25,21 @@ class Searcher:
         self,
         config: SearchConfig,
         db_manager: Optional[DynamicDBManager] = None,
-        embedding_model: Optional[GeminiEmbeddingModel] = None
+        embedding_model: Optional[BaseEmbeddingModel] = None
     ):
         """Searcherを初期化
 
         Args:
             config: 検索設定
             db_manager: 動的DB管理システム（省略時は自動生成）
-            embedding_model: 埋め込みモデル（省略時は自動生成）
+            embedding_model: 埋め込みモデル（省略時は設定に応じて自動生成）
         """
         self.config = config
         self.tokenizer = Dictionary().create()
         self.mode = tokenizer.Tokenizer.SplitMode.C
 
-        # 依存性注入: 外部から渡されなければ自動生成
-        self.model = embedding_model or GeminiEmbeddingModel(config)
+        # 依存性注入: 外部から渡されなければ設定に応じて自動生成
+        self.model = embedding_model or create_embedding_model(config)
         self.db_manager = db_manager or DynamicDBManager(config)
 
         self.current_db_path = None

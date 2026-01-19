@@ -1,5 +1,5 @@
 # --- utils/auth.py ---
-"""Google Cloud認証処理の共通モジュール"""
+"""Google Cloud認証処理の共通モジュール + 埋め込みモデルファクトリー"""
 import os
 from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, Type
 
@@ -12,6 +12,7 @@ from src.utils.logger import setup_logger
 
 if TYPE_CHECKING:
     from config import SearchConfig
+    from src.utils.base_embedding import BaseEmbeddingModel
 
 logger = setup_logger(__name__)
 
@@ -107,3 +108,51 @@ def create_llm(config: 'SearchConfig'):
         raise ValueError(f"{env_key} environment variable is not set")
 
     return llm_class(**{api_param: api_key, "model": config.llm_model, "temperature": 0})
+
+
+def create_embedding_model(config: 'SearchConfig', use_singleton: bool = True) -> 'BaseEmbeddingModel':
+    """埋め込みモデルのファクトリー関数
+
+    config.embedding_provider に応じて適切な埋め込みモデルを生成します。
+
+    Args:
+        config: SearchConfig インスタンス
+        use_singleton: シングルトンインスタンスを使用するかどうか（デフォルト: True）
+
+    Returns:
+        BaseEmbeddingModel: 埋め込みモデルインスタンス
+
+    Raises:
+        ValueError: サポートされていないプロバイダーの場合
+
+    使用例:
+        >>> from config import SearchConfig
+        >>> from src.utils.auth import create_embedding_model
+        >>>
+        >>> # Gemini (Vertex AI) を使用
+        >>> config = SearchConfig(embedding_provider="vertex_ai")
+        >>> model = create_embedding_model(config)
+        >>>
+        >>> # Azure OpenAI を使用
+        >>> config = SearchConfig(embedding_provider="azure_openai")
+        >>> model = create_embedding_model(config)
+    """
+    provider = config.embedding_provider
+
+    if provider == "vertex_ai":
+        from src.utils.gemini_embedding import GeminiEmbeddingModel
+        if use_singleton:
+            return GeminiEmbeddingModel.get_instance(config)
+        return GeminiEmbeddingModel(config)
+
+    elif provider == "azure_openai":
+        from src.utils.azure_embedding import AzureOpenAIEmbeddingModel
+        if use_singleton:
+            return AzureOpenAIEmbeddingModel.get_instance(config)
+        return AzureOpenAIEmbeddingModel(config)
+
+    else:
+        raise ValueError(
+            f"Unsupported embedding provider: {provider}. "
+            f"Supported providers: vertex_ai, azure_openai"
+        )

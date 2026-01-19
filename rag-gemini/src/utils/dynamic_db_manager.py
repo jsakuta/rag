@@ -343,9 +343,9 @@ class DynamicDBManager:
 
         # 埋め込み生成（API到達性 + 形状検証）
         try:
-            from src.utils.gemini_embedding import GeminiEmbeddingModel
+            from src.utils.auth import create_embedding_model
 
-            embedding_model = GeminiEmbeddingModel(self.config)
+            embedding_model = create_embedding_model(self.config)
             sample_embeddings = embedding_model.encode(sample_texts, normalize_embeddings=True)
         except Exception as e:
             raise DynamicDBError(f"埋め込み生成の事前検証に失敗しました: {e}")
@@ -446,10 +446,10 @@ class DynamicDBManager:
             
             # 参照データの準備
             reference_data = self._prepare_reference_data_for_vectorization()
-            
-            # ベクトル化モデルの初期化
-            from src.utils.gemini_embedding import GeminiEmbeddingModel
-            embedding_model = GeminiEmbeddingModel(self.config)
+
+            # ベクトル化モデルの初期化（プロバイダー設定に応じて自動切替）
+            from src.utils.auth import create_embedding_model
+            embedding_model = create_embedding_model(self.config)
             
             # テキストのベクトル化
             texts = reference_data['combined_texts']

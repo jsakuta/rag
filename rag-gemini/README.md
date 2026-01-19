@@ -34,7 +34,7 @@
 |------|------------|-----------|---------------|
 | **主な用途** | 最新技術・高精度 | バッチ処理 | 対話的検索 |
 | **ベクトルDB** | ChromaDB（永続化） | JSON キャッシュ | JSON キャッシュ |
-| **埋め込みモデル** | Gemini Embedding | multilingual-e5 | multilingual-e5 |
+| **埋め込みモデル** | Gemini / Azure OpenAI | multilingual-e5 | multilingual-e5 |
 | **検索モード** | 原文 / LLM拡張 | LLM要約 | LLM要約 |
 | **動的DB管理** | あり | なし | なし |
 
@@ -54,7 +54,7 @@ RAG-Gemini は、Google Vertex AI の Gemini Embedding API と ChromaDB を活�
 | 機能 | 説明 |
 |------|------|
 | **デュアル検索モード** | 原文検索 ↔ LLM 拡張検索の切り替え |
-| **Gemini Embedding** | 3072次元高精度ベクトル化（768/1536/3072選択可） |
+| **マルチ埋め込みモデル** | Gemini / Azure OpenAI 切り替え対応（3072次元） |
 | **ChromaDB 永続化** | メタデータ対応ベクトルデータベース |
 | **動的 DB 管理** | 業務領域別の自動 DB 管理 |
 | **複数フォルダ対応** | シナリオ + FAQ 履歴の統合処理 |
@@ -205,6 +205,21 @@ AZURE_KEY_VAULT_URL=https://your-vault.vault.azure.net/
 AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
 ```
 
+#### 5. Azure OpenAI Embedding 設定（オプション）
+
+Azure OpenAI を埋め込みモデルとして使用する場合:
+
+1. Azure Portal で OpenAI リソースを作成
+2. text-embedding-3-large モデルをデプロイ
+3. 環境変数を設定:
+
+```env
+EMBEDDING_PROVIDER=azure_openai
+AZURE_OPENAI_EMBEDDING_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_EMBEDDING_API_KEY=your_api_key
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+```
+
 ### データ配置
 
 ```bash
@@ -298,24 +313,38 @@ DEFAULT_ENABLE_QUERY_ENHANCEMENT = True
 出力: "検索クエリ: 銀行口座 新規開設 必要書類 手続き 流れ"
 ```
 
-### Gemini Embedding API
+### 埋め込みモデル
 
+2つのプロバイダーから選択可能:
+
+| プロバイダー | モデル | 次元数 | 特徴 |
+|-------------|--------|--------|------|
+| Vertex AI | gemini-embedding-001 | 3072 | Google Cloud 統合、MRL対応 |
+| Azure OpenAI | text-embedding-3-large | 3072 | Azure 統合、高精度 |
+
+#### プロバイダー切り替え
+
+**方法1: SearchConfig で指定**
 ```python
-# src/utils/gemini_embedding.py
-class GeminiEmbeddingModel:
-    def __init__(self):
-        self.model = TextEmbeddingModel.from_pretrained("gemini-embedding-001")
+from config import SearchConfig
 
-    def encode(self, texts, normalize_embeddings=True):
-        # バッチサイズ 5 で API 制限対応
-        embeddings = []
-        for batch in chunks(texts, 5):
-            result = self.model.get_embeddings(batch)
-            embeddings.extend([e.values for e in result])
-        return np.array(embeddings)
+# Gemini (デフォルト)
+config = SearchConfig(embedding_provider="vertex_ai")
+
+# Azure OpenAI
+config = SearchConfig(embedding_provider="azure_openai")
 ```
 
-**技術仕様:**
+**方法2: 環境変数で設定**
+```env
+# .env
+EMBEDDING_PROVIDER=azure_openai
+AZURE_OPENAI_EMBEDDING_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_EMBEDDING_API_KEY=your_api_key
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+```
+
+#### Vertex AI (Gemini)
 
 | 項目 | 値 |
 |------|-----|
@@ -327,7 +356,7 @@ class GeminiEmbeddingModel:
 
 **次元数の選択（Matryoshka Representation Learning）:**
 
-gemini-embedding-001はMatryoshka Representation Learningを採用しており、用途に応じて出力次元数を選択できます：
+gemini-embedding-001はMRLを採用しており、用途に応じて出力次元数を選択可能:
 
 | 次元数 | 用途 | 特徴 |
 |--------|------|------|
@@ -335,7 +364,19 @@ gemini-embedding-001はMatryoshka Representation Learningを採用しており�
 | 1536 | バランス | 精度とパフォーマンスの両立 |
 | 768 | コスト最適化 | ストレージ効率重視 |
 
-次元数は`output_dimensionality`パラメータで制御可能です。
+#### Azure OpenAI
+
+| 項目 | 値 |
+|------|-----|
+| モデル | text-embedding-3-large |
+| 次元数 | 3072 |
+| 正規化 | L2 正規化 |
+| バッチサイズ | 16（API上限 2048） |
+| 認証 | API キー |
+
+**エラーハンドリング:**
+- リトライ対象: 429 (Rate Limit)、5xx (Server Error)
+- 即座に失敗: 400 (Bad Request)、401 (Unauthorized)、403 (Forbidden)
 
 ### LLM プロバイダー
 
@@ -355,6 +396,10 @@ gemini-embedding-001はMatryoshka Representation Learningを採用しており�
 | `llm_model` | str | claude-3-5-sonnet-20241022 | LLM モデル |
 | `embedding_provider` | str | vertex_ai | 埋め込みプロバイダー |
 | `embedding_model` | str | gemini-embedding-001 | 埋め込みモデル |
+| `azure_openai_embedding_endpoint` | str | (環境変数) | Azure OpenAI エンドポイント |
+| `azure_openai_embedding_api_key` | str | (環境変数) | Azure OpenAI API キー |
+| `azure_openai_embedding_deployment` | str | text-embedding-3-large | デプロイメント名 |
+| `azure_openai_embedding_api_version` | str | 2024-02-01 | API バージョン |
 | `search_mode` | str | original | 検索モード |
 | `enable_query_enhancement` | bool | False | LLM クエリ拡張 |
 | `reference_type` | str | multi_folder | 参照データ形式 |
@@ -622,7 +667,14 @@ Source distribution:
 
 ## 変更履歴
 
-### V2.3 (最新)
+### V2.4 (最新)
+
+- Azure OpenAI text-embedding-3-large 対応
+- 埋め込みモデルのプロバイダー切り替え機能
+- スレッドセーフなシングルトン実装
+- API エラー分類によるリトライ最適化
+
+### V2.3
 
 - LLM 拡張検索モード実装
 - デュアル検索モード切り替え
@@ -667,6 +719,9 @@ langchain>=0.1.0
 langchain-anthropic>=0.0.1
 langchain-openai>=0.0.1
 langchain-google-genai>=0.0.1
+
+# Azure OpenAI
+openai>=1.0.0
 
 # 埋め込み
 sentence-transformers>=2.2.0
@@ -739,7 +794,9 @@ rag-gemini/
 │   │
 │   └── utils/
 │       ├── auth.py               # Google Cloud 認証
+│       ├── base_embedding.py     # 埋め込みモデル抽象基底クラス
 │       ├── gemini_embedding.py   # Gemini 埋め込みモデル
+│       ├── azure_embedding.py    # Azure OpenAI 埋め込みモデル
 │       ├── vector_db.py          # ChromaDB ラッパー
 │       ├── dynamic_db_manager.py # 動的 DB 管理
 │       ├── logger.py             # ログ設定

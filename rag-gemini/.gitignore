@@ -27,6 +27,12 @@ var/
 .env.local
 .env.*.local
 
+# 認証情報ファイル（CRITICAL - 絶対にコミットしない）
+gemini_credentials.json
+*_credentials.json
+*.pem
+*.key
+
 # ログファイル
 *.log
 logs/

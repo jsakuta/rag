@@ -28,8 +28,10 @@ class SearchConfig:
     MULTI_STAGE_MAX_RESULTS: int = 100        # 各検索の最大結果数
     
     # 埋め込みモデル設定
+    # 有効なプロバイダー: "vertex_ai" (Gemini), "azure_openai" (text-embedding-3-large)
     DEFAULT_EMBEDDING_PROVIDER: str = "vertex_ai"
     DEFAULT_EMBEDDING_MODEL: str = "gemini-embedding-001"
+    VALID_EMBEDDING_PROVIDERS: Tuple[str, ...] = ("vertex_ai", "azure_openai")
     
     # 動的DB管理設定
     DEFAULT_FORCE_DB_UPDATE: bool = False  # 強制DB更新フラグ
@@ -107,27 +109,46 @@ class SearchConfig:
     azure_key_vault_url: str = field(default_factory=lambda: os.getenv("AZURE_KEY_VAULT_URL", ""))
     azure_key_vault_scopes: str = field(default_factory=lambda: os.getenv("AZURE_KEY_VAULT_SCOPES", "https://www.googleapis.com/auth/cloud-platform"))
 
+    # Azure OpenAI Embedding 設定
+    azure_openai_embedding_endpoint: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_ENDPOINT", ""))
+    azure_openai_embedding_api_key: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_API_KEY", ""))
+    azure_openai_embedding_deployment: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"))
+    azure_openai_embedding_api_version: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_API_VERSION", "2024-02-01"))
+
     def __post_init__(self):
         """パラメータの検証とkeyword_weightの計算"""
         if not 0 <= self.vector_weight <= 1:
             raise ValueError("vector_weight must be between 0 and 1")
         self.keyword_weight = 1.0 - self.vector_weight
         self.base_dir = os.path.abspath(self.base_dir)
-        
+
         # 検索方式の検証
         if self.search_mode not in self.VALID_SEARCH_MODES:
             raise ValueError(f"search_mode must be one of {self.VALID_SEARCH_MODES}")
-            
-        self._validate_vertex_ai_config() # 新規追加: Vertex AI設定の検証
 
-    def _validate_vertex_ai_config(self):
-        """Vertex AI設定の検証"""
+        # 埋め込みプロバイダーの検証
+        if self.embedding_provider not in self.VALID_EMBEDDING_PROVIDERS:
+            raise ValueError(f"embedding_provider must be one of {self.VALID_EMBEDDING_PROVIDERS}")
+
+        self._validate_embedding_config()  # 埋め込み設定の検証
+
+    def _validate_embedding_config(self):
+        """埋め込みモデル設定の検証（Vertex AI / Azure OpenAI）"""
         if self.embedding_provider == "vertex_ai":
-            # 認証情報ファイルの存在確認
+            # Vertex AI: 認証情報ファイルの存在確認
             credentials_path = os.path.join(self.base_dir, self.gemini_credentials_path)
             if not os.path.exists(credentials_path):
                 logger.warning(f"Vertex AI credentials file not found: {credentials_path}")
                 logger.info("Please ensure GEMINI_CREDENTIALS_PATH is set correctly in .env file")
+
+        elif self.embedding_provider == "azure_openai":
+            # Azure OpenAI: 必須環境変数の確認
+            if not self.azure_openai_embedding_endpoint:
+                logger.warning("AZURE_OPENAI_EMBEDDING_ENDPOINT is not set")
+                logger.info("Please set AZURE_OPENAI_EMBEDDING_ENDPOINT in .env file")
+            if not self.azure_openai_embedding_api_key:
+                logger.warning("AZURE_OPENAI_EMBEDDING_API_KEY is not set")
+                logger.info("Please set AZURE_OPENAI_EMBEDDING_API_KEY in .env file")
 
     # 検索モードの有効な値
     VALID_SEARCH_MODES = ("original", "llm_enhanced", "multi_stage")
