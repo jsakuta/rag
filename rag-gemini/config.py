@@ -17,14 +17,14 @@ class SearchConfig:
     DEFAULT_LLM_PROVIDER: str = "anthropic"
     DEFAULT_LLM_MODEL: str = "claude-3-5-sonnet-20241022"
     DEFAULT_VECTOR_WEIGHT: float = 0.9  # バッチ処理用のデフォルト値
-    DEFAULT_UI_VECTOR_WEIGHT: float = 0.7 # UI用のデフォルト値
+    DEFAULT_UI_VECTOR_WEIGHT: float = 0.9 # UI用のデフォルト値
     
     # 検索方式設定（LLM拡張検索対応）
     DEFAULT_SEARCH_MODE: str = "original"  # "original" | "llm_enhanced" | "multi_stage"
     DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = False
 
     # 多段階検索設定
-    MULTI_STAGE_THRESHOLD: float = 0.5        # 統合スコアのしきい値
+    MULTI_STAGE_THRESHOLD: float = 0.45        # 統合スコアのしきい値
     MULTI_STAGE_MAX_RESULTS: int = 100        # 各検索の最大結果数
     
     # 埋め込みモデル設定

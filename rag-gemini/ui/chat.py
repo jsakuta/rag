@@ -28,7 +28,7 @@ def initialize_session_state():
             top_k=3,
             llm_provider="gemini",
             llm_model="gemini-2.0-flash-001",
-            vector_weight=0.7,
+            vector_weight=0.9,
             embedding_provider="vertex_ai",
             embedding_model="gemini-embedding-001",
             base_dir="."
@@ -90,26 +90,14 @@ def format_response_card(number, similarity, query, answer, category=None,
     # LLM分析セクション（関連性判定がある場合のみ表示）
     llm_analysis_section = ""
     if relevance_judgment and relevance_judgment not in ['判断支援無効', '']:
-        escaped_reason = html.escape(str(judgment_reason)) if judgment_reason else ""
-        escaped_suggestion = html.escape(str(modification_suggestion)) if modification_suggestion else ""
+        reason_text = html.escape(str(judgment_reason)) if judgment_reason else "-"
+        suggestion_text = html.escape(str(modification_suggestion)) if modification_suggestion else ""
 
-        llm_analysis_section = f"""
-            <div style="background-color: #e3f2fd; padding: 12px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #1976d2;">
-                <div style="font-weight: 600; margin-bottom: 8px; color: #1565c0;">LLM分析</div>
-                <div style="margin-bottom: 6px;">
-                    <span style="color: #666; font-size: 0.9em;">関連性:</span>
-                    <span style="margin-left: 8px;">{escaped_judgment}</span>
-                </div>
-                <div style="margin-bottom: 6px;">
-                    <span style="color: #666; font-size: 0.9em;">根拠:</span>
-                    <div style="margin-left: 8px; margin-top: 4px; white-space: pre-wrap;">{escaped_reason}</div>
-                </div>
-                <div>
-                    <span style="color: #666; font-size: 0.9em;">修正案:</span>
-                    <div style="margin-left: 8px; margin-top: 4px; white-space: pre-wrap;">{escaped_suggestion if escaped_suggestion else "なし"}</div>
-                </div>
-            </div>
-        """
+        # 修正案が空または「-」「なし」の場合は「なし」に統一
+        if not suggestion_text or suggestion_text.strip() in ['-', 'なし']:
+            suggestion_text = "なし"
+
+        llm_analysis_section = f"""<div style="background-color: #f0f7ff; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">LLM分析</div><div>関連性: {html.escape(str(relevance_judgment))}</div><div>根拠: {reason_text}</div><div>修正案: {suggestion_text}</div></div>"""
 
     return f"""
         <div class="response-card" style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 15px;
