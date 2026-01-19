@@ -23,6 +23,11 @@ class SearchConfig:
     DEFAULT_SEARCH_MODE: str = "original"  # "original" | "llm_enhanced" | "multi_stage"
     DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = False
 
+    # 検索対象設定
+    # "all": シナリオ+FAQ両方, "scenario": シナリオのみ, "history_data": FAQのみ
+    DEFAULT_SEARCH_SOURCE: str = "all"
+    VALID_SEARCH_SOURCES: Tuple[str, ...] = ("all", "scenario", "history_data")
+
     # 多段階検索設定
     MULTI_STAGE_THRESHOLD: float = 0.45        # 統合スコアのしきい値
     MULTI_STAGE_MAX_RESULTS: int = 100        # 各検索の最大結果数
@@ -88,6 +93,9 @@ class SearchConfig:
     search_mode: str = DEFAULT_SEARCH_MODE
     enable_query_enhancement: bool = DEFAULT_ENABLE_QUERY_ENHANCEMENT
 
+    # 検索対象設定
+    search_source: str = DEFAULT_SEARCH_SOURCE
+
     # 多段階検索設定（インスタンス変数）
     multi_stage_threshold: float = MULTI_STAGE_THRESHOLD
     multi_stage_max_results: int = MULTI_STAGE_MAX_RESULTS
@@ -128,6 +136,10 @@ class SearchConfig:
         # 検索方式の検証
         if self.search_mode not in self.VALID_SEARCH_MODES:
             raise ValueError(f"search_mode must be one of {self.VALID_SEARCH_MODES}")
+
+        # 検索対象の検証
+        if self.search_source not in self.VALID_SEARCH_SOURCES:
+            raise ValueError(f"search_source must be one of {self.VALID_SEARCH_SOURCES}")
 
         # 埋め込みプロバイダーの検証
         if self.embedding_provider not in self.VALID_EMBEDDING_PROVIDERS:

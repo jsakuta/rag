@@ -188,73 +188,24 @@ class DynamicDBManager:
         return f"{english_name}_{self.embedding_provider}_DB"
 
     def _migrate_existing_db(self):
-        """既存のDB移行処理（旧形式→プロバイダー別形式）
+        """既存DB移行処理
 
-        旧形式: {業務分野}_DB (例: deposit_DB)
-        新形式: {業務分野}_{provider}_DB (例: deposit_vertex_ai_DB)
-
-        既存DBがvertex_aiで作成されている場合のみ移行を実行。
+        注意: プロバイダー別のコレクション名が導入されたため、
+        旧形式のデータは移行せず、新規ベクトル化を強制する。
+        タイムスタンプのコピーは行わない（空のDBを「最新」と誤判定しないため）。
         """
-        # vertex_ai以外のプロバイダーでは移行不要
-        if self.embedding_provider != "vertex_ai":
-            logger.info(f"プロバイダー '{self.embedding_provider}' では既存DB移行は不要")
-            return
-
-        # 旧形式のタイムスタンプファイルが存在するか確認
+        # 旧形式のタイムスタンプファイルが存在する場合はバックアップ
         old_timestamp_file = os.path.join(self.base_db_path, "update_timestamps.json")
-        if not os.path.exists(old_timestamp_file):
-            logger.info("旧形式のタイムスタンプファイルが存在しないため、移行不要")
-            return
-
-        # 新形式のタイムスタンプファイルが既に存在する場合はスキップ
-        if os.path.exists(self.update_timestamp_file):
-            logger.info("新形式のタイムスタンプファイルが既に存在するため、移行済み")
-            return
-
-        logger.info("既存DB移行処理を開始（旧形式→プロバイダー別形式）...")
-
-        try:
-            # 旧形式のコレクションを新形式にリネーム
-            collections = self._chroma_client.list_collections()
-            migrated_count = 0
-
-            for collection in collections:
-                old_name = collection.name
-                # 旧形式のパターン: {english}_DB（プロバイダーが含まれていない）
-                if old_name.endswith("_DB") and "_vertex_ai_" not in old_name and "_azure_openai_" not in old_name:
-                    # プレフィックスを抽出
-                    prefix = old_name[:-3]  # "_DB" を除去
-                    new_name = f"{prefix}_vertex_ai_DB"
-
-                    # 既に新形式が存在する場合はスキップ
-                    try:
-                        self._chroma_client.get_collection(name=new_name)
-                        logger.info(f"新形式のコレクション '{new_name}' が既に存在するため、スキップ")
-                        continue
-                    except ChromaNotFoundError:
-                        pass
-
-                    # ChromaDBはリネームをサポートしていないため、
-                    # 旧コレクションはそのまま残し、新コレクション名でアクセスするようにする
-                    # 実際のデータ移行は次回のベクトル化時に行われる
-                    logger.info(f"コレクション移行予定: {old_name} → {new_name}")
-                    migrated_count += 1
-
-            # 旧タイムスタンプファイルを新形式にコピー
-            import shutil
-            shutil.copy2(old_timestamp_file, self.update_timestamp_file)
-            logger.info(f"タイムスタンプファイルを移行: {old_timestamp_file} → {self.update_timestamp_file}")
-
-            # 移行完了後、旧ファイルをバックアップとしてリネーム
+        if os.path.exists(old_timestamp_file):
             backup_file = old_timestamp_file + ".backup"
             if not os.path.exists(backup_file):
-                os.rename(old_timestamp_file, backup_file)
-                logger.info(f"旧タイムスタンプファイルをバックアップ: {backup_file}")
+                try:
+                    os.rename(old_timestamp_file, backup_file)
+                    logger.info(f"旧タイムスタンプファイルをバックアップ: {backup_file}")
+                except Exception as e:
+                    logger.warning(f"旧タイムスタンプファイルのバックアップに失敗: {e}")
 
-            logger.info(f"既存DB移行処理完了: {migrated_count}件のコレクションが移行対象")
-
-        except Exception as e:
-            logger.warning(f"既存DB移行処理中にエラー: {e}")
+        logger.info(f"プロバイダー '{self.embedding_provider}' 用のDB初期化（新規ベクトル化が必要）")
     
     def analyze_reference_files(self) -> Dict[str, Dict[str, List[Tuple[str, str]]]]:
         """参照ファイルを業務分野ごとに分類"""

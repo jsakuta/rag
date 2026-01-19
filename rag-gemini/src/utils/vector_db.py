@@ -49,7 +49,10 @@ class MetadataVectorDB:
             logger.debug(f"Collection not found, creating new one: {e}")
             self.collection = self.client.create_collection(
                 name=self.collection_name,
-                metadata={"description": f"RAG system vector database for {self.collection_name}"}
+                metadata={
+                    "description": f"RAG system vector database for {self.collection_name}",
+                    "hnsw:space": "cosine"  # コサイン距離を明示指定
+                }
             )
             logger.info(f"New collection '{self.collection_name}' created")
         except Exception as e:
@@ -181,7 +184,9 @@ class MetadataVectorDB:
                 'document': results['documents'][0][i],
                 'metadata': results['metadatas'][0][i],
                 'distance': results['distances'][0][i],
-                'similarity': 1.0 - results['distances'][0][i]  # 距離を類似度に変換
+                # コサイン距離の場合: distance = 1 - cos_similarity
+                # 類似度を0〜1の範囲にクリップ
+                'similarity': max(0.0, min(1.0, 1.0 - results['distances'][0][i]))
             })
         
         return formatted_results

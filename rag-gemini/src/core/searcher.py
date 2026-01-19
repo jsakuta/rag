@@ -425,6 +425,16 @@ class Searcher:
 
         return search_query, query_for_vector
 
+    def _build_source_filter(self) -> Optional[Dict[str, str]]:
+        """検索対象設定に基づいてソースフィルタを構築
+
+        Returns:
+            Optional[Dict]: ソースフィルタ（allの場合はNone）
+        """
+        if self.config.search_source == "all":
+            return None
+        return {"source": self.config.search_source}
+
     def _execute_vector_search(self, query_for_vector: str) -> List[Dict[str, Any]]:
         """ベクトル検索を実行
 
@@ -440,11 +450,16 @@ class Searcher:
         if self.vector_db is None:
             raise DynamicDBError("VectorDB not initialized. Call prepare_search() and _select_db_for_business() first.")
 
+        # 検索対象フィルタを構築
+        filter_metadata = self._build_source_filter()
+        if filter_metadata:
+            logger.info(f"  Search source filter: {filter_metadata}")
+
         query_vector = self.model.encode([query_for_vector], normalize_embeddings=True)[0]
         search_results = self.vector_db.search(
             query_embedding=query_vector,
             n_results=self.config.top_k * self.config.VECTOR_SEARCH_MULTIPLIER,
-            filter_metadata=None  # タグレス対応
+            filter_metadata=filter_metadata
         )
         logger.info(f"  Vector search returned {len(search_results)} results")
 
@@ -690,10 +705,16 @@ class Searcher:
                 collection_name=collection_name
             )
 
+            # コレクションの有効性チェック（ドキュメント数の確認）
+            info = self.vector_db.get_collection_info()
+            if info['document_count'] == 0:
+                logger.error(f"コレクション '{collection_name}' にドキュメントがありません。DB更新を実行してください。")
+                raise DynamicDBError(f"コレクション '{collection_name}' が空です。参照データのベクトル化が必要です。")
+
             self.current_db_path = db_path
             self.current_business_area = business_area
 
-            logger.info(f"DB切り替え完了: {collection_name} (業務分野: {business_area}, プロバイダー: {self.config.embedding_provider})")
+            logger.info(f"DB切り替え完了: {collection_name} (業務分野: {business_area}, プロバイダー: {self.config.embedding_provider}, ドキュメント数: {info['document_count']})")
 
         except DynamicDBError as e:
             logger.error(f"DB選択エラー: {e}")
@@ -760,9 +781,12 @@ class Searcher:
         if self.vector_db is None:
             raise DynamicDBError("VectorDB not initialized.")
 
+        # 検索対象フィルタを構築
+        filter_metadata = self._build_source_filter()
+
         query_vector = self.model.encode([query_for_vector], normalize_embeddings=True)[0]
         search_results = self.vector_db.search(
-            query_embedding=query_vector, n_results=max_results, filter_metadata=None
+            query_embedding=query_vector, n_results=max_results, filter_metadata=filter_metadata
         )
 
         keyword_similarities = self._calculate_keyword_similarities(search_results, keywords)

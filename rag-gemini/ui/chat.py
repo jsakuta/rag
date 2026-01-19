@@ -125,6 +125,7 @@ def _needs_processor_reinit() -> bool:
         st.session_state.get("last_business_area") != st.session_state.business_area
         or st.session_state.get("last_search_mode") != config.search_mode
         or st.session_state.get("last_judgment_support") != config.multi_stage_enable_judgment_support
+        or st.session_state.get("last_search_source") != config.search_source
     )
 
 
@@ -137,6 +138,7 @@ def _initialize_processor():
     st.session_state.last_business_area = st.session_state.business_area
     st.session_state.last_search_mode = st.session_state.config.search_mode
     st.session_state.last_judgment_support = st.session_state.config.multi_stage_enable_judgment_support
+    st.session_state.last_search_source = st.session_state.config.search_source
 
 
 def process_query(query: str):
@@ -153,7 +155,10 @@ def process_query(query: str):
         logger.info(f"=== 質問 {query_number} の処理開始 ===")
         query_display = f"{query[:80]}..." if len(query) > 80 else query
         logger.info(f"クエリ: {query_display}")
+        source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
+        search_source_label = source_labels.get(st.session_state.config.search_source, st.session_state.config.search_source)
         logger.info(f"検索モード: {st.session_state.config.search_mode} (LLM判断支援: {'有効' if judgment_enabled else '無効'})")
+        logger.info(f"検索対象: {search_source_label}")
 
         results = processor.searcher.search(str(query_number), query, "")
 
@@ -296,6 +301,18 @@ def run_streamlit_ui():
                 index=current_mode_index
             )
             st.session_state.config.search_mode = selected_mode
+
+            # 検索対象選択
+            search_sources = ["all", "scenario", "history_data"]
+            source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
+            current_source_index = search_sources.index(st.session_state.config.search_source) if st.session_state.config.search_source in search_sources else 0
+            selected_source = st.selectbox(
+                "検索対象",
+                search_sources,
+                format_func=lambda x: source_labels[x],
+                index=current_source_index
+            )
+            st.session_state.config.search_source = selected_source
 
             # 多段階検索パラメータ（multi_stage時のみ表示）
             if selected_mode == "multi_stage":
