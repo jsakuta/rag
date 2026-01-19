@@ -57,19 +57,29 @@ class BaseEmbeddingModel(ABC):
         """
         return self.encode([text], normalize_embeddings)[0]
 
+    # Division by Zero防止: ノルムの最小閾値
+    NORM_EPSILON = 1e-10
+
     @staticmethod
     def normalize_vector(vector: np.ndarray) -> np.ndarray:
-        """ベクトルをL2正規化
+        """ベクトルをL2正規化（数値安定性を考慮）
 
         Args:
             vector: 正規化するベクトル
 
         Returns:
             numpy.ndarray: 正規化されたベクトル
+
+        Note:
+            ノルムが非常に小さい場合（NORM_EPSILON以下）は、
+            数値的な不安定性を避けるためゼロベクトルを返します。
         """
         norm = np.linalg.norm(vector)
-        if norm > 0:
+        # Division by Zero + 数値安定性: ノルムが極めて小さい場合はゼロベクトルを返す
+        if norm > BaseEmbeddingModel.NORM_EPSILON:
             return vector / norm
+        # ゼロまたは極めて小さいノルムの場合は元のベクトルを返す
+        # （ゼロベクトルの正規化を試みた可能性があるため）
         return vector
 
     @property

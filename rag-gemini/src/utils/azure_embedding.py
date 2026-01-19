@@ -20,9 +20,17 @@ try:
     AZURE_OPENAI_AVAILABLE = True
 except ImportError:
     AZURE_OPENAI_AVAILABLE = False
-    RateLimitError = Exception  # フォールバック用
-    APIConnectionError = Exception
-    APIStatusError = Exception
+    # Retry Logic Fallback: SDKがない場合でもリトライが機能するよう、
+    # 独自の例外クラスを定義（Exceptionへのフォールバックを避ける）
+    class RateLimitError(Exception):
+        """Azure OpenAI SDK not available - placeholder for RateLimitError"""
+        pass
+    class APIConnectionError(Exception):
+        """Azure OpenAI SDK not available - placeholder for APIConnectionError"""
+        pass
+    class APIStatusError(Exception):
+        """Azure OpenAI SDK not available - placeholder for APIStatusError"""
+        pass
     logger.warning("Azure OpenAI SDK not installed. Run: pip install openai")
 
 
@@ -45,10 +53,13 @@ class AzureOpenAIEmbeddingModel(BaseEmbeddingModel):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:  # Double-checked locking
-                    cls._instance = cls(config)
+                    # スレッドセーフ: 一時変数を使用して完全に初期化してから代入（Race Condition防止）
+                    instance = cls(config)
                     # 初期化時の設定をprimitive valuesとして保存（比較の確実性のため）
-                    cls._instance._init_deployment = config.azure_openai_embedding_deployment
-                    cls._instance._init_endpoint = config.azure_openai_embedding_endpoint
+                    instance._init_deployment = config.azure_openai_embedding_deployment
+                    instance._init_endpoint = config.azure_openai_embedding_endpoint
+                    # 完全に初期化が完了してからクラス変数に代入
+                    cls._instance = instance
                     logger.info("AzureOpenAIEmbeddingModel singleton instance created")
         else:
             # 異なる設定で呼び出された場合は警告（primitive values で比較）

@@ -22,16 +22,14 @@ class Searcher:
     """
 
     # パフォーマンス: Sudachi辞書をクラス変数として共有（メモリ節約）
+    # スレッドセーフ: ロックをクラス定義時に初期化（Race Condition防止）
+    import threading as _threading
     _shared_tokenizer = None
-    _tokenizer_lock = None
+    _tokenizer_lock = _threading.Lock()
 
     @classmethod
     def _get_shared_tokenizer(cls):
         """スレッドセーフな共有トークナイザーを取得"""
-        import threading
-        if cls._tokenizer_lock is None:
-            cls._tokenizer_lock = threading.Lock()
-
         if cls._shared_tokenizer is None:
             with cls._tokenizer_lock:
                 if cls._shared_tokenizer is None:  # Double-checked locking
@@ -169,14 +167,23 @@ class Searcher:
         return self._latest_prompt_cache
 
     def _load_summarize_prompt(self) -> str:
-        """検索クエリ生成用のプロンプトファイルを読み込む（キャッシュ対応）"""
+        """検索クエリ生成用のプロンプトファイルを読み込む（キャッシュ対応・パストラバーサル防止）"""
         if self._summarize_prompt_cache is not None:
             return self._summarize_prompt_cache
 
-        prompt_dir = os.path.join(self.config.base_dir, "prompt")
-        summarize_prompt_file = os.path.join(prompt_dir, "summarize_v1.0.txt")
+        from pathlib import Path
 
-        if not os.path.exists(summarize_prompt_file):
+        prompt_dir = os.path.join(self.config.base_dir, "prompt")
+        prompt_dir_resolved = Path(prompt_dir).resolve()
+        summarize_prompt_file = (prompt_dir_resolved / "summarize_v1.0.txt").resolve()
+
+        # セキュリティ: パストラバーサル防止（Path.relative_to() で検証）
+        try:
+            summarize_prompt_file.relative_to(prompt_dir_resolved)
+        except ValueError:
+            raise ValueError(f"Path traversal attempt blocked: summarize_v1.0.txt")
+
+        if not summarize_prompt_file.exists():
             raise FileNotFoundError(f"Summarize prompt file not found: {summarize_prompt_file}")
 
         logger.info(f"Using summarize prompt file: summarize_v1.0.txt")
@@ -244,12 +251,18 @@ class Searcher:
     def prepare_search(self, reference_data):
         """検索の準備（メタデータ対応ベクトルDB + キャッシュ）"""
         from src.utils.vector_db import MetadataVectorDB
-        
+
         self.reference_texts = reference_data['combined_texts']  # 結合テキストをベクトル化対象に
         self.reference_queries = reference_data['queries']  # 個別の質問（表示用）
         self.reference_answers = reference_data['answers']
         self.reference_metadatas = reference_data.get('metadatas', [])
-        
+
+        # 安全性: reference_metadatasの長さがreference_textsと一致するか確認（Index Out of Bounds防止）
+        if len(self.reference_metadatas) < len(self.reference_texts):
+            missing_count = len(self.reference_texts) - len(self.reference_metadatas)
+            logger.warning(f"reference_metadatas is shorter than reference_texts by {missing_count} items. Padding with empty dicts.")
+            self.reference_metadatas.extend([{} for _ in range(missing_count)])
+
         # デバッグ: 空のテキストをチェック
         logger.info(f"Total reference texts: {len(self.reference_texts)}")
         empty_texts = []
@@ -257,7 +270,7 @@ class Searcher:
             if not text or not text.strip():
                 empty_texts.append(i)
                 logger.warning(f"Empty text found at index {i}: '{text}'")
-        
+
         if empty_texts:
             logger.error(f"Found {len(empty_texts)} empty texts at indices: {empty_texts}")
             # 空のテキストを除外
@@ -265,19 +278,23 @@ class Searcher:
             filtered_queries = []
             filtered_answers = []
             filtered_metadatas = []
-            
+
             for i in range(len(self.reference_texts)):
                 if i not in empty_texts:
                     filtered_texts.append(self.reference_texts[i])
                     filtered_queries.append(self.reference_queries[i])
                     filtered_answers.append(self.reference_answers[i])
-                    filtered_metadatas.append(self.reference_metadatas[i])
-            
+                    # 安全性: インデックスチェック付きでメタデータにアクセス
+                    if i < len(self.reference_metadatas):
+                        filtered_metadatas.append(self.reference_metadatas[i])
+                    else:
+                        filtered_metadatas.append({})
+
             self.reference_texts = filtered_texts
             self.reference_queries = filtered_queries
             self.reference_answers = filtered_answers
             self.reference_metadatas = filtered_metadatas
-            
+
             logger.info(f"Filtered to {len(self.reference_texts)} valid texts")
         
         # メタデータ対応ベクトルDBの初期化
@@ -816,7 +833,7 @@ class Searcher:
         original_answer: str,
         llm_query: str
     ) -> List[Dict[str, Any]]:
-        """多段階検索結果をOR結合して3分類"""
+        """多段階検索結果をOR結合して3分類（重複時は高スコアを優先）"""
         original_ids = {r['_doc_id'] for r in original_results}
         llm_ids = {r['_doc_id'] for r in llm_results}
 
@@ -827,26 +844,53 @@ class Searcher:
         logger.info(f"    Both: {len(both_ids)}, Original_Only: {len(original_only_ids)}, LLM_Only: {len(llm_only_ids)}")
 
         merged_results = []
+        processed_ids = set()  # 処理済みIDを追跡（Silent Data Loss防止）
 
-        def add_with_category(results: List[Dict], ids_set: set, category: str):
+        # 'Both'カテゴリ: 両方に存在する結果は高スコアを優先
+        for doc_id in both_ids:
+            orig_result = next((r for r in original_results if r.get('_doc_id') == doc_id), None)
+            llm_result = next((r for r in llm_results if r.get('_doc_id') == doc_id), None)
+
+            if orig_result and llm_result:
+                # スコアが高い方を選択
+                if orig_result.get('Similarity', 0) >= llm_result.get('Similarity', 0):
+                    best_result = orig_result
+                    logger.debug(f"    Both doc_id={doc_id}: Using original score ({orig_result.get('Similarity', 0):.4f} >= {llm_result.get('Similarity', 0):.4f})")
+                else:
+                    best_result = llm_result
+                    logger.debug(f"    Both doc_id={doc_id}: Using LLM score ({llm_result.get('Similarity', 0):.4f} > {orig_result.get('Similarity', 0):.4f})")
+
+                result_copy = best_result.copy()
+                result_copy.update({
+                    'Search_Category': 'Both',
+                    'Input_Number': input_number,
+                    'Original_Query': query_text,
+                    'Original_Answer': original_answer,
+                    'Search_Query': llm_query  # 'Both'の場合はLLMクエリを使用
+                })
+                result_copy.pop('_doc_id', None)
+                merged_results.append(result_copy)
+                processed_ids.add(doc_id)
+
+        def add_with_category(results: List[Dict], ids_set: set, category: str, search_query: str):
+            """指定カテゴリの結果を追加"""
             for result in results:
                 doc_id = result.get('_doc_id')
-                if doc_id in ids_set:
+                if doc_id in ids_set and doc_id not in processed_ids:
                     result_copy = result.copy()
                     result_copy.update({
                         'Search_Category': category,
                         'Input_Number': input_number,
                         'Original_Query': query_text,
                         'Original_Answer': original_answer,
-                        'Search_Query': query_text if category == 'Original_Only' else llm_query
+                        'Search_Query': search_query
                     })
                     result_copy.pop('_doc_id', None)
                     merged_results.append(result_copy)
-                    ids_set.discard(doc_id)
+                    processed_ids.add(doc_id)
 
-        add_with_category(original_results, both_ids.copy(), 'Both')
-        add_with_category(original_results, original_only_ids.copy(), 'Original_Only')
-        add_with_category(llm_results, llm_only_ids.copy(), 'LLM_Enhanced_Only')
+        add_with_category(original_results, original_only_ids, 'Original_Only', query_text)
+        add_with_category(llm_results, llm_only_ids, 'LLM_Enhanced_Only', llm_query)
 
         merged_results.sort(key=lambda x: x['Similarity'], reverse=True)
         return merged_results

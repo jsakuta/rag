@@ -27,12 +27,23 @@ try:
     VERTEX_AI_AVAILABLE = True
 except ImportError:
     VERTEX_AI_AVAILABLE = False
-    # フォールバック用
-    ServiceUnavailable = Exception
-    TooManyRequests = Exception
-    DeadlineExceeded = Exception
-    PermissionDenied = Exception
-    InvalidArgument = Exception
+    # Retry Logic Fallback: SDKがない場合でもリトライが機能するよう、
+    # 独自の例外クラスを定義（Exceptionへのフォールバックを避ける）
+    class ServiceUnavailable(Exception):
+        """Vertex AI SDK not available - placeholder for ServiceUnavailable"""
+        pass
+    class TooManyRequests(Exception):
+        """Vertex AI SDK not available - placeholder for TooManyRequests"""
+        pass
+    class DeadlineExceeded(Exception):
+        """Vertex AI SDK not available - placeholder for DeadlineExceeded"""
+        pass
+    class PermissionDenied(Exception):
+        """Vertex AI SDK not available - placeholder for PermissionDenied"""
+        pass
+    class InvalidArgument(Exception):
+        """Vertex AI SDK not available - placeholder for InvalidArgument"""
+        pass
     logger.warning("Vertex AI SDK not installed. Run: pip install google-cloud-aiplatform")
 
 
@@ -56,10 +67,13 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:  # Double-checked locking
-                    cls._instance = cls(config)
+                    # スレッドセーフ: 一時変数を使用して完全に初期化してから代入（Race Condition防止）
+                    instance = cls(config)
                     # 初期化時の設定をprimitive valuesとして保存（比較の確実性のため）
-                    cls._instance._init_model_name = config.embedding_model
-                    cls._instance._init_project_id = config.gemini_project_id
+                    instance._init_model_name = config.embedding_model
+                    instance._init_project_id = config.gemini_project_id
+                    # 完全に初期化が完了してからクラス変数に代入
+                    cls._instance = instance
                     logger.info("GeminiEmbeddingModel singleton instance created")
         else:
             # 異なる設定で呼び出された場合は警告（primitive values で比較）

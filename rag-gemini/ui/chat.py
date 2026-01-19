@@ -184,9 +184,11 @@ def process_query(query: str):
         logger.info(f"=== 質問 {query_number} の検索完了 ===")
 
     except Exception as e:
-        error_message = f"エラーが発生しました: {str(e)}"
+        # セキュリティ: XSS対策としてエラーメッセージをエスケープ
+        escaped_error = html.escape(str(e))
+        error_message = f"エラーが発生しました: {escaped_error}"
         st.error(error_message)
-        logger.error(f"Error processing query: {str(e)}", exc_info=True)
+        logger.error(f"Error processing query: {str(e)}", exc_info=True)  # ログにはオリジナルを出力
         st.session_state.chat_history.append({"type": "bot", "text": error_message})
     finally:
         st.session_state.processing_query = False

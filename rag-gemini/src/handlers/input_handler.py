@@ -46,16 +46,37 @@ class InputHandler:
         return " | ".join(text_parts) if text_parts else ""
 
     def _get_latest_file(self, directory: str, file_pattern: str) -> str:
-        """指定ディレクトリ内の最新ファイルを検索"""
+        """指定ディレクトリ内の最新ファイルを検索（パストラバーサル防止）"""
+        from pathlib import Path
+
+        # ベースディレクトリを解決
+        directory_resolved = Path(directory).resolve()
+
+        # セキュリティ: file_patternにパス区切りが含まれていないことを確認
+        if os.sep in file_pattern or '/' in file_pattern or '..' in file_pattern:
+            raise ValueError(f"Invalid file pattern (path traversal attempt): {file_pattern}")
+
         files = glob.glob(os.path.join(directory, file_pattern))
-        # 一時ファイル・隠しファイルを除外
-        files = [f for f in files
-                 if not os.path.basename(f).startswith('~$')
-                 and not f.endswith('.tmp')
-                 and not os.path.basename(f).startswith('.')]
-        if not files:
+
+        # 一時ファイル・隠しファイルを除外 + パストラバーサル防止
+        validated_files = []
+        for f in files:
+            file_path = Path(f).resolve()
+            # セキュリティ: ファイルがベースディレクトリ内にあることを確認
+            try:
+                file_path.relative_to(directory_resolved)
+            except ValueError:
+                logger.warning(f"Path traversal attempt blocked: {f}")
+                continue
+
+            if (not os.path.basename(f).startswith('~$')
+                    and not f.endswith('.tmp')
+                    and not os.path.basename(f).startswith('.')):
+                validated_files.append(str(file_path))
+
+        if not validated_files:
             raise FileNotFoundError(f"No files found matching pattern '{file_pattern}' in {directory}")
-        return max(files, key=os.path.getctime)
+        return max(validated_files, key=os.path.getctime)
 
 class ExcelInputHandler(InputHandler):
     def load_data(self) -> list:

@@ -1,0 +1,665 @@
+diff --git a/rag-gemini/config.py b/rag-gemini/config.py
+index cceb4e0..c616df9 100644
+--- a/rag-gemini/config.py
++++ b/rag-gemini/config.py
+@@ -128,11 +128,36 @@ class SearchConfig:
+ 
+     def __post_init__(self):
+         """パラメータの検証とkeyword_weightの計算"""
++        # Input Validation: 数値パラメータの範囲検証
+         if not 0 <= self.vector_weight <= 1:
+             raise ValueError("vector_weight must be between 0 and 1")
+         self.keyword_weight = 1.0 - self.vector_weight
+         self.base_dir = os.path.abspath(self.base_dir)
+ 
++        # Input Validation: top_k（1以上の整数）
++        if not isinstance(self.top_k, int) or self.top_k < 1:
++            raise ValueError(f"top_k must be a positive integer, got: {self.top_k}")
++        if self.top_k > 100:
++            logger.warning(f"top_k={self.top_k} is very large, this may impact performance")
++
++        # Input Validation: 多段階検索パラメータ
++        if not 0 <= self.multi_stage_threshold <= 1:
++            raise ValueError(f"multi_stage_threshold must be between 0 and 1, got: {self.multi_stage_threshold}")
++        if not isinstance(self.multi_stage_max_results, int) or self.multi_stage_max_results < 1:
++            raise ValueError(f"multi_stage_max_results must be a positive integer, got: {self.multi_stage_max_results}")
++        if self.multi_stage_max_results > 1000:
++            logger.warning(f"multi_stage_max_results={self.multi_stage_max_results} is very large, this may impact performance")
++
++        # Input Validation: バッチサイズ
++        if self.EMBEDDING_BATCH_SIZE < 1 or self.EMBEDDING_BATCH_SIZE > 250:
++            raise ValueError(f"EMBEDDING_BATCH_SIZE must be between 1 and 250, got: {self.EMBEDDING_BATCH_SIZE}")
++        if self.VECTOR_DB_BATCH_SIZE < 1 or self.VECTOR_DB_BATCH_SIZE > 1000:
++            raise ValueError(f"VECTOR_DB_BATCH_SIZE must be between 1 and 1000, got: {self.VECTOR_DB_BATCH_SIZE}")
++
++        # Input Validation: 検索設定
++        if self.VECTOR_SEARCH_MULTIPLIER < 1:
++            raise ValueError(f"VECTOR_SEARCH_MULTIPLIER must be at least 1, got: {self.VECTOR_SEARCH_MULTIPLIER}")
++
+         # 検索方式の検証
+         if self.search_mode not in self.VALID_SEARCH_MODES:
+             raise ValueError(f"search_mode must be one of {self.VALID_SEARCH_MODES}")
+diff --git a/rag-gemini/main.py b/rag-gemini/main.py
+index f62043f..db030f0 100644
+--- a/rag-gemini/main.py
++++ b/rag-gemini/main.py
+@@ -86,9 +86,16 @@ def main():
+         config.vector_weight = config.DEFAULT_UI_VECTOR_WEIGHT
+         process = None
+         try:
++            # Subprocess Security: sys.executableの検証
++            python_executable = sys.executable
++            if not python_executable or not os.path.isfile(python_executable):
++                raise RuntimeError(f"Invalid Python executable: {python_executable}")
++            if not os.access(python_executable, os.X_OK):
++                raise RuntimeError(f"Python executable is not executable: {python_executable}")
++
+             # subprocessを使用してStreamlitを起動（セキュリティ向上）
+             import time
+-            process = subprocess.Popen([sys.executable, "-m", "streamlit", "run", "ui/chat.py"])
++            process = subprocess.Popen([python_executable, "-m", "streamlit", "run", "ui/chat.py"])
+             # プロセスが起動したか確認（最大5秒待機）
+             startup_timeout = 5
+             poll_interval = 0.5
+diff --git a/rag-gemini/src/core/processor.py b/rag-gemini/src/core/processor.py
+index 62bba45..8321e86 100644
+--- a/rag-gemini/src/core/processor.py
++++ b/rag-gemini/src/core/processor.py
+@@ -114,7 +114,14 @@ class Processor:
+         if self.judgment_support and self.config.multi_stage_enable_judgment_support:
+             from concurrent.futures import ThreadPoolExecutor, as_completed
+ 
+-            revision_map = {str(item.get("number")): item.get("query", "") for item in input_data}
++            # Input Validation: revision_mapの構築時にデータ検証
++            revision_map = {}
++            for item in input_data:
++                num = item.get("number")
++                query = item.get("query", "")
++                if num is not None:
++                    # 数値型の場合は文字列に変換
++                    revision_map[str(num)] = query if isinstance(query, str) else ""
+ 
+             # パフォーマンス: LLM評価を並列実行
+             def evaluate_single(result):
+@@ -137,8 +144,9 @@ class Processor:
+                     try:
+                         future.result()  # 例外があれば再スロー
+                     except Exception as e:
+-                        # 完全な例外情報を保持（デバッグ用）
+-                        logger.error(f"LLM評価エラー: {type(e).__name__}: {e}", exc_info=True)
++                        # Sensitive Data Exposure防止: スタックトレースにAPIキーが含まれる可能性があるため
++                        # exc_info=Falseに変更し、エラーメッセージのみをログ出力
++                        logger.error(f"LLM評価エラー: {type(e).__name__}: {str(e)[:100]}")
+                         result = futures[future]
+                         result['Relevance_Judgment'] = "エラー"
+                         result['Judgment_Reason'] = f"{type(e).__name__}: {str(e)[:200]}"
+diff --git a/rag-gemini/src/core/searcher.py b/rag-gemini/src/core/searcher.py
+index 873c4dd..f1a2b89 100644
+--- a/rag-gemini/src/core/searcher.py
++++ b/rag-gemini/src/core/searcher.py
+@@ -22,16 +22,14 @@ class Searcher:
+     """
+ 
+     # パフォーマンス: Sudachi辞書をクラス変数として共有（メモリ節約）
++    # スレッドセーフ: ロックをクラス定義時に初期化（Race Condition防止）
++    import threading as _threading
+     _shared_tokenizer = None
+-    _tokenizer_lock = None
++    _tokenizer_lock = _threading.Lock()
+ 
+     @classmethod
+     def _get_shared_tokenizer(cls):
+         """スレッドセーフな共有トークナイザーを取得"""
+-        import threading
+-        if cls._tokenizer_lock is None:
+-            cls._tokenizer_lock = threading.Lock()
+-
+         if cls._shared_tokenizer is None:
+             with cls._tokenizer_lock:
+                 if cls._shared_tokenizer is None:  # Double-checked locking
+@@ -169,14 +167,23 @@ class Searcher:
+         return self._latest_prompt_cache
+ 
+     def _load_summarize_prompt(self) -> str:
+-        """検索クエリ生成用のプロンプトファイルを読み込む（キャッシュ対応）"""
++        """検索クエリ生成用のプロンプトファイルを読み込む（キャッシュ対応・パストラバーサル防止）"""
+         if self._summarize_prompt_cache is not None:
+             return self._summarize_prompt_cache
+ 
++        from pathlib import Path
++
+         prompt_dir = os.path.join(self.config.base_dir, "prompt")
+-        summarize_prompt_file = os.path.join(prompt_dir, "summarize_v1.0.txt")
++        prompt_dir_resolved = Path(prompt_dir).resolve()
++        summarize_prompt_file = (prompt_dir_resolved / "summarize_v1.0.txt").resolve()
+ 
+-        if not os.path.exists(summarize_prompt_file):
++        # セキュリティ: パストラバーサル防止（Path.relative_to() で検証）
++        try:
++            summarize_prompt_file.relative_to(prompt_dir_resolved)
++        except ValueError:
++            raise ValueError(f"Path traversal attempt blocked: summarize_v1.0.txt")
++
++        if not summarize_prompt_file.exists():
+             raise FileNotFoundError(f"Summarize prompt file not found: {summarize_prompt_file}")
+ 
+         logger.info(f"Using summarize prompt file: summarize_v1.0.txt")
+@@ -244,12 +251,18 @@ class Searcher:
+     def prepare_search(self, reference_data):
+         """検索の準備（メタデータ対応ベクトルDB + キャッシュ）"""
+         from src.utils.vector_db import MetadataVectorDB
+-        
++
+         self.reference_texts = reference_data['combined_texts']  # 結合テキストをベクトル化対象に
+         self.reference_queries = reference_data['queries']  # 個別の質問（表示用）
+         self.reference_answers = reference_data['answers']
+         self.reference_metadatas = reference_data.get('metadatas', [])
+-        
++
++        # 安全性: reference_metadatasの長さがreference_textsと一致するか確認（Index Out of Bounds防止）
++        if len(self.reference_metadatas) < len(self.reference_texts):
++            missing_count = len(self.reference_texts) - len(self.reference_metadatas)
++            logger.warning(f"reference_metadatas is shorter than reference_texts by {missing_count} items. Padding with empty dicts.")
++            self.reference_metadatas.extend([{} for _ in range(missing_count)])
++
+         # デバッグ: 空のテキストをチェック
+         logger.info(f"Total reference texts: {len(self.reference_texts)}")
+         empty_texts = []
+@@ -257,7 +270,7 @@ class Searcher:
+             if not text or not text.strip():
+                 empty_texts.append(i)
+                 logger.warning(f"Empty text found at index {i}: '{text}'")
+-        
++
+         if empty_texts:
+             logger.error(f"Found {len(empty_texts)} empty texts at indices: {empty_texts}")
+             # 空のテキストを除外
+@@ -265,19 +278,23 @@ class Searcher:
+             filtered_queries = []
+             filtered_answers = []
+             filtered_metadatas = []
+-            
++
+             for i in range(len(self.reference_texts)):
+                 if i not in empty_texts:
+                     filtered_texts.append(self.reference_texts[i])
+                     filtered_queries.append(self.reference_queries[i])
+                     filtered_answers.append(self.reference_answers[i])
+-                    filtered_metadatas.append(self.reference_metadatas[i])
+-            
++                    # 安全性: インデックスチェック付きでメタデータにアクセス
++                    if i < len(self.reference_metadatas):
++                        filtered_metadatas.append(self.reference_metadatas[i])
++                    else:
++                        filtered_metadatas.append({})
++
+             self.reference_texts = filtered_texts
+             self.reference_queries = filtered_queries
+             self.reference_answers = filtered_answers
+             self.reference_metadatas = filtered_metadatas
+-            
++
+             logger.info(f"Filtered to {len(self.reference_texts)} valid texts")
+         
+         # メタデータ対応ベクトルDBの初期化
+@@ -816,7 +833,7 @@ class Searcher:
+         original_answer: str,
+         llm_query: str
+     ) -> List[Dict[str, Any]]:
+-        """多段階検索結果をOR結合して3分類"""
++        """多段階検索結果をOR結合して3分類（重複時は高スコアを優先）"""
+         original_ids = {r['_doc_id'] for r in original_results}
+         llm_ids = {r['_doc_id'] for r in llm_results}
+ 
+@@ -827,26 +844,53 @@ class Searcher:
+         logger.info(f"    Both: {len(both_ids)}, Original_Only: {len(original_only_ids)}, LLM_Only: {len(llm_only_ids)}")
+ 
+         merged_results = []
+-
+-        def add_with_category(results: List[Dict], ids_set: set, category: str):
++        processed_ids = set()  # 処理済みIDを追跡（Silent Data Loss防止）
++
++        # 'Both'カテゴリ: 両方に存在する結果は高スコアを優先
++        for doc_id in both_ids:
++            orig_result = next((r for r in original_results if r.get('_doc_id') == doc_id), None)
++            llm_result = next((r for r in llm_results if r.get('_doc_id') == doc_id), None)
++
++            if orig_result and llm_result:
++                # スコアが高い方を選択
++                if orig_result.get('Similarity', 0) >= llm_result.get('Similarity', 0):
++                    best_result = orig_result
++                    logger.debug(f"    Both doc_id={doc_id}: Using original score ({orig_result.get('Similarity', 0):.4f} >= {llm_result.get('Similarity', 0):.4f})")
++                else:
++                    best_result = llm_result
++                    logger.debug(f"    Both doc_id={doc_id}: Using LLM score ({llm_result.get('Similarity', 0):.4f} > {orig_result.get('Similarity', 0):.4f})")
++
++                result_copy = best_result.copy()
++                result_copy.update({
++                    'Search_Category': 'Both',
++                    'Input_Number': input_number,
++                    'Original_Query': query_text,
++                    'Original_Answer': original_answer,
++                    'Search_Query': llm_query  # 'Both'の場合はLLMクエリを使用
++                })
++                result_copy.pop('_doc_id', None)
++                merged_results.append(result_copy)
++                processed_ids.add(doc_id)
++
++        def add_with_category(results: List[Dict], ids_set: set, category: str, search_query: str):
++            """指定カテゴリの結果を追加"""
+             for result in results:
+                 doc_id = result.get('_doc_id')
+-                if doc_id in ids_set:
++                if doc_id in ids_set and doc_id not in processed_ids:
+                     result_copy = result.copy()
+                     result_copy.update({
+                         'Search_Category': category,
+                         'Input_Number': input_number,
+                         'Original_Query': query_text,
+                         'Original_Answer': original_answer,
+-                        'Search_Query': query_text if category == 'Original_Only' else llm_query
++                        'Search_Query': search_query
+                     })
+                     result_copy.pop('_doc_id', None)
+                     merged_results.append(result_copy)
+-                    ids_set.discard(doc_id)
++                    processed_ids.add(doc_id)
+ 
+-        add_with_category(original_results, both_ids.copy(), 'Both')
+-        add_with_category(original_results, original_only_ids.copy(), 'Original_Only')
+-        add_with_category(llm_results, llm_only_ids.copy(), 'LLM_Enhanced_Only')
++        add_with_category(original_results, original_only_ids, 'Original_Only', query_text)
++        add_with_category(llm_results, llm_only_ids, 'LLM_Enhanced_Only', llm_query)
+ 
+         merged_results.sort(key=lambda x: x['Similarity'], reverse=True)
+         return merged_results
+\ No newline at end of file
+diff --git a/rag-gemini/src/handlers/input_handler.py b/rag-gemini/src/handlers/input_handler.py
+index 5593f3e..19999f6 100644
+--- a/rag-gemini/src/handlers/input_handler.py
++++ b/rag-gemini/src/handlers/input_handler.py
+@@ -46,16 +46,37 @@ class InputHandler:
+         return " | ".join(text_parts) if text_parts else ""
+ 
+     def _get_latest_file(self, directory: str, file_pattern: str) -> str:
+-        """指定ディレクトリ内の最新ファイルを検索"""
++        """指定ディレクトリ内の最新ファイルを検索（パストラバーサル防止）"""
++        from pathlib import Path
++
++        # ベースディレクトリを解決
++        directory_resolved = Path(directory).resolve()
++
++        # セキュリティ: file_patternにパス区切りが含まれていないことを確認
++        if os.sep in file_pattern or '/' in file_pattern or '..' in file_pattern:
++            raise ValueError(f"Invalid file pattern (path traversal attempt): {file_pattern}")
++
+         files = glob.glob(os.path.join(directory, file_pattern))
+-        # 一時ファイル・隠しファイルを除外
+-        files = [f for f in files
+-                 if not os.path.basename(f).startswith('~$')
+-                 and not f.endswith('.tmp')
+-                 and not os.path.basename(f).startswith('.')]
+-        if not files:
++
++        # 一時ファイル・隠しファイルを除外 + パストラバーサル防止
++        validated_files = []
++        for f in files:
++            file_path = Path(f).resolve()
++            # セキュリティ: ファイルがベースディレクトリ内にあることを確認
++            try:
++                file_path.relative_to(directory_resolved)
++            except ValueError:
++                logger.warning(f"Path traversal attempt blocked: {f}")
++                continue
++
++            if (not os.path.basename(f).startswith('~$')
++                    and not f.endswith('.tmp')
++                    and not os.path.basename(f).startswith('.')):
++                validated_files.append(str(file_path))
++
++        if not validated_files:
+             raise FileNotFoundError(f"No files found matching pattern '{file_pattern}' in {directory}")
+-        return max(files, key=os.path.getctime)
++        return max(validated_files, key=os.path.getctime)
+ 
+ class ExcelInputHandler(InputHandler):
+     def load_data(self) -> list:
+diff --git a/rag-gemini/src/utils/azure_embedding.py b/rag-gemini/src/utils/azure_embedding.py
+index 815cd72..5e6b231 100644
+--- a/rag-gemini/src/utils/azure_embedding.py
++++ b/rag-gemini/src/utils/azure_embedding.py
+@@ -20,9 +20,17 @@ try:
+     AZURE_OPENAI_AVAILABLE = True
+ except ImportError:
+     AZURE_OPENAI_AVAILABLE = False
+-    RateLimitError = Exception  # フォールバック用
+-    APIConnectionError = Exception
+-    APIStatusError = Exception
++    # Retry Logic Fallback: SDKがない場合でもリトライが機能するよう、
++    # 独自の例外クラスを定義（Exceptionへのフォールバックを避ける）
++    class RateLimitError(Exception):
++        """Azure OpenAI SDK not available - placeholder for RateLimitError"""
++        pass
++    class APIConnectionError(Exception):
++        """Azure OpenAI SDK not available - placeholder for APIConnectionError"""
++        pass
++    class APIStatusError(Exception):
++        """Azure OpenAI SDK not available - placeholder for APIStatusError"""
++        pass
+     logger.warning("Azure OpenAI SDK not installed. Run: pip install openai")
+ 
+ 
+@@ -45,10 +53,13 @@ class AzureOpenAIEmbeddingModel(BaseEmbeddingModel):
+         if cls._instance is None:
+             with cls._lock:
+                 if cls._instance is None:  # Double-checked locking
+-                    cls._instance = cls(config)
++                    # スレッドセーフ: 一時変数を使用して完全に初期化してから代入（Race Condition防止）
++                    instance = cls(config)
+                     # 初期化時の設定をprimitive valuesとして保存（比較の確実性のため）
+-                    cls._instance._init_deployment = config.azure_openai_embedding_deployment
+-                    cls._instance._init_endpoint = config.azure_openai_embedding_endpoint
++                    instance._init_deployment = config.azure_openai_embedding_deployment
++                    instance._init_endpoint = config.azure_openai_embedding_endpoint
++                    # 完全に初期化が完了してからクラス変数に代入
++                    cls._instance = instance
+                     logger.info("AzureOpenAIEmbeddingModel singleton instance created")
+         else:
+             # 異なる設定で呼び出された場合は警告（primitive values で比較）
+diff --git a/rag-gemini/src/utils/base_embedding.py b/rag-gemini/src/utils/base_embedding.py
+index 715666b..a752d71 100644
+--- a/rag-gemini/src/utils/base_embedding.py
++++ b/rag-gemini/src/utils/base_embedding.py
+@@ -57,19 +57,29 @@ class BaseEmbeddingModel(ABC):
+         """
+         return self.encode([text], normalize_embeddings)[0]
+ 
++    # Division by Zero防止: ノルムの最小閾値
++    NORM_EPSILON = 1e-10
++
+     @staticmethod
+     def normalize_vector(vector: np.ndarray) -> np.ndarray:
+-        """ベクトルをL2正規化
++        """ベクトルをL2正規化（数値安定性を考慮）
+ 
+         Args:
+             vector: 正規化するベクトル
+ 
+         Returns:
+             numpy.ndarray: 正規化されたベクトル
++
++        Note:
++            ノルムが非常に小さい場合（NORM_EPSILON以下）は、
++            数値的な不安定性を避けるためゼロベクトルを返します。
+         """
+         norm = np.linalg.norm(vector)
+-        if norm > 0:
++        # Division by Zero + 数値安定性: ノルムが極めて小さい場合はゼロベクトルを返す
++        if norm > BaseEmbeddingModel.NORM_EPSILON:
+             return vector / norm
++        # ゼロまたは極めて小さいノルムの場合は元のベクトルを返す
++        # （ゼロベクトルの正規化を試みた可能性があるため）
+         return vector
+ 
+     @property
+diff --git a/rag-gemini/src/utils/dynamic_db_manager.py b/rag-gemini/src/utils/dynamic_db_manager.py
+index b200edc..c58d266 100644
+--- a/rag-gemini/src/utils/dynamic_db_manager.py
++++ b/rag-gemini/src/utils/dynamic_db_manager.py
+@@ -68,13 +68,27 @@ class DynamicDBManager:
+         return False  # 例外は再スロー
+ 
+     def close(self):
+-        """リソースのクリーンアップ"""
++        """リソースのクリーンアップ（ChromaDBクライアント含む）"""
+         if self._closed:
+             return
+ 
+         try:
+             # タイムスタンプを永続化
+             self._save_update_timestamps()
++
++            # Resource Leak防止: ChromaDBクライアントのクリーンアップ
++            if hasattr(self, '_chroma_client') and self._chroma_client is not None:
++                try:
++                    # ChromaDB PersistentClient はexplicitなcloseメソッドを持たないが、
++                    # 内部のサーバー参照をクリアすることでリソースを解放
++                    if hasattr(self._chroma_client, '_server'):
++                        self._chroma_client._server = None
++                    # Windowsでのファイルロック問題を軽減するため参照をクリア
++                    self._chroma_client = None
++                    logger.info("DynamicDBManager: ChromaDBクライアントをクリーンアップしました")
++                except Exception as e:
++                    logger.warning(f"ChromaDBクライアントのクリーンアップに失敗: {e}")
++
+             logger.info("DynamicDBManager: リソースをクリーンアップしました")
+         except Exception as e:
+             logger.warning(f"DynamicDBManager close時のエラー: {e}")
+diff --git a/rag-gemini/src/utils/gemini_embedding.py b/rag-gemini/src/utils/gemini_embedding.py
+index f40b1b2..e9b423f 100644
+--- a/rag-gemini/src/utils/gemini_embedding.py
++++ b/rag-gemini/src/utils/gemini_embedding.py
+@@ -27,12 +27,23 @@ try:
+     VERTEX_AI_AVAILABLE = True
+ except ImportError:
+     VERTEX_AI_AVAILABLE = False
+-    # フォールバック用
+-    ServiceUnavailable = Exception
+-    TooManyRequests = Exception
+-    DeadlineExceeded = Exception
+-    PermissionDenied = Exception
+-    InvalidArgument = Exception
++    # Retry Logic Fallback: SDKがない場合でもリトライが機能するよう、
++    # 独自の例外クラスを定義（Exceptionへのフォールバックを避ける）
++    class ServiceUnavailable(Exception):
++        """Vertex AI SDK not available - placeholder for ServiceUnavailable"""
++        pass
++    class TooManyRequests(Exception):
++        """Vertex AI SDK not available - placeholder for TooManyRequests"""
++        pass
++    class DeadlineExceeded(Exception):
++        """Vertex AI SDK not available - placeholder for DeadlineExceeded"""
++        pass
++    class PermissionDenied(Exception):
++        """Vertex AI SDK not available - placeholder for PermissionDenied"""
++        pass
++    class InvalidArgument(Exception):
++        """Vertex AI SDK not available - placeholder for InvalidArgument"""
++        pass
+     logger.warning("Vertex AI SDK not installed. Run: pip install google-cloud-aiplatform")
+ 
+ 
+@@ -56,10 +67,13 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
+         if cls._instance is None:
+             with cls._lock:
+                 if cls._instance is None:  # Double-checked locking
+-                    cls._instance = cls(config)
++                    # スレッドセーフ: 一時変数を使用して完全に初期化してから代入（Race Condition防止）
++                    instance = cls(config)
+                     # 初期化時の設定をprimitive valuesとして保存（比較の確実性のため）
+-                    cls._instance._init_model_name = config.embedding_model
+-                    cls._instance._init_project_id = config.gemini_project_id
++                    instance._init_model_name = config.embedding_model
++                    instance._init_project_id = config.gemini_project_id
++                    # 完全に初期化が完了してからクラス変数に代入
++                    cls._instance = instance
+                     logger.info("GeminiEmbeddingModel singleton instance created")
+         else:
+             # 異なる設定で呼び出された場合は警告（primitive values で比較）
+diff --git a/rag-gemini/src/utils/vector_db.py b/rag-gemini/src/utils/vector_db.py
+index adb1b60..5c5715c 100644
+--- a/rag-gemini/src/utils/vector_db.py
++++ b/rag-gemini/src/utils/vector_db.py
+@@ -4,17 +4,58 @@ import chromadb
+ from chromadb.config import Settings
+ from chromadb.errors import NotFoundError as ChromaNotFoundError
+ from typing import List, Dict, Any, Optional
++from collections import OrderedDict
+ import numpy as np
+ from datetime import datetime
++import uuid
+ from src.utils.logger import setup_logger
+ 
+ logger = setup_logger(__name__)
+ 
++
++class LRUCache:
++    """スレッドセーフなLRUキャッシュ（Memory Leak防止）"""
++
++    def __init__(self, max_size: int = 10):
++        self._cache: OrderedDict = OrderedDict()
++        self._lock = threading.Lock()
++        self._max_size = max_size
++
++    def get(self, key: str) -> Optional[Any]:
++        with self._lock:
++            if key in self._cache:
++                # アクセスされたら最後尾に移動（LRU）
++                self._cache.move_to_end(key)
++                return self._cache[key]
++            return None
++
++    def put(self, key: str, value: Any) -> None:
++        with self._lock:
++            if key in self._cache:
++                self._cache.move_to_end(key)
++            else:
++                if len(self._cache) >= self._max_size:
++                    # 最も古いエントリを削除
++                    oldest_key, oldest_value = self._cache.popitem(last=False)
++                    logger.info(f"LRUCache: Evicting oldest entry: {oldest_key}")
++                    # ChromaDBクライアントの場合はクローズを試みる
++                    if hasattr(oldest_value, '_server') and oldest_value._server:
++                        try:
++                            oldest_value._server = None
++                        except Exception as e:
++                            logger.warning(f"Failed to cleanup ChromaDB client: {e}")
++                self._cache[key] = value
++
++    def __contains__(self, key: str) -> bool:
++        with self._lock:
++            return key in self._cache
++
++
+ class MetadataVectorDB:
+     """メタデータ対応のベクトルデータベースクラス"""
+ 
+-    # パフォーマンス: ChromaDBクライアントのキャッシュ
+-    _client_cache: Dict[str, chromadb.PersistentClient] = {}
++    # パフォーマンス + Memory Leak防止: LRUキャッシュを使用（最大10エントリ）
++    _client_cache = LRUCache(max_size=10)
+     _cache_lock = threading.Lock()
+ 
+     def __init__(self, base_dir: str = ".", collection_name: str = None, batch_size: int = 100):
+@@ -24,18 +65,20 @@ class MetadataVectorDB:
+         self.db_path = os.path.join(base_dir, "reference", "vector_db")
+         os.makedirs(self.db_path, exist_ok=True)
+ 
+-        # パフォーマンス: ChromaDBクライアントをキャッシュから取得または作成
++        # パフォーマンス + Memory Leak防止: LRUキャッシュを使用
+         with self._cache_lock:
+-            if self.db_path not in self._client_cache:
+-                self._client_cache[self.db_path] = chromadb.PersistentClient(
++            cached_client = self._client_cache.get(self.db_path)
++            if cached_client is None:
++                cached_client = chromadb.PersistentClient(
+                     path=self.db_path,
+                     settings=Settings(
+                         anonymized_telemetry=False,
+                         allow_reset=True
+                     )
+                 )
++                self._client_cache.put(self.db_path, cached_client)
+                 logger.info(f"New ChromaDB client created for {self.db_path}")
+-            self.client = self._client_cache[self.db_path]
++            self.client = cached_client
+         
+         # コレクションの取得または作成
+         if self.collection_name is None:
+@@ -72,16 +115,23 @@ class MetadataVectorDB:
+             metadatas: メタデータのリスト
+             ids: ドキュメントIDのリスト（省略時は自動生成）
+         """
++        # 安全性: 空リストチェック（Empty Batch Handling）
++        if not texts:
++            logger.warning("add_documents called with empty texts list, skipping")
++            return
+ 
++        # 安全性: ユニークID生成（Duplicate ID Collision防止）
+         if ids is None:
+-            ids = [f"doc_{i}" for i in range(len(texts))]
++            # UUIDを使用してコレクション間でも一意なIDを生成
++            batch_uuid = uuid.uuid4().hex[:8]
++            ids = [f"doc_{batch_uuid}_{i}" for i in range(len(texts))]
+ 
+         # パフォーマンス: numpy配列の場合はtolist()を呼び出す
+         # （ChromaDBはlistを期待するため変換が必要）
+         if hasattr(embeddings, 'tolist'):
+             embeddings = embeddings.tolist()
+-        
+-        # メタデータの正規化
++
++        # メタデータの正規化（型保持を改善）
+         normalized_metadatas = []
+         for metadata in metadatas:
+             normalized_metadata = {}
+@@ -92,10 +142,18 @@ class MetadataVectorDB:
+                 # リストの場合は文字列に結合（要素を文字列に変換）
+                 elif isinstance(value, list):
+                     normalized_metadata[key] = " | ".join(str(v) for v in value if v is not None) if value else ""
++                # 数値・ブーリアン: ChromaDBがサポートする型はそのまま保持
++                elif isinstance(value, (int, float)):
++                    normalized_metadata[key] = value
++                elif isinstance(value, bool):
++                    # ChromaDBはboolをサポートしないためint変換
++                    normalized_metadata[key] = 1 if value else 0
++                elif value is None:
++                    normalized_metadata[key] = ""
+                 else:
+-                    normalized_metadata[key] = str(value) if value is not None else ""
++                    normalized_metadata[key] = str(value)
+             normalized_metadatas.append(normalized_metadata)
+-        
++
+         # バッチサイズで分割して追加（ChromaDBの制限を回避）
+         # パフォーマンス: 設定可能なバッチサイズを使用
+         for i in range(0, len(texts), self.batch_size):
+@@ -104,14 +162,18 @@ class MetadataVectorDB:
+             batch_embeddings = embeddings[i:end_idx]
+             batch_metadatas = normalized_metadatas[i:end_idx]
+             batch_ids = ids[i:end_idx]
+-            
++
++            # 安全性: 空バッチをスキップ
++            if not batch_texts:
++                continue
++
+             self.collection.add(
+                 documents=batch_texts,
+                 embeddings=batch_embeddings,
+                 metadatas=batch_metadatas,
+                 ids=batch_ids
+             )
+-        
++
+         logger.info(f"Added {len(texts)} documents to vector database")
+     
+     # セキュリティ: 許可されたメタデータキーと期待される型のホワイトリスト
+diff --git a/rag-gemini/ui/chat.py b/rag-gemini/ui/chat.py
+index cf0e2bc..4aeb167 100644
+--- a/rag-gemini/ui/chat.py
++++ b/rag-gemini/ui/chat.py
+@@ -184,9 +184,11 @@ def process_query(query: str):
+         logger.info(f"=== 質問 {query_number} の検索完了 ===")
+ 
+     except Exception as e:
+-        error_message = f"エラーが発生しました: {str(e)}"
++        # セキュリティ: XSS対策としてエラーメッセージをエスケープ
++        escaped_error = html.escape(str(e))
++        error_message = f"エラーが発生しました: {escaped_error}"
+         st.error(error_message)
+-        logger.error(f"Error processing query: {str(e)}", exc_info=True)
++        logger.error(f"Error processing query: {str(e)}", exc_info=True)  # ログにはオリジナルを出力
+         st.session_state.chat_history.append({"type": "bot", "text": error_message})
+     finally:
+         st.session_state.processing_query = False

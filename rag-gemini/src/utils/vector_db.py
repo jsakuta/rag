@@ -4,17 +4,58 @@ import chromadb
 from chromadb.config import Settings
 from chromadb.errors import NotFoundError as ChromaNotFoundError
 from typing import List, Dict, Any, Optional
+from collections import OrderedDict
 import numpy as np
 from datetime import datetime
+import uuid
 from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
+class LRUCache:
+    """スレッドセーフなLRUキャッシュ（Memory Leak防止）"""
+
+    def __init__(self, max_size: int = 10):
+        self._cache: OrderedDict = OrderedDict()
+        self._lock = threading.Lock()
+        self._max_size = max_size
+
+    def get(self, key: str) -> Optional[Any]:
+        with self._lock:
+            if key in self._cache:
+                # アクセスされたら最後尾に移動（LRU）
+                self._cache.move_to_end(key)
+                return self._cache[key]
+            return None
+
+    def put(self, key: str, value: Any) -> None:
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            else:
+                if len(self._cache) >= self._max_size:
+                    # 最も古いエントリを削除
+                    oldest_key, oldest_value = self._cache.popitem(last=False)
+                    logger.info(f"LRUCache: Evicting oldest entry: {oldest_key}")
+                    # ChromaDBクライアントの場合はクローズを試みる
+                    if hasattr(oldest_value, '_server') and oldest_value._server:
+                        try:
+                            oldest_value._server = None
+                        except Exception as e:
+                            logger.warning(f"Failed to cleanup ChromaDB client: {e}")
+                self._cache[key] = value
+
+    def __contains__(self, key: str) -> bool:
+        with self._lock:
+            return key in self._cache
+
+
 class MetadataVectorDB:
     """メタデータ対応のベクトルデータベースクラス"""
 
-    # パフォーマンス: ChromaDBクライアントのキャッシュ
-    _client_cache: Dict[str, chromadb.PersistentClient] = {}
+    # パフォーマンス + Memory Leak防止: LRUキャッシュを使用（最大10エントリ）
+    _client_cache = LRUCache(max_size=10)
     _cache_lock = threading.Lock()
 
     def __init__(self, base_dir: str = ".", collection_name: str = None, batch_size: int = 100):
@@ -24,18 +65,20 @@ class MetadataVectorDB:
         self.db_path = os.path.join(base_dir, "reference", "vector_db")
         os.makedirs(self.db_path, exist_ok=True)
 
-        # パフォーマンス: ChromaDBクライアントをキャッシュから取得または作成
+        # パフォーマンス + Memory Leak防止: LRUキャッシュを使用
         with self._cache_lock:
-            if self.db_path not in self._client_cache:
-                self._client_cache[self.db_path] = chromadb.PersistentClient(
+            cached_client = self._client_cache.get(self.db_path)
+            if cached_client is None:
+                cached_client = chromadb.PersistentClient(
                     path=self.db_path,
                     settings=Settings(
                         anonymized_telemetry=False,
                         allow_reset=True
                     )
                 )
+                self._client_cache.put(self.db_path, cached_client)
                 logger.info(f"New ChromaDB client created for {self.db_path}")
-            self.client = self._client_cache[self.db_path]
+            self.client = cached_client
         
         # コレクションの取得または作成
         if self.collection_name is None:
@@ -72,16 +115,23 @@ class MetadataVectorDB:
             metadatas: メタデータのリスト
             ids: ドキュメントIDのリスト（省略時は自動生成）
         """
+        # 安全性: 空リストチェック（Empty Batch Handling）
+        if not texts:
+            logger.warning("add_documents called with empty texts list, skipping")
+            return
 
+        # 安全性: ユニークID生成（Duplicate ID Collision防止）
         if ids is None:
-            ids = [f"doc_{i}" for i in range(len(texts))]
+            # UUIDを使用してコレクション間でも一意なIDを生成
+            batch_uuid = uuid.uuid4().hex[:8]
+            ids = [f"doc_{batch_uuid}_{i}" for i in range(len(texts))]
 
         # パフォーマンス: numpy配列の場合はtolist()を呼び出す
         # （ChromaDBはlistを期待するため変換が必要）
         if hasattr(embeddings, 'tolist'):
             embeddings = embeddings.tolist()
-        
-        # メタデータの正規化
+
+        # メタデータの正規化（型保持を改善）
         normalized_metadatas = []
         for metadata in metadatas:
             normalized_metadata = {}
@@ -92,10 +142,19 @@ class MetadataVectorDB:
                 # リストの場合は文字列に結合（要素を文字列に変換）
                 elif isinstance(value, list):
                     normalized_metadata[key] = " | ".join(str(v) for v in value if v is not None) if value else ""
+                # ブーリアン: boolはintのサブクラスなので先にチェック
+                # ChromaDBはboolをサポートしないためint変換
+                elif isinstance(value, bool):
+                    normalized_metadata[key] = 1 if value else 0
+                # 数値: ChromaDBがサポートする型はそのまま保持
+                elif isinstance(value, (int, float)):
+                    normalized_metadata[key] = value
+                elif value is None:
+                    normalized_metadata[key] = ""
                 else:
-                    normalized_metadata[key] = str(value) if value is not None else ""
+                    normalized_metadata[key] = str(value)
             normalized_metadatas.append(normalized_metadata)
-        
+
         # バッチサイズで分割して追加（ChromaDBの制限を回避）
         # パフォーマンス: 設定可能なバッチサイズを使用
         for i in range(0, len(texts), self.batch_size):
@@ -104,14 +163,18 @@ class MetadataVectorDB:
             batch_embeddings = embeddings[i:end_idx]
             batch_metadatas = normalized_metadatas[i:end_idx]
             batch_ids = ids[i:end_idx]
-            
+
+            # 安全性: 空バッチをスキップ
+            if not batch_texts:
+                continue
+
             self.collection.add(
                 documents=batch_texts,
                 embeddings=batch_embeddings,
                 metadatas=batch_metadatas,
                 ids=batch_ids
             )
-        
+
         logger.info(f"Added {len(texts)} documents to vector database")
     
     # セキュリティ: 許可されたメタデータキーと期待される型のホワイトリスト

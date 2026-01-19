@@ -114,7 +114,14 @@ class Processor:
         if self.judgment_support and self.config.multi_stage_enable_judgment_support:
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
-            revision_map = {str(item.get("number")): item.get("query", "") for item in input_data}
+            # Input Validation: revision_mapの構築時にデータ検証
+            revision_map = {}
+            for item in input_data:
+                num = item.get("number")
+                query = item.get("query", "")
+                if num is not None:
+                    # 数値型の場合は文字列に変換
+                    revision_map[str(num)] = query if isinstance(query, str) else ""
 
             # パフォーマンス: LLM評価を並列実行
             def evaluate_single(result):
@@ -137,8 +144,9 @@ class Processor:
                     try:
                         future.result()  # 例外があれば再スロー
                     except Exception as e:
-                        # 完全な例外情報を保持（デバッグ用）
-                        logger.error(f"LLM評価エラー: {type(e).__name__}: {e}", exc_info=True)
+                        # Sensitive Data Exposure防止: スタックトレースにAPIキーが含まれる可能性があるため
+                        # exc_info=Falseに変更し、エラーメッセージのみをログ出力
+                        logger.error(f"LLM評価エラー: {type(e).__name__}: {str(e)[:100]}")
                         result = futures[future]
                         result['Relevance_Judgment'] = "エラー"
                         result['Judgment_Reason'] = f"{type(e).__name__}: {str(e)[:200]}"

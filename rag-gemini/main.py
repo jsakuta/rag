@@ -86,9 +86,16 @@ def main():
         config.vector_weight = config.DEFAULT_UI_VECTOR_WEIGHT
         process = None
         try:
+            # Subprocess Security: sys.executableの検証
+            python_executable = sys.executable
+            if not python_executable or not os.path.isfile(python_executable):
+                raise RuntimeError(f"Invalid Python executable: {python_executable}")
+            if not os.access(python_executable, os.X_OK):
+                raise RuntimeError(f"Python executable is not executable: {python_executable}")
+
             # subprocessを使用してStreamlitを起動（セキュリティ向上）
             import time
-            process = subprocess.Popen([sys.executable, "-m", "streamlit", "run", "ui/chat.py"])
+            process = subprocess.Popen([python_executable, "-m", "streamlit", "run", "ui/chat.py"])
             # プロセスが起動したか確認（最大5秒待機）
             startup_timeout = 5
             poll_interval = 0.5

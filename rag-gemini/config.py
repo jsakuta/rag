@@ -128,10 +128,35 @@ class SearchConfig:
 
     def __post_init__(self):
         """パラメータの検証とkeyword_weightの計算"""
+        # Input Validation: 数値パラメータの範囲検証
         if not 0 <= self.vector_weight <= 1:
             raise ValueError("vector_weight must be between 0 and 1")
         self.keyword_weight = 1.0 - self.vector_weight
         self.base_dir = os.path.abspath(self.base_dir)
+
+        # Input Validation: top_k（1以上の整数）
+        if not isinstance(self.top_k, int) or self.top_k < 1:
+            raise ValueError(f"top_k must be a positive integer, got: {self.top_k}")
+        if self.top_k > 100:
+            logger.warning(f"top_k={self.top_k} is very large, this may impact performance")
+
+        # Input Validation: 多段階検索パラメータ
+        if not 0 <= self.multi_stage_threshold <= 1:
+            raise ValueError(f"multi_stage_threshold must be between 0 and 1, got: {self.multi_stage_threshold}")
+        if not isinstance(self.multi_stage_max_results, int) or self.multi_stage_max_results < 1:
+            raise ValueError(f"multi_stage_max_results must be a positive integer, got: {self.multi_stage_max_results}")
+        if self.multi_stage_max_results > 1000:
+            logger.warning(f"multi_stage_max_results={self.multi_stage_max_results} is very large, this may impact performance")
+
+        # Input Validation: バッチサイズ
+        if self.EMBEDDING_BATCH_SIZE < 1 or self.EMBEDDING_BATCH_SIZE > 250:
+            raise ValueError(f"EMBEDDING_BATCH_SIZE must be between 1 and 250, got: {self.EMBEDDING_BATCH_SIZE}")
+        if self.VECTOR_DB_BATCH_SIZE < 1 or self.VECTOR_DB_BATCH_SIZE > 1000:
+            raise ValueError(f"VECTOR_DB_BATCH_SIZE must be between 1 and 1000, got: {self.VECTOR_DB_BATCH_SIZE}")
+
+        # Input Validation: 検索設定
+        if self.VECTOR_SEARCH_MULTIPLIER < 1:
+            raise ValueError(f"VECTOR_SEARCH_MULTIPLIER must be at least 1, got: {self.VECTOR_SEARCH_MULTIPLIER}")
 
         # 検索方式の検証
         if self.search_mode not in self.VALID_SEARCH_MODES:

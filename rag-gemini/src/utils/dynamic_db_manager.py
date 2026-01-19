@@ -68,13 +68,27 @@ class DynamicDBManager:
         return False  # 例外は再スロー
 
     def close(self):
-        """リソースのクリーンアップ"""
+        """リソースのクリーンアップ（ChromaDBクライアント含む）"""
         if self._closed:
             return
 
         try:
             # タイムスタンプを永続化
             self._save_update_timestamps()
+
+            # Resource Leak防止: ChromaDBクライアントのクリーンアップ
+            if hasattr(self, '_chroma_client') and self._chroma_client is not None:
+                try:
+                    # ChromaDB PersistentClient はexplicitなcloseメソッドを持たないが、
+                    # 内部のサーバー参照をクリアすることでリソースを解放
+                    if hasattr(self._chroma_client, '_server'):
+                        self._chroma_client._server = None
+                    # Windowsでのファイルロック問題を軽減するため参照をクリア
+                    self._chroma_client = None
+                    logger.info("DynamicDBManager: ChromaDBクライアントをクリーンアップしました")
+                except Exception as e:
+                    logger.warning(f"ChromaDBクライアントのクリーンアップに失敗: {e}")
+
             logger.info("DynamicDBManager: リソースをクリーンアップしました")
         except Exception as e:
             logger.warning(f"DynamicDBManager close時のエラー: {e}")
