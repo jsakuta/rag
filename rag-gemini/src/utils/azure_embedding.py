@@ -46,7 +46,19 @@ class AzureOpenAIEmbeddingModel(BaseEmbeddingModel):
             with cls._lock:
                 if cls._instance is None:  # Double-checked locking
                     cls._instance = cls(config)
+                    # 初期化時の設定をprimitive valuesとして保存（比較の確実性のため）
+                    cls._instance._init_deployment = config.azure_openai_embedding_deployment
+                    cls._instance._init_endpoint = config.azure_openai_embedding_endpoint
                     logger.info("AzureOpenAIEmbeddingModel singleton instance created")
+        else:
+            # 異なる設定で呼び出された場合は警告（primitive values で比較）
+            if hasattr(cls._instance, '_init_deployment'):
+                if (cls._instance._init_deployment != config.azure_openai_embedding_deployment or
+                    cls._instance._init_endpoint != config.azure_openai_embedding_endpoint):
+                    logger.warning(
+                        "AzureOpenAIEmbeddingModel singleton called with different config. "
+                        f"Using existing instance (deployment: {cls._instance._init_deployment})"
+                    )
         return cls._instance
 
     def _setup_model(self):
@@ -75,7 +87,19 @@ class AzureOpenAIEmbeddingModel(BaseEmbeddingModel):
                 api_key=api_key
             )
 
-            logger.info(f"Azure OpenAI Embedding API initialized successfully (endpoint: {endpoint})")
+            # セキュリティ: エンドポイントURLをマスクしてログ出力（URL解析版）
+            from urllib.parse import urlparse
+            try:
+                parsed = urlparse(endpoint)
+                if parsed.netloc:
+                    parts = parsed.netloc.split('.')
+                    # 最後のTLDのみ表示（例: https://***...com）
+                    masked_endpoint = f"{parsed.scheme}://***...{parts[-1]}" if len(parts) >= 2 else f"{parsed.scheme}://***"
+                else:
+                    masked_endpoint = "***"
+            except Exception:
+                masked_endpoint = "***"
+            logger.info(f"Azure OpenAI Embedding API initialized successfully (endpoint: {masked_endpoint})")
             return client
 
         except Exception as e:

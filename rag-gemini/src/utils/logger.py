@@ -7,13 +7,17 @@ def setup_logger(name):
     """ロガーの設定"""
     logger = logging.getLogger(name)
 
-    # 環境変数でログレベルを制御
+    # セキュリティ: ホワイトリスト方式でログレベルを検証
+    VALID_LOG_LEVELS = {'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'}
     log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-    level = getattr(logging, log_level, None)
-    if level is None:
-        # 無効なログレベルが指定された場合は警告してデフォルト(INFO)を使用
-        print(f"[WARNING] Invalid LOG_LEVEL '{log_level}' specified. Using default 'INFO'.")
-        level = logging.INFO
+
+    invalid_level = None
+    if log_level not in VALID_LOG_LEVELS:
+        # 無効なログレベルが指定された場合は後で警告ログを出力
+        invalid_level = log_level
+        log_level = 'INFO'
+
+    level = getattr(logging, log_level)
     logger.setLevel(level)
 
     # ハンドラの重複追加を防止
@@ -34,4 +38,12 @@ def setup_logger(name):
 
     logger.addHandler(file_handler)
     logger.addHandler(stream_handler)
+
+    # ハンドラ設定後に無効なログレベルの警告を出力
+    if invalid_level:
+        logger.warning(
+            f"Invalid LOG_LEVEL '{invalid_level}' specified in environment. "
+            f"Using default 'INFO'. Valid levels: {VALID_LOG_LEVELS}"
+        )
+
     return logger

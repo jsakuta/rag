@@ -32,6 +32,9 @@ class SearchConfig:
     DEFAULT_EMBEDDING_PROVIDER: str = "vertex_ai"
     DEFAULT_EMBEDDING_MODEL: str = "gemini-embedding-001"
     VALID_EMBEDDING_PROVIDERS: Tuple[str, ...] = ("vertex_ai", "azure_openai")
+
+    # 検索モードの有効な値（__post_init__で参照されるためクラス定数として先頭付近に配置）
+    VALID_SEARCH_MODES: Tuple[str, ...] = ("original", "llm_enhanced", "multi_stage")
     
     # 動的DB管理設定
     DEFAULT_FORCE_DB_UPDATE: bool = False  # 強制DB更新フラグ
@@ -149,9 +152,6 @@ class SearchConfig:
             if not self.azure_openai_embedding_api_key:
                 logger.warning("AZURE_OPENAI_EMBEDDING_API_KEY is not set")
                 logger.info("Please set AZURE_OPENAI_EMBEDDING_API_KEY in .env file")
-
-    # 検索モードの有効な値
-    VALID_SEARCH_MODES = ("original", "llm_enhanced", "multi_stage")
 
     # 検索モードのフラグマッピング
     SEARCH_MODE_FLAGS = {

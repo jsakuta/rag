@@ -209,15 +209,22 @@ def run_llm_analysis():
     logger.info(f"=== LLM分析開始 ({len(results)}件) ===")
 
     for i, result in enumerate(results, 1):
-        evaluation = judgment_support.evaluate(
-            query,
-            result.get('Search_Result_Q', ''),
-            result.get('Search_Result_A', '')
-        )
-        result['Relevance_Judgment'] = evaluation['relevance_judgment']
-        result['Judgment_Reason'] = evaluation['judgment_reason']
-        result['Modification_Suggestion'] = evaluation['modification_suggestion']
-        logger.info(f"  結果{i}: → LLM判定: {evaluation['relevance_judgment']}")
+        # 安定性: 各結果の分析を個別にtry-except
+        try:
+            evaluation = judgment_support.evaluate(
+                query,
+                result.get('Search_Result_Q', ''),
+                result.get('Search_Result_A', '')
+            )
+            result['Relevance_Judgment'] = evaluation['relevance_judgment']
+            result['Judgment_Reason'] = evaluation['judgment_reason']
+            result['Modification_Suggestion'] = evaluation['modification_suggestion']
+            logger.info(f"  結果{i}: → LLM判定: {evaluation['relevance_judgment']}")
+        except Exception as e:
+            logger.error(f"  結果{i}: LLM分析エラー: {e}")
+            result['Relevance_Judgment'] = "エラー"
+            result['Judgment_Reason'] = f"分析エラー: {str(e)[:50]}"
+            result['Modification_Suggestion'] = ""
 
     # チャット履歴の最新の結果を更新
     if st.session_state.chat_history:

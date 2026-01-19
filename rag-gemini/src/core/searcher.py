@@ -21,6 +21,24 @@ class Searcher:
     依存性注入により、テスト時にモックを注入可能。
     """
 
+    # パフォーマンス: Sudachi辞書をクラス変数として共有（メモリ節約）
+    _shared_tokenizer = None
+    _tokenizer_lock = None
+
+    @classmethod
+    def _get_shared_tokenizer(cls):
+        """スレッドセーフな共有トークナイザーを取得"""
+        import threading
+        if cls._tokenizer_lock is None:
+            cls._tokenizer_lock = threading.Lock()
+
+        if cls._shared_tokenizer is None:
+            with cls._tokenizer_lock:
+                if cls._shared_tokenizer is None:  # Double-checked locking
+                    cls._shared_tokenizer = Dictionary().create()
+                    logger.info("Sudachi辞書を共有インスタンスとして初期化")
+        return cls._shared_tokenizer
+
     def __init__(
         self,
         config: SearchConfig,
@@ -35,7 +53,8 @@ class Searcher:
             embedding_model: 埋め込みモデル（省略時は設定に応じて自動生成）
         """
         self.config = config
-        self.tokenizer = Dictionary().create()
+        # パフォーマンス: 共有トークナイザーを使用
+        self.tokenizer = self._get_shared_tokenizer()
         self.mode = tokenizer.Tokenizer.SplitMode.C
 
         # 依存性注入: 外部から渡されなければ設定に応じて自動生成
@@ -48,6 +67,9 @@ class Searcher:
         # プロンプトファイルのキャッシュ（パフォーマンス向上）
         self._latest_prompt_cache: Optional[str] = None
         self._summarize_prompt_cache: Optional[str] = None
+
+        # パフォーマンス: キーワードキャッシュ（N+1問題解消）
+        self._reference_keywords_cache: Dict[int, set] = {}
 
         logger.info("Searcherを初期化しました（依存性注入対応）")
 
@@ -109,19 +131,40 @@ class Searcher:
         return min(normalized_score, 1.0)
 
     def _load_latest_prompt(self) -> str:
-        """最新のプロンプトファイルを読み込む（キャッシュ対応）"""
+        """最新のプロンプトファイルを読み込む（キャッシュ対応・パストラバーサル防止）"""
         if self._latest_prompt_cache is not None:
             return self._latest_prompt_cache
 
+        from pathlib import Path
+
         prompt_dir = os.path.join(self.config.base_dir, "prompt")
-        prompt_files = [f for f in os.listdir(prompt_dir) if os.path.isfile(os.path.join(prompt_dir, f))]
+        prompt_dir_resolved = Path(prompt_dir).resolve()
+
+        # セキュリティ: 許可された拡張子のみ
+        ALLOWED_EXTENSIONS = {'.txt', '.md'}
+
+        prompt_files = []
+        for f in os.listdir(prompt_dir):
+            # パス結合時にPathを使用（Windowsのパス区切り問題を回避）
+            file_path = (prompt_dir_resolved / f).resolve()
+
+            # セキュリティ: パストラバーサル防止（Path.relative_to() で検証）
+            try:
+                file_path.relative_to(prompt_dir_resolved)  # 親ディレクトリ外なら ValueError
+            except ValueError:
+                logger.warning(f"Path traversal attempt blocked: {f}")
+                continue
+
+            if file_path.is_file() and file_path.suffix.lower() in ALLOWED_EXTENSIONS:
+                prompt_files.append(str(file_path))
+
         if not prompt_files:
             raise FileNotFoundError(f"No prompt files found in {prompt_dir}")
 
-        latest_prompt_file = max(prompt_files, key=lambda f: os.path.getctime(os.path.join(prompt_dir, f)))
-        logger.info(f"Using prompt file: {latest_prompt_file}")
+        latest_prompt_file = max(prompt_files, key=os.path.getctime)
+        logger.info(f"Using prompt file: {Path(latest_prompt_file).name}")
 
-        with open(os.path.join(prompt_dir, latest_prompt_file), 'r', encoding='utf-8') as f:
+        with open(latest_prompt_file, 'r', encoding='utf-8') as f:
             self._latest_prompt_cache = f.read()
         return self._latest_prompt_cache
 
@@ -161,11 +204,18 @@ class Searcher:
         """
         return self.llm.invoke(messages)
 
-    def summarize_text(self, text: str) -> str:
+    def summarize_text(self, text: str, fallback_on_error: bool = True) -> str:
         """LLMを使用してテキストを要約して検索クエリを生成
 
         すべてのLLMプロバイダーでLangchainの統一されたinvoke()メソッドを使用。
         リトライロジック付きで一時的なAPI障害に対応。
+
+        Args:
+            text: 要約対象のテキスト
+            fallback_on_error: Trueの場合、エラー時に元のテキストを返す（デフォルト: True）
+
+        Returns:
+            str: 要約されたテキスト、またはエラー時は元のテキスト
         """
         if self.llm is None:
             raise RuntimeError("LLM is not initialized. Set search_mode to 'llm_enhanced' in config.")
@@ -182,8 +232,13 @@ class Searcher:
             return response.content.strip()
         except Exception as e:
             logger.error(f"Error during summarization after retries: {str(e)}")
-            logger.info("LLM API error - stopping processing as configured")
-            raise
+            if fallback_on_error:
+                # 品質: LLMエラー時に元のテキストを返すフォールバック
+                logger.warning(f"LLM API error - falling back to original text")
+                return text
+            else:
+                logger.info("LLM API error - stopping processing as configured")
+                raise
 
 
     def prepare_search(self, reference_data):
@@ -233,6 +288,13 @@ class Searcher:
 
         # ベクトル化処理は検索時に必要な業務分野のみ実行される
         # （_select_db_for_business内でneeds_updateをチェック）
+
+        # パフォーマンス: キーワードを事前計算してキャッシュ（N+1問題解消）
+        logger.info("キーワードキャッシュを構築中...")
+        self._reference_keywords_cache = {}
+        for i, query in enumerate(self.reference_queries):
+            self._reference_keywords_cache[i] = set(self._extract_keywords(query))
+        logger.info(f"キーワードキャッシュ構築完了: {len(self._reference_keywords_cache)}件")
 
     def parse_enhanced_combined_text(self, combined_text: str) -> dict:
         """階層構造を含む結合テキストを解析（新形式：ラベル付き）"""
@@ -408,6 +470,8 @@ class Searcher:
             List[float]: 各結果のキーワード類似度
         """
         keyword_similarities = []
+        query_keywords_set = set(keywords)
+
         for search_result in search_results:
             doc_id = search_result['id']
             if doc_id.startswith('doc_'):
@@ -415,8 +479,32 @@ class Searcher:
             else:
                 original_idx = int(doc_id)
 
-            ref_query = self.reference_queries[original_idx]
-            keyword_sim = self._calculate_keyword_similarity(keywords, ref_query)
+            # パフォーマンス: キーワードキャッシュを活用（N+1問題解消）
+            if original_idx in self._reference_keywords_cache:
+                ref_keywords = self._reference_keywords_cache[original_idx]
+                # キャッシュを使用した高速なJaccard類似度計算
+                if not ref_keywords or not query_keywords_set:
+                    keyword_sim = 0.0
+                else:
+                    intersection = ref_keywords.intersection(query_keywords_set)
+                    union = ref_keywords.union(query_keywords_set)
+                    keyword_sim = len(intersection) / len(union) if union else 0.0
+            else:
+                # キャッシュミス時はフォールバック（警告付き）
+                logger.warning(f"Keyword cache miss for index {original_idx}")
+                if original_idx < len(self.reference_queries):
+                    ref_query = self.reference_queries[original_idx]
+                    keyword_sim = self._calculate_keyword_similarity(keywords, ref_query)
+                else:
+                    # データ整合性エラー: fail fast で問題を早期発見
+                    error_msg = (
+                        f"Vector DB contains document ID {doc_id} (index {original_idx}) "
+                        f"but reference data only has {len(self.reference_queries)} items. "
+                        f"DB and reference data are out of sync."
+                    )
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+
             keyword_similarities.append(keyword_sim)
 
         return keyword_similarities
@@ -592,20 +680,20 @@ class Searcher:
 
             db_path = self.db_manager.get_db_path_for_business(business_area)
 
-            # 日本語の業務分野名を英語に変換
-            english_name = self.db_manager._translate_business_area(business_area)
+            # プロバイダー別のコレクション名を取得
+            collection_name = self.db_manager._get_collection_name(business_area)
 
             # ChromaDBクライアントの切り替え
             from src.utils.vector_db import MetadataVectorDB
             self.vector_db = MetadataVectorDB(
                 base_dir=self.config.base_dir,
-                collection_name=f"{english_name}_DB"
+                collection_name=collection_name
             )
 
             self.current_db_path = db_path
             self.current_business_area = business_area
 
-            logger.info(f"DB切り替え完了: {english_name}_DB (業務分野: {business_area})")
+            logger.info(f"DB切り替え完了: {collection_name} (業務分野: {business_area}, プロバイダー: {self.config.embedding_provider})")
 
         except DynamicDBError as e:
             logger.error(f"DB選択エラー: {e}")

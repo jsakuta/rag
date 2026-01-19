@@ -1,4 +1,5 @@
 import os
+import threading
 import chromadb
 from chromadb.config import Settings
 from chromadb.errors import NotFoundError as ChromaNotFoundError
@@ -11,21 +12,30 @@ logger = setup_logger(__name__)
 
 class MetadataVectorDB:
     """メタデータ対応のベクトルデータベースクラス"""
-    
-    def __init__(self, base_dir: str = ".", collection_name: str = None):
+
+    # パフォーマンス: ChromaDBクライアントのキャッシュ
+    _client_cache: Dict[str, chromadb.PersistentClient] = {}
+    _cache_lock = threading.Lock()
+
+    def __init__(self, base_dir: str = ".", collection_name: str = None, batch_size: int = 100):
         self.base_dir = base_dir
         self.collection_name = collection_name
+        self.batch_size = batch_size  # 設定可能なバッチサイズ
         self.db_path = os.path.join(base_dir, "reference", "vector_db")
         os.makedirs(self.db_path, exist_ok=True)
-        
-        # ChromaDBクライアントの初期化
-        self.client = chromadb.PersistentClient(
-            path=self.db_path,
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True
-            )
-        )
+
+        # パフォーマンス: ChromaDBクライアントをキャッシュから取得または作成
+        with self._cache_lock:
+            if self.db_path not in self._client_cache:
+                self._client_cache[self.db_path] = chromadb.PersistentClient(
+                    path=self.db_path,
+                    settings=Settings(
+                        anonymized_telemetry=False,
+                        allow_reset=True
+                    )
+                )
+                logger.info(f"New ChromaDB client created for {self.db_path}")
+            self.client = self._client_cache[self.db_path]
         
         # コレクションの取得または作成
         if self.collection_name is None:
@@ -46,15 +56,27 @@ class MetadataVectorDB:
             logger.error(f"Unexpected error accessing collection '{self.collection_name}': {e}")
             raise
     
-    def add_documents(self, 
-                     texts: List[str], 
-                     embeddings: List[List[float]], 
+    def add_documents(self,
+                     texts: List[str],
+                     embeddings,
                      metadatas: List[Dict[str, Any]],
                      ids: Optional[List[str]] = None) -> None:
-        """ドキュメントとメタデータをベクトルDBに追加"""
-        
+        """ドキュメントとメタデータをベクトルDBに追加
+
+        Args:
+            texts: ドキュメントテキストのリスト
+            embeddings: 埋め込みベクトル（List[List[float]] または numpy.ndarray）
+            metadatas: メタデータのリスト
+            ids: ドキュメントIDのリスト（省略時は自動生成）
+        """
+
         if ids is None:
             ids = [f"doc_{i}" for i in range(len(texts))]
+
+        # パフォーマンス: numpy配列の場合はtolist()を呼び出す
+        # （ChromaDBはlistを期待するため変換が必要）
+        if hasattr(embeddings, 'tolist'):
+            embeddings = embeddings.tolist()
         
         # メタデータの正規化
         normalized_metadatas = []
@@ -72,9 +94,9 @@ class MetadataVectorDB:
             normalized_metadatas.append(normalized_metadata)
         
         # バッチサイズで分割して追加（ChromaDBの制限を回避）
-        batch_size = 100
-        for i in range(0, len(texts), batch_size):
-            end_idx = min(i + batch_size, len(texts))
+        # パフォーマンス: 設定可能なバッチサイズを使用
+        for i in range(0, len(texts), self.batch_size):
+            end_idx = min(i + self.batch_size, len(texts))
             batch_texts = texts[i:end_idx]
             batch_embeddings = embeddings[i:end_idx]
             batch_metadatas = normalized_metadatas[i:end_idx]
@@ -89,22 +111,59 @@ class MetadataVectorDB:
         
         logger.info(f"Added {len(texts)} documents to vector database")
     
-    def search(self, 
-               query_embedding: List[float], 
+    # セキュリティ: 許可されたメタデータキーと期待される型のホワイトリスト
+    ALLOWED_METADATA_KEYS = {
+        'source': (str, int, float),
+        'tags': (str, int, float),
+        'date': (str,),
+        'hierarchy': (str,),
+        'sheet_name': (str,),
+        'row_index': (int, str),
+        'scenario': (str,),
+        'faq': (str,),
+        'category': (str,),
+        'type': (str,),
+        'business_area': (str,)
+    }
+
+    def search(self,
+               query_embedding: List[float],
                n_results: int = 10,
                filter_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """メタデータフィルタリング付きベクトル検索"""
-        
-        # フィルタリング条件の正規化
+
+        # フィルタリング条件の正規化（セキュリティ強化: ホワイトリスト検証）
         where_filter = None
         if filter_metadata:
             where_filter = {}
             for key, value in filter_metadata.items():
+                # セキュリティ: 許可されたキーのみ受け入れ
+                if key not in self.ALLOWED_METADATA_KEYS:
+                    logger.warning(f"Invalid metadata key rejected: {key}")
+                    continue
+
+                expected_types = self.ALLOWED_METADATA_KEYS[key]
+
+                # セキュリティ: dict型は演算子インジェクション防止のため拒否
+                if isinstance(value, dict):
+                    # $in 演算子のみ許可（内部で生成する場合のみ）
+                    if len(value) == 1 and "$in" in value and isinstance(value["$in"], list):
+                        sanitized_list = [v for v in value["$in"] if isinstance(v, expected_types)]
+                        if sanitized_list:
+                            where_filter[key] = {"$in": sanitized_list}
+                    else:
+                        logger.warning(f"Complex filter operators not allowed: {key}={value}")
+                    continue
+
+                # セキュリティ: リストは $in 演算子に変換
                 if isinstance(value, list):
-                    # リストの場合はOR条件
-                    where_filter[key] = {"$in": value}
-                else:
+                    sanitized_list = [v for v in value if isinstance(v, expected_types)]
+                    if sanitized_list:
+                        where_filter[key] = {"$in": sanitized_list}
+                elif isinstance(value, expected_types):
                     where_filter[key] = value
+                else:
+                    logger.warning(f"Type mismatch for {key}: expected {expected_types}, got {type(value)}")
         
         # 検索実行
         results = self.collection.query(

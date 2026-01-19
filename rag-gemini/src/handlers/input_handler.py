@@ -235,6 +235,8 @@ class HierarchicalExcelInputHandler(InputHandler):
                         question_col_idx = answer_col_idx - 1
                         query = str(row[df.columns[question_col_idx]]).strip() if pd.notna(row[df.columns[question_col_idx]]) else ""
                     else:
+                        # 品質: エッジケースの警告（回答が最初の列付近にある）
+                        logger.warning(f"原則文の質問列が見つかりません（行{idx}, answer_col_idx={answer_col_idx}）")
                         query = ""
                     
                     # 質問の左側が階層構造
@@ -252,6 +254,8 @@ class HierarchicalExcelInputHandler(InputHandler):
                         question_col_idx = answer_col_idx - 1
                         query = str(row[df.columns[question_col_idx]]).strip() if pd.notna(row[df.columns[question_col_idx]]) else ""
                     else:
+                        # 品質: エッジケースの警告（回答が最初の列付近にある）
+                        logger.warning(f"質問列が見つかりません（行{idx}, answer_col_idx={answer_col_idx}）")
                         query = ""
                     
                     # 質問の左側が階層構造

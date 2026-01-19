@@ -4,7 +4,6 @@ import shutil
 import logging
 import json
 import pandas as pd
-import numpy as np
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 import chromadb
@@ -42,28 +41,96 @@ class DynamicDBManager:
             )
         )
 
-        # 更新日時記録ファイルのパス
-        self.update_timestamp_file = os.path.join(self.base_db_path, "update_timestamps.json")
+        # 埋め込みプロバイダー（DB分離用）
+        self.embedding_provider = config.embedding_provider
+
+        # 更新日時記録ファイルのパス（プロバイダー別）
+        self.update_timestamp_file = os.path.join(
+            self.base_db_path, f"update_timestamps_{self.embedding_provider}.json"
+        )
 
         # 更新日時の読み込み
         self._load_update_timestamps()
 
-        # 既存DBの移行（初回のみ）
+        # 既存DBの移行（初回のみ：旧形式→プロバイダー別形式）
         self._migrate_existing_db()
-    
+
+        # リソース管理フラグ
+        self._closed = False
+
+    def __enter__(self):
+        """コンテキストマネージャ: 開始"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """コンテキストマネージャ: 終了時にリソースをクリーンアップ"""
+        self.close()
+        return False  # 例外は再スロー
+
+    def close(self):
+        """リソースのクリーンアップ"""
+        if self._closed:
+            return
+
+        try:
+            # タイムスタンプを永続化
+            self._save_update_timestamps()
+            logger.info("DynamicDBManager: リソースをクリーンアップしました")
+        except Exception as e:
+            logger.warning(f"DynamicDBManager close時のエラー: {e}")
+        finally:
+            self._closed = True
+
     def _load_update_timestamps(self):
-        """更新日時の記録を読み込み"""
+        """更新日時の記録を読み込み（型検証付き）"""
         try:
             if os.path.exists(self.update_timestamp_file):
                 with open(self.update_timestamp_file, 'r', encoding='utf-8') as f:
                     timestamps = json.load(f)
-                    self._last_faq_mtime = timestamps.get('faq', {})
-                    self._last_scenario_mtime = timestamps.get('scenario', {})
-                    logger.info(f"更新日時記録を読み込み: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件")
+
+                # 品質: JSONデータの型検証
+                if not isinstance(timestamps, dict):
+                    logger.warning(f"タイムスタンプファイルの形式が不正です（dict期待）: {type(timestamps)}")
+                    self._last_faq_mtime = {}
+                    self._last_scenario_mtime = {}
+                    return
+
+                faq_data = timestamps.get('faq', {})
+                scenario_data = timestamps.get('scenario', {})
+
+                # 各フィールドの型検証
+                if not isinstance(faq_data, dict):
+                    logger.warning(f"faqフィールドの型が不正です: {type(faq_data)}")
+                    faq_data = {}
+                if not isinstance(scenario_data, dict):
+                    logger.warning(f"scenarioフィールドの型が不正です: {type(scenario_data)}")
+                    scenario_data = {}
+
+                # 値の型検証（タイムスタンプはfloat/int）
+                self._last_faq_mtime = {
+                    k: v for k, v in faq_data.items()
+                    if isinstance(k, str) and isinstance(v, (int, float))
+                }
+                self._last_scenario_mtime = {
+                    k: v for k, v in scenario_data.items()
+                    if isinstance(k, str) and isinstance(v, (int, float))
+                }
+
+                # 無効なエントリがあった場合は警告
+                if len(self._last_faq_mtime) != len(faq_data):
+                    logger.warning(f"FAQタイムスタンプに無効なエントリがありました（スキップ）")
+                if len(self._last_scenario_mtime) != len(scenario_data):
+                    logger.warning(f"シナリオタイムスタンプに無効なエントリがありました（スキップ）")
+
+                logger.info(f"更新日時記録を読み込み: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件")
             else:
                 self._last_faq_mtime = {}
                 self._last_scenario_mtime = {}
                 logger.info("更新日時記録ファイルが存在しないため、新規作成します")
+        except json.JSONDecodeError as e:
+            logger.warning(f"タイムスタンプファイルのJSON解析エラー: {e}")
+            self._last_faq_mtime = {}
+            self._last_scenario_mtime = {}
         except Exception as e:
             logger.warning(f"更新日時記録の読み込みエラー: {e}")
             self._last_faq_mtime = {}
@@ -108,9 +175,86 @@ class DynamicDBManager:
         self._save_update_timestamps()
         logger.info(f"業務分野 '{business_area}' のタイムスタンプを更新しました")
 
+    def _get_collection_name(self, business_area: str) -> str:
+        """プロバイダー別のコレクション名を生成
+
+        Args:
+            business_area: 業務分野名（日本語）
+
+        Returns:
+            str: コレクション名（例: deposit_vertex_ai_DB）
+        """
+        english_name = self._translate_business_area(business_area)
+        return f"{english_name}_{self.embedding_provider}_DB"
+
     def _migrate_existing_db(self):
-        """既存のDB移行処理（現在は不要）"""
-        logger.info("既存DB移行処理は不要（動的DB管理システムが唯一の方式）")
+        """既存のDB移行処理（旧形式→プロバイダー別形式）
+
+        旧形式: {業務分野}_DB (例: deposit_DB)
+        新形式: {業務分野}_{provider}_DB (例: deposit_vertex_ai_DB)
+
+        既存DBがvertex_aiで作成されている場合のみ移行を実行。
+        """
+        # vertex_ai以外のプロバイダーでは移行不要
+        if self.embedding_provider != "vertex_ai":
+            logger.info(f"プロバイダー '{self.embedding_provider}' では既存DB移行は不要")
+            return
+
+        # 旧形式のタイムスタンプファイルが存在するか確認
+        old_timestamp_file = os.path.join(self.base_db_path, "update_timestamps.json")
+        if not os.path.exists(old_timestamp_file):
+            logger.info("旧形式のタイムスタンプファイルが存在しないため、移行不要")
+            return
+
+        # 新形式のタイムスタンプファイルが既に存在する場合はスキップ
+        if os.path.exists(self.update_timestamp_file):
+            logger.info("新形式のタイムスタンプファイルが既に存在するため、移行済み")
+            return
+
+        logger.info("既存DB移行処理を開始（旧形式→プロバイダー別形式）...")
+
+        try:
+            # 旧形式のコレクションを新形式にリネーム
+            collections = self._chroma_client.list_collections()
+            migrated_count = 0
+
+            for collection in collections:
+                old_name = collection.name
+                # 旧形式のパターン: {english}_DB（プロバイダーが含まれていない）
+                if old_name.endswith("_DB") and "_vertex_ai_" not in old_name and "_azure_openai_" not in old_name:
+                    # プレフィックスを抽出
+                    prefix = old_name[:-3]  # "_DB" を除去
+                    new_name = f"{prefix}_vertex_ai_DB"
+
+                    # 既に新形式が存在する場合はスキップ
+                    try:
+                        self._chroma_client.get_collection(name=new_name)
+                        logger.info(f"新形式のコレクション '{new_name}' が既に存在するため、スキップ")
+                        continue
+                    except ChromaNotFoundError:
+                        pass
+
+                    # ChromaDBはリネームをサポートしていないため、
+                    # 旧コレクションはそのまま残し、新コレクション名でアクセスするようにする
+                    # 実際のデータ移行は次回のベクトル化時に行われる
+                    logger.info(f"コレクション移行予定: {old_name} → {new_name}")
+                    migrated_count += 1
+
+            # 旧タイムスタンプファイルを新形式にコピー
+            import shutil
+            shutil.copy2(old_timestamp_file, self.update_timestamp_file)
+            logger.info(f"タイムスタンプファイルを移行: {old_timestamp_file} → {self.update_timestamp_file}")
+
+            # 移行完了後、旧ファイルをバックアップとしてリネーム
+            backup_file = old_timestamp_file + ".backup"
+            if not os.path.exists(backup_file):
+                os.rename(old_timestamp_file, backup_file)
+                logger.info(f"旧タイムスタンプファイルをバックアップ: {backup_file}")
+
+            logger.info(f"既存DB移行処理完了: {migrated_count}件のコレクションが移行対象")
+
+        except Exception as e:
+            logger.warning(f"既存DB移行処理中にエラー: {e}")
     
     def analyze_reference_files(self) -> Dict[str, Dict[str, List[Tuple[str, str]]]]:
         """参照ファイルを業務分野ごとに分類"""
@@ -248,9 +392,8 @@ class DynamicDBManager:
     
     def update_business_db(self, business_area: str, files: Dict[str, List[Tuple[str, str]]]):
         """特定業務分野のDBを更新"""
-        # 日本語の業務分野名を英語に変換
-        english_name = self._translate_business_area(business_area)
-        db_name = f"{english_name}_DB"
+        # プロバイダー別のコレクション名を生成
+        db_name = self._get_collection_name(business_area)
         db_path = os.path.join(self.base_db_path, db_name)
         
         logger.info(f"業務分野 '{business_area}' のDB更新開始")
@@ -357,7 +500,8 @@ class DynamicDBManager:
         english_name = self._translate_business_area(business_area)
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         # ChromaDB のコレクション名制約: 3-512 chars in [a-zA-Z0-9._-] かつ先頭末尾が英数字
-        temp_collection_name = f"preflight_{english_name}_DB_{timestamp}"
+        # プロバイダー情報も含める
+        temp_collection_name = f"preflight_{english_name}_{self.embedding_provider}_DB_{timestamp}"
 
         try:
             from src.utils.vector_db import MetadataVectorDB
@@ -418,9 +562,8 @@ class DynamicDBManager:
     def _delete_chromadb_collection(self, business_area: str):
         """ChromaDBのコレクションを削除（キャッシュされたクライアントを使用）"""
         try:
-            # 英語名に変換
-            english_name = self._translate_business_area(business_area)
-            collection_name = f"{english_name}_DB"
+            # プロバイダー別のコレクション名を生成
+            collection_name = self._get_collection_name(business_area)
 
             # コレクションが存在する場合は削除
             try:
@@ -434,75 +577,115 @@ class DynamicDBManager:
             logger.warning(f"ChromaDBコレクション削除エラー: {e}")
             # エラーが発生しても処理を続行
     
-    def _vectorize_data(self, db_path: str, business_area: str, 
+    def _vectorize_data(self, db_path: str, business_area: str,
                         latest_faq: Optional[str], latest_scenario: Optional[str]):
-        """データのベクトル化（既存のMetadataVectorDBクラスを使用）"""
-        logger.info(f"ベクトル化処理開始: {business_area}")
-        
+        """データのベクトル化（ストリーミング書き込みでメモリ効率化）"""
+        logger.info(f"ベクトル化処理開始: {business_area} (プロバイダー: {self.embedding_provider})")
+
         try:
-            # 英語名に変換
-            english_name = self._translate_business_area(business_area)
-            collection_name = f"{english_name}_DB"
-            
+            # プロバイダー別のコレクション名を生成
+            collection_name = self._get_collection_name(business_area)
+
             # 参照データの準備
             reference_data = self._prepare_reference_data_for_vectorization()
 
             # ベクトル化モデルの初期化（プロバイダー設定に応じて自動切替）
             from src.utils.auth import create_embedding_model
             embedding_model = create_embedding_model(self.config)
-            
-            # テキストのベクトル化
+
+            # テキストとメタデータの準備
             texts = reference_data['combined_texts']
+            metadatas = reference_data.get('metadatas', [])
             logger.info(f"ベクトル化開始: {len(texts)}件のテキスト")
-            
-            # バッチサイズで分割してベクトル化
+
+            # パフォーマンス: VectorDBを先に初期化
+            from src.utils.vector_db import MetadataVectorDB
+            vector_db = MetadataVectorDB(self.config.base_dir, collection_name)
+
+            # パフォーマンス: バッチごとにベクトル化してストリーミング書き込み（メモリ効率化）
             batch_size = self.config.VECTOR_DB_BATCH_SIZE
-            all_embeddings = []
-            
+            total_added = 0
+
             for i in range(0, len(texts), batch_size):
                 end_idx = min(i + batch_size, len(texts))
                 batch_texts = texts[i:end_idx]
+                batch_metadatas = metadatas[i:end_idx] if metadatas else []
                 logger.info(f"バッチ処理中: {i+1}-{end_idx}/{len(texts)}")
-                
+
+                # バッチの埋め込みを生成
                 batch_embeddings = embedding_model.encode(batch_texts, normalize_embeddings=True)
-                all_embeddings.append(batch_embeddings)
-            
-            # 全バッチの結果を結合
-            embeddings = np.concatenate(all_embeddings, axis=0)
-            logger.info(f"ベクトル化完了: {len(embeddings)}件のベクトル")
-            
-            # 既存のMetadataVectorDBクラスを使用してベクトルDBに追加
-            from src.utils.vector_db import MetadataVectorDB
-            vector_db = MetadataVectorDB(self.config.base_dir, collection_name)
-            
-            # メタデータの準備
-            metadatas = reference_data.get('metadatas', [])
-            
-            # 既存のadd_documentsメソッドを使用（メタデータ正規化処理が組み込まれている）
-            vector_db.add_documents(
-                texts=texts,
-                embeddings=embeddings.tolist(),
-                metadatas=metadatas
-            )
-            
-            logger.info(f"ベクトル化処理完了: {business_area} - {len(texts)}件のデータを{collection_name}に追加")
-            
+
+                # バッチIDを生成（オフセット付き）
+                batch_ids = [f"doc_{j}" for j in range(i, end_idx)]
+
+                # その場でDBに書き込み（numpy配列を直接渡す - add_documents内で変換）
+                vector_db.add_documents(
+                    texts=batch_texts,
+                    embeddings=batch_embeddings,  # numpy配列を直接渡す
+                    metadatas=batch_metadatas,
+                    ids=batch_ids
+                )
+                total_added += len(batch_texts)
+
+                # メモリ解放のヒント（GCに任せる）
+                del batch_embeddings
+
+            logger.info(f"ベクトル化処理完了: {business_area} - {total_added}件のデータを{collection_name}に追加")
+
         except Exception as e:
             logger.error(f"ベクトル化処理エラー: {e}")
             raise DynamicDBError(f"ベクトル化処理に失敗しました: {e}")
     
     def extract_business_area_from_input(self, input_file: str) -> str:
-        """入力ファイルから業務分野を抽出"""
-        match = re.match(self.config.INPUT_FILE_PATTERN, input_file)
-        if match:
-            business_area, date = match.groups()
-            logger.info(f"入力ファイルから業務分野抽出: {business_area}")
-            return business_area
-        else:
-            raise DynamicDBError(f"不正な入力ファイル名: {input_file}")
+        """入力ファイルから業務分野を抽出（セキュリティ強化版）"""
+        import unicodedata
+
+        # セキュリティ: ファイル名のみを抽出（パストラバーサル防止）
+        filename = os.path.basename(input_file)
+
+        # セキュリティ: Unicode正規化（ホモグラフ攻撃防止）
+        filename = unicodedata.normalize('NFKC', filename)
+
+        match = re.match(self.config.INPUT_FILE_PATTERN, filename)
+        if not match:
+            raise DynamicDBError(
+                f"不正な入力ファイル名: {filename}\n"
+                f"期待される形式: {self.config.INPUT_FILE_PATTERN}"
+            )
+
+        business_area, date = match.groups()
+
+        # サニタイズ前に空チェック
+        if not business_area or len(business_area.strip()) == 0:
+            raise DynamicDBError(f"業務分野が空です: {filename}")
+
+        # セキュリティ: パストラバーサル文字を除去
+        business_area = business_area.replace('..', '').replace('/', '').replace('\\', '')
+
+        # 空白、制御文字、ゼロ幅文字を除去
+        ZERO_WIDTH_CHARS = '\u200B\u200C\u200D\uFEFF\u00AD'
+        business_area = ''.join(
+            c for c in business_area
+            if c.isprintable() and c not in ' \t\n\r\x00' and c not in ZERO_WIDTH_CHARS
+        )
+
+        # サニタイズ後に空チェック
+        if not business_area:
+            raise DynamicDBError(f"サニタイズ後の業務分野が空です: {filename}")
+
+        logger.info(f"入力ファイルから業務分野抽出: {business_area}")
+        return business_area
     
     def _translate_business_area(self, business_area: str) -> str:
-        """業務分野名を英語に変換（ChromaDB制限対応）"""
+        """業務分野名を英語に変換（ChromaDB制限対応・セキュリティ強化版）"""
+        # ChromaDB の制約: コレクション名は 3-512 文字
+        MAX_COLLECTION_NAME_LENGTH = 512
+        MIN_COLLECTION_NAME_LENGTH = 3
+
+        if len(business_area) > MAX_COLLECTION_NAME_LENGTH:
+            logger.warning(f"Business area name too long: {len(business_area)} chars, truncating")
+            business_area = business_area[:MAX_COLLECTION_NAME_LENGTH]
+
         translation_map = {
             "総則": "general",
             "預金": "deposit",
@@ -529,19 +712,28 @@ class DynamicDBManager:
         sanitized = re.sub(r'[^a-zA-Z0-9._-]', '_', business_area)
         sanitized = re.sub(r'_+', '_', sanitized).strip('_')
 
+        # ChromaDB の制約: 先頭末尾が英数字であること
+        if sanitized and not sanitized[0].isalnum():
+            sanitized = 'c' + sanitized
+        if sanitized and not sanitized[-1].isalnum():
+            sanitized = sanitized + 'c'
+
+        # 最小長チェック
+        if len(sanitized) < MIN_COLLECTION_NAME_LENGTH:
+            sanitized = 'default_collection'
+
         return sanitized if sanitized else "default"
     
     def get_db_path_for_business(self, business_area: str) -> str:
-        """業務分野に対応するDBパスを取得"""
-        # 日本語の業務分野名を英語に変換
-        english_name = self._translate_business_area(business_area)
-        db_name = f"{english_name}_DB"
+        """業務分野に対応するDBパスを取得（プロバイダー別）"""
+        # プロバイダー別のコレクション名を生成
+        db_name = self._get_collection_name(business_area)
         db_path = os.path.join(self.base_db_path, db_name)
-        
+
         # ChromaDBの実際の動作では、コレクション名のフォルダは空になる
         # 実際のデータはUUIDフォルダに格納されるため、フォルダの存在チェックは不要
         # 代わりにChromaDBのメタデータでコレクションの存在を確認
-        
+
         return db_path
     
     def validate_file_name(self, filename: str, pattern: str, file_type: str):

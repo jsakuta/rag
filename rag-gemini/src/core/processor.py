@@ -112,9 +112,13 @@ class Processor:
         logger.info("=== 多段階検索結果の後処理開始 ===")
 
         if self.judgment_support and self.config.multi_stage_enable_judgment_support:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
             revision_map = {str(item.get("number")): item.get("query", "") for item in input_data}
 
-            for result in tqdm(results, desc="Evaluating relevance"):
+            # パフォーマンス: LLM評価を並列実行
+            def evaluate_single(result):
+                """単一結果のLLM評価（スレッド用）"""
                 input_num = result.get('Input_Number', '')
                 evaluation = self.judgment_support.evaluate(
                     revision_map.get(input_num, result.get('Original_Query', '')),
@@ -124,8 +128,23 @@ class Processor:
                 result['Relevance_Judgment'] = evaluation['relevance_judgment']
                 result['Judgment_Reason'] = evaluation['judgment_reason']
                 result['Modification_Suggestion'] = evaluation['modification_suggestion']
+                return result
 
-            logger.info("LLM判断支援完了")
+            max_workers = min(10, len(results))  # 最大10並列、または結果数
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(evaluate_single, result): result for result in results}
+                for future in tqdm(as_completed(futures), total=len(results), desc="Evaluating relevance"):
+                    try:
+                        future.result()  # 例外があれば再スロー
+                    except Exception as e:
+                        # 完全な例外情報を保持（デバッグ用）
+                        logger.error(f"LLM評価エラー: {type(e).__name__}: {e}", exc_info=True)
+                        result = futures[future]
+                        result['Relevance_Judgment'] = "エラー"
+                        result['Judgment_Reason'] = f"{type(e).__name__}: {str(e)[:200]}"
+                        result['Modification_Suggestion'] = ""
+
+            logger.info("LLM判断支援完了（並列処理）")
         else:
             for result in results:
                 result['Relevance_Judgment'] = ""

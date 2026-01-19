@@ -57,7 +57,19 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
             with cls._lock:
                 if cls._instance is None:  # Double-checked locking
                     cls._instance = cls(config)
+                    # 初期化時の設定をprimitive valuesとして保存（比較の確実性のため）
+                    cls._instance._init_model_name = config.embedding_model
+                    cls._instance._init_project_id = config.gemini_project_id
                     logger.info("GeminiEmbeddingModel singleton instance created")
+        else:
+            # 異なる設定で呼び出された場合は警告（primitive values で比較）
+            if hasattr(cls._instance, '_init_model_name'):
+                if (cls._instance._init_model_name != config.embedding_model or
+                    cls._instance._init_project_id != config.gemini_project_id):
+                    logger.warning(
+                        "GeminiEmbeddingModel singleton called with different config. "
+                        f"Using existing instance (model: {cls._instance._init_model_name})"
+                    )
         return cls._instance
 
     def _setup_model(self):

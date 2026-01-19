@@ -84,6 +84,7 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "interactive":
         logger.info("Starting in interactive mode")
         config.vector_weight = config.DEFAULT_UI_VECTOR_WEIGHT
+        process = None
         try:
             # subprocessを使用してStreamlitを起動（セキュリティ向上）
             import time
@@ -99,9 +100,26 @@ def main():
                 time.sleep(poll_interval)
                 elapsed += poll_interval
             logger.info("Streamlit app started successfully")
+
+            # パフォーマンス/安定性: プロセス終了まで待機（リソースリーク防止）
+            process.wait()
+            logger.info("Streamlit process exited normally")
+            sys.exit(0)
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received, terminating Streamlit...")
+            if process:
+                process.terminate()
+                process.wait(timeout=5)
             sys.exit(0)
         except Exception as e:
             logger.error(f"Failed to start Streamlit: {e}")
+            if process:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logger.warning("Process did not terminate within 5 seconds, killing...")
+                    process.kill()
             sys.exit(1)
     else:
         logger.info("Starting in batch mode")
