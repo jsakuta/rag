@@ -115,8 +115,8 @@ class SearchConfig:
         self.base_dir = os.path.abspath(self.base_dir)
         
         # 検索方式の検証
-        if self.search_mode not in ["original", "llm_enhanced", "multi_stage"]:
-            raise ValueError("search_mode must be 'original', 'llm_enhanced', or 'multi_stage'")
+        if self.search_mode not in self.VALID_SEARCH_MODES:
+            raise ValueError(f"search_mode must be one of {self.VALID_SEARCH_MODES}")
             
         self._validate_vertex_ai_config() # 新規追加: Vertex AI設定の検証
 
@@ -129,13 +129,18 @@ class SearchConfig:
                 logger.warning(f"Vertex AI credentials file not found: {credentials_path}")
                 logger.info("Please ensure GEMINI_CREDENTIALS_PATH is set correctly in .env file")
 
+    # 検索モードの有効な値
+    VALID_SEARCH_MODES = ("original", "llm_enhanced", "multi_stage")
+
+    # 検索モードのフラグマッピング
+    SEARCH_MODE_FLAGS = {
+        "multi_stage": "ms",
+        "llm_enhanced": "llm",
+        "original": "orig"
+    }
+
     def get_param_summary(self) -> str:
         """パラメータのサマリー文字列を生成（LLM拡張検索対応）"""
         hierarchy_flag = "h" if self.include_hierarchy_in_vector else "nh"
-        if self.search_mode == "multi_stage":
-            search_flag = "ms"
-        elif self.search_mode == "llm_enhanced":
-            search_flag = "llm"
-        else:
-            search_flag = "orig"
+        search_flag = self.SEARCH_MODE_FLAGS.get(self.search_mode, "orig")
         return f"v{self.vector_weight:.1f}_k{self.keyword_weight:.1f}_{hierarchy_flag}_{search_flag}"

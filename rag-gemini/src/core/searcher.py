@@ -1,20 +1,15 @@
 # --- searcher.py ---
 import os
-import re
 import numpy as np
-import pandas as pd
 from collections import Counter
 from typing import List, Dict, Any, Optional
 from sudachipy import Dictionary, tokenizer
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
-from langchain_google_vertexai import ChatVertexAI
-from src.utils.auth import initialize_vertex_ai, get_google_credentials
 from langchain_core.messages import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import SearchConfig
 from src.utils.logger import setup_logger
+from src.utils.auth import create_llm
 from src.utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
 from src.utils.gemini_embedding import GeminiEmbeddingModel
 
@@ -57,47 +52,16 @@ class Searcher:
         logger.info("Searcherを初期化しました（依存性注入対応）")
 
         # LLM初期化（条件付き：LLM拡張検索または多段階検索が有効な場合）
-        if self.config.search_mode in ["llm_enhanced", "multi_stage"] or self.config.enable_query_enhancement:
-            self.llm = self._setup_llm()
+        needs_llm = (
+            self.config.search_mode in ["llm_enhanced", "multi_stage"]
+            or self.config.enable_query_enhancement
+        )
+        if needs_llm:
+            self.llm = create_llm(self.config)
             logger.info(f"LLM initialized for {self.config.search_mode} search mode")
         else:
             self.llm = None
             logger.info("LLM not initialized - using original search mode")
-
-    def _setup_llm(self):
-        """LLM設定メソッド（LLM拡張検索用）"""
-        if self.config.llm_provider == "anthropic":
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if not api_key:
-                raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
-            return ChatAnthropic(
-                anthropic_api_key=api_key,
-                model=self.config.llm_model,
-                temperature=0
-            )
-        elif self.config.llm_provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY environment variable is not set")
-            return ChatOpenAI(
-                api_key=api_key,
-                model=self.config.llm_model,
-                temperature=0
-            )
-        elif self.config.llm_provider == "gemini":
-            if not self.config.gemini_project_id:
-                raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
-            credentials = get_google_credentials(self.config)
-            initialize_vertex_ai(self.config, credentials)
-            return ChatVertexAI(
-                model=self.config.llm_model,
-                temperature=0,
-                project=self.config.gemini_project_id,
-                location=self.config.gemini_location,
-                credentials=credentials,
-            )
-        else:
-            raise ValueError(f"Unsupported LLM provider: {self.config.llm_provider}")
 
     def _extract_keywords(self, text: str, top_k: int = 5) -> List[str]:
         morphemes = self.tokenizer.tokenize(text, self.mode)

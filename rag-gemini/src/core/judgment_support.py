@@ -2,23 +2,14 @@
 """LLMによる判断支援モジュール（人間の意思決定を支援）"""
 import os
 from typing import List, Dict, Any, Optional
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
-from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import SearchConfig
 from src.utils.logger import setup_logger
-from src.utils.auth import initialize_vertex_ai, get_google_credentials
+from src.utils.auth import create_llm
 
 logger = setup_logger(__name__)
-
-# Vertex AI以外のプロバイダー設定
-LLM_PROVIDERS = {
-    "anthropic": ("ANTHROPIC_API_KEY", ChatAnthropic, "anthropic_api_key"),
-    "openai": ("OPENAI_API_KEY", ChatOpenAI, "api_key"),
-}
 
 
 class JudgmentSupport:
@@ -29,40 +20,11 @@ class JudgmentSupport:
         self._prompt_cache: Optional[str] = None
 
         if config.multi_stage_enable_judgment_support:
-            self.llm = self._setup_llm()
+            self.llm = create_llm(config)
             logger.info("JudgmentSupport: LLM initialized")
         else:
             self.llm = None
             logger.info("JudgmentSupport: LLM judgment support disabled")
-
-    def _setup_llm(self):
-        """LLM設定メソッド"""
-        provider = self.config.llm_provider
-
-        # Vertex AI (Gemini) の場合は専用の認証を使用
-        if provider == "gemini":
-            if not self.config.gemini_project_id:
-                raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
-            credentials = get_google_credentials(self.config)
-            initialize_vertex_ai(self.config, credentials)
-            return ChatVertexAI(
-                model=self.config.llm_model,
-                temperature=0,
-                project=self.config.gemini_project_id,
-                location=self.config.gemini_location,
-                credentials=credentials,
-            )
-
-        # その他のプロバイダー
-        if provider not in LLM_PROVIDERS:
-            raise ValueError(f"Unsupported LLM provider: {provider}")
-
-        env_key, llm_class, api_param = LLM_PROVIDERS[provider]
-        api_key = os.getenv(env_key)
-        if not api_key:
-            raise ValueError(f"{env_key} environment variable is not set")
-
-        return llm_class(**{api_param: api_key, "model": self.config.llm_model, "temperature": 0})
 
     def _load_prompt(self) -> str:
         """判断支援用プロンプトを読み込む（キャッシュ対応）"""

@@ -89,13 +89,11 @@ def format_response_card(number, similarity, query, answer, category=None,
 
     # LLM分析セクション（関連性判定がある場合のみ表示）
     llm_analysis_section = ""
-    if relevance_judgment and relevance_judgment not in ['判断支援無効', '']:
+    show_llm_analysis = relevance_judgment and relevance_judgment not in ['判断支援無効', '']
+    if show_llm_analysis:
         reason_text = html.escape(str(judgment_reason)) if judgment_reason else "-"
-        suggestion_text = html.escape(str(modification_suggestion)) if modification_suggestion else ""
-
-        # 修正案が空または「-」「なし」の場合は「なし」に統一
-        if not suggestion_text or suggestion_text.strip() in ['-', 'なし']:
-            suggestion_text = "なし"
+        suggestion_raw = html.escape(str(modification_suggestion)) if modification_suggestion else ""
+        suggestion_text = "なし" if not suggestion_raw or suggestion_raw.strip() in ['-', 'なし'] else suggestion_raw
 
         llm_analysis_section = f"""<div style="background-color: #f0f7ff; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">LLM分析</div><div>関連性: {html.escape(str(relevance_judgment))}</div><div>根拠: {reason_text}</div><div>修正案: {suggestion_text}</div></div>"""
 
@@ -117,33 +115,44 @@ def format_response_card(number, similarity, query, answer, category=None,
         </div>
     """
 
+def _needs_processor_reinit() -> bool:
+    """Processorの再初期化が必要かどうかを判定"""
+    if "processor" not in st.session_state:
+        return True
+
+    config = st.session_state.config
+    return (
+        st.session_state.get("last_business_area") != st.session_state.business_area
+        or st.session_state.get("last_search_mode") != config.search_mode
+        or st.session_state.get("last_judgment_support") != config.multi_stage_enable_judgment_support
+    )
+
+
+def _initialize_processor():
+    """Processorを初期化してセッションステートを更新"""
+    st.session_state.processor = Processor(st.session_state.config)
+    reference_data = st.session_state.processor.reference_handler.load_reference_data()
+    st.session_state.processor.searcher.prepare_search(reference_data)
+    st.session_state.processor.searcher._select_db_for_business(st.session_state.business_area)
+    st.session_state.last_business_area = st.session_state.business_area
+    st.session_state.last_search_mode = st.session_state.config.search_mode
+    st.session_state.last_judgment_support = st.session_state.config.multi_stage_enable_judgment_support
+
+
 def process_query(query: str):
     st.session_state.processing_query = True
     try:
-        # Processorをキャッシュ（業務分野、search_mode、LLM判断支援設定変更時は再初期化）
-        needs_reinit = (
-            "processor" not in st.session_state
-            or st.session_state.get("last_business_area") != st.session_state.business_area
-            or st.session_state.get("last_search_mode") != st.session_state.config.search_mode
-            or st.session_state.get("last_judgment_support") != st.session_state.config.multi_stage_enable_judgment_support
-        )
-        if needs_reinit:
-            st.session_state.processor = Processor(st.session_state.config)
-            reference_data = st.session_state.processor.reference_handler.load_reference_data()
-            st.session_state.processor.searcher.prepare_search(reference_data)
-            st.session_state.processor.searcher._select_db_for_business(st.session_state.business_area)
-            st.session_state.last_business_area = st.session_state.business_area
-            st.session_state.last_search_mode = st.session_state.config.search_mode
-            st.session_state.last_judgment_support = st.session_state.config.multi_stage_enable_judgment_support
+        if _needs_processor_reinit():
+            _initialize_processor()
 
         processor = st.session_state.processor
         query_number = len(st.session_state.chat_history) // 2 + 1
 
         # ログ: 処理開始
-        is_multi_stage = st.session_state.config.search_mode == "multi_stage"
         judgment_enabled = st.session_state.config.multi_stage_enable_judgment_support
         logger.info(f"=== 質問 {query_number} の処理開始 ===")
-        logger.info(f"クエリ: {query[:80]}..." if len(query) > 80 else f"クエリ: {query}")
+        query_display = f"{query[:80]}..." if len(query) > 80 else query
+        logger.info(f"クエリ: {query_display}")
         logger.info(f"検索モード: {st.session_state.config.search_mode} (LLM判断支援: {'有効' if judgment_enabled else '無効'})")
 
         results = processor.searcher.search(str(query_number), query, "")

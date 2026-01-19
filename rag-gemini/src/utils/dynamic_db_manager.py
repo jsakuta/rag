@@ -110,9 +110,7 @@ class DynamicDBManager:
 
     def _migrate_existing_db(self):
         """既存のDB移行処理（現在は不要）"""
-        # rag_collectionは完全に廃止、移行処理は不要
         logger.info("既存DB移行処理は不要（動的DB管理システムが唯一の方式）")
-        pass
     
     def analyze_reference_files(self) -> Dict[str, Dict[str, List[Tuple[str, str]]]]:
         """参照ファイルを業務分野ごとに分類"""
@@ -177,85 +175,76 @@ class DynamicDBManager:
         if not os.path.exists(db_path):
             logger.info(f"DBが存在しないため新規作成: {db_path}")
             return True
-        
-        # ChromaDBコレクションの存在確認（キャッシュされたクライアントを使用）
+
+        # 強制更新フラグのチェック（早期リターン）
+        if self.config.force_db_update:
+            logger.info(f"強制更新フラグが有効のため、DB更新を実行: {db_path}")
+            return True
+
+        collection_name = os.path.basename(db_path)
+
         try:
-            # コレクション名を取得（パスから抽出）
-            collection_name = os.path.basename(db_path)
-            
-            try:
-                collection = self._chroma_client.get_collection(name=collection_name)
-                logger.info(f"コレクション存在確認: {collection_name}")
-                
-                # ファイル更新日時の比較
-                needs_update = False
-                
-                # DBの最終更新日時を取得（コレクションの作成日時を使用）
-                try:
-                    # コレクション内のドキュメント数をチェック
-                    doc_count = collection.count()
-                    logger.info(f"コレクション内のドキュメント数: {doc_count}")
-                    
-                    # ドキュメントが存在する場合のみ最新と判定
-                    db_is_current = doc_count > 0
-                    if not db_is_current:
-                        logger.info("コレクションは存在するが、ドキュメントが存在しないため更新が必要")
-                except Exception as e:
-                    logger.warning(f"コレクション情報取得エラー: {e}")
-                    db_is_current = False
-                
-                # ファイルの更新日時をチェック
-                if latest_faq:
-                    faq_path = os.path.join(self.reference_faq_path, latest_faq)
-                    if os.path.exists(faq_path):
-                        faq_mtime = os.path.getmtime(faq_path)
-                        logger.info(f"履歴データファイル更新確認: {latest_faq} (更新日時: {faq_mtime})")
-                        
-                        # 更新日時をチェックしてDB更新の必要性を判定
-                        last_mtime = self._last_faq_mtime.get(business_area, 0)
-                        if faq_mtime > last_mtime:
-                            needs_update = True
-                            logger.info(f"履歴データファイルの更新日時が変更されたため、DB更新が必要 (前回: {last_mtime}, 現在: {faq_mtime})")
-                            # 注: タイムスタンプはupdate_business_db()成功後に更新する
-                        elif not db_is_current:
-                            needs_update = True
-                            logger.info("履歴データファイルが存在するが、DBが最新でないため更新が必要")
-                
-                if latest_scenario:
-                    scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
-                    if os.path.exists(scenario_path):
-                        scenario_mtime = os.path.getmtime(scenario_path)
-                        logger.info(f"シナリオデータファイル更新確認: {latest_scenario} (更新日時: {scenario_mtime})")
-                        
-                        # 更新日時をチェックしてDB更新の必要性を判定
-                        last_mtime = self._last_scenario_mtime.get(business_area, 0)
-                        if scenario_mtime > last_mtime:
-                            needs_update = True
-                            logger.info(f"シナリオデータファイルの更新日時が変更されたため、DB更新が必要 (前回: {last_mtime}, 現在: {scenario_mtime})")
-                            # 注: タイムスタンプはupdate_business_db()成功後に更新する
-                        elif not db_is_current:
-                            needs_update = True
-                            logger.info("シナリオデータファイルが存在するが、DBが最新でないため更新が必要")
-                
-                # 強制更新フラグのチェック
-                if self.config.force_db_update:
-                    logger.info(f"強制更新フラグが有効のため、DB更新を実行: {db_path}")
-                    return True
-                
-                if needs_update:
-                    logger.info(f"DB更新が必要: {db_path}")
-                else:
-                    logger.info(f"DBは最新: {db_path}")
-                
-                return needs_update
-                
-            except Exception as e:
-                logger.info(f"コレクションが存在しません: {collection_name}")
-                return True
-                
+            collection = self._chroma_client.get_collection(name=collection_name)
+            logger.info(f"コレクション存在確認: {collection_name}")
+        except Exception:
+            logger.info(f"コレクションが存在しません: {collection_name}")
+            return True
+
+        # コレクション内のドキュメント数をチェック
+        db_is_current = self._check_collection_has_documents(collection)
+
+        # ファイルの更新日時をチェック
+        faq_needs_update = self._check_file_needs_update(
+            latest_faq, self.reference_faq_path,
+            self._last_faq_mtime.get(business_area, 0),
+            db_is_current, "履歴データ"
+        )
+        scenario_needs_update = self._check_file_needs_update(
+            latest_scenario, self.reference_scenario_path,
+            self._last_scenario_mtime.get(business_area, 0),
+            db_is_current, "シナリオデータ"
+        )
+
+        needs_update = faq_needs_update or scenario_needs_update
+        logger.info(f"DB{'更新が必要' if needs_update else 'は最新'}: {db_path}")
+        return needs_update
+
+    def _check_collection_has_documents(self, collection) -> bool:
+        """コレクションにドキュメントが存在するかチェック"""
+        try:
+            doc_count = collection.count()
+            logger.info(f"コレクション内のドキュメント数: {doc_count}")
+            if doc_count == 0:
+                logger.info("コレクションは存在するが、ドキュメントが存在しないため更新が必要")
+            return doc_count > 0
         except Exception as e:
-            logger.warning(f"DB更新チェックエラー: {e}")
-            return True  # エラーの場合は安全のため更新
+            logger.warning(f"コレクション情報取得エラー: {e}")
+            return False
+
+    def _check_file_needs_update(
+        self, filename: Optional[str], base_path: str,
+        last_mtime: float, db_is_current: bool, file_type: str
+    ) -> bool:
+        """ファイルの更新日時をチェックしてDB更新の必要性を判定"""
+        if not filename:
+            return False
+
+        file_path = os.path.join(base_path, filename)
+        if not os.path.exists(file_path):
+            return False
+
+        current_mtime = os.path.getmtime(file_path)
+        logger.info(f"{file_type}ファイル更新確認: {filename} (更新日時: {current_mtime})")
+
+        if current_mtime > last_mtime:
+            logger.info(f"{file_type}ファイルの更新日時が変更されたため、DB更新が必要 (前回: {last_mtime}, 現在: {current_mtime})")
+            return True
+
+        if not db_is_current:
+            logger.info(f"{file_type}ファイルが存在するが、DBが最新でないため更新が必要")
+            return True
+
+        return False
     
     def update_business_db(self, business_area: str, files: Dict[str, List[Tuple[str, str]]]):
         """特定業務分野のDBを更新"""
@@ -516,7 +505,7 @@ class DynamicDBManager:
         """業務分野名を英語に変換（ChromaDB制限対応）"""
         translation_map = {
             "総則": "general",
-            "預金": "deposit", 
+            "預金": "deposit",
             "融資": "loan",
             "外貨": "foreign_currency",
             "投信": "investment_trust",
@@ -526,26 +515,21 @@ class DynamicDBManager:
             "保険": "insurance",
             "年金": "pension"
         }
-        
+
         # 完全一致を優先
         if business_area in translation_map:
             return translation_map[business_area]
-        
+
         # 部分一致で検索
         for japanese, english in translation_map.items():
             if japanese in business_area:
                 return english
-        
-        # デフォルト: 英数字のみに変換
-        import re
+
+        # デフォルト: 英数字のみに変換（re はトップレベルでインポート済み）
         sanitized = re.sub(r'[^a-zA-Z0-9._-]', '_', business_area)
-        sanitized = re.sub(r'_+', '_', sanitized)  # 連続するアンダースコアを単一に
-        sanitized = sanitized.strip('_')  # 先頭・末尾のアンダースコアを除去
-        
-        if not sanitized:
-            sanitized = "default"
-        
-        return sanitized
+        sanitized = re.sub(r'_+', '_', sanitized).strip('_')
+
+        return sanitized if sanitized else "default"
     
     def get_db_path_for_business(self, business_area: str) -> str:
         """業務分野に対応するDBパスを取得"""
