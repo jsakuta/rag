@@ -2,6 +2,7 @@
 import sys
 import os
 import subprocess
+import argparse
 from dotenv import load_dotenv
 from config import SearchConfig
 from src.core.processor import Processor
@@ -12,68 +13,104 @@ from src.utils.logger import setup_logger
 load_dotenv()
 logger = setup_logger(__name__)
 
-def main():
-    # 設定の初期化
-    config = SearchConfig(base_dir=os.path.dirname(os.path.abspath(__file__)))
 
-    # プレフライト（DB更新の事前チェック）
-    if len(sys.argv) > 1 and sys.argv[1] == "preflight":
-        import argparse
+def parse_args():
+    """コマンドライン引数をパース"""
+    parser = argparse.ArgumentParser(
+        description="RAG検索システム",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  python main.py                        # 全業務分野でバッチ処理
+  python main.py --business 総則        # 総則のみバッチ処理
+  python main.py interactive            # UIモード（DB更新はオンデマンド）
+  python main.py preflight --business 総則  # プレフライト（事前検証）
+        """
+    )
 
-        parser = argparse.ArgumentParser(description="DB更新プレフライト（本番更新は行いません）")
-        parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（例: 預金）")
-        parser.add_argument("--sample-size", dest="sample_size", type=int, default=5, help="検証に使うサンプル件数")
-        args = parser.parse_args(sys.argv[2:])
+    # サブコマンド
+    subparsers = parser.add_subparsers(dest="command", help="実行モード")
 
-        try:
-            logger.info("動的DB管理システムを初期化中（preflight）...")
-            db_manager = DynamicDBManager(config)
-            reference_files = db_manager.analyze_reference_files()
+    # interactiveサブコマンド
+    subparsers.add_parser("interactive", help="StreamlitベースのUIモード")
 
-            if args.business:
-                targets = {k: v for k, v in reference_files.items() if k == args.business}
-                if not targets:
-                    logger.error(f"指定された業務分野が見つかりません: {args.business}")
-                    logger.info(f"検出された業務分野: {list(reference_files.keys())}")
-                    sys.exit(1)
-            else:
-                targets = reference_files
+    # preflightサブコマンド
+    preflight_parser = subparsers.add_parser("preflight", help="DB更新プレフライト（本番更新は行いません）")
+    preflight_parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（例: 総則）")
+    preflight_parser.add_argument("--sample-size", dest="sample_size", type=int, default=5, help="検証に使うサンプル件数")
 
-            for business_area, files in targets.items():
-                logger.info(f"業務分野 '{business_area}' のプレフライト開始")
-                result = db_manager.preflight_business_db(
-                    business_area=business_area,
-                    files=files,
-                    sample_size=args.sample_size,
-                )
-                logger.info(
-                    f"プレフライトOK: {result['business_area']} (sample={result['sample_size']}, dim={result['embedding_dim']})"
-                )
+    # メイン（バッチ）モードのオプション
+    parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（例: 総則）。未指定時は全業務分野")
 
-            logger.info("プレフライト完了: すべてOK")
-            sys.exit(0)
-        except DynamicDBError as e:
-            logger.error(f"プレフライト失敗: {e}")
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"予期しないエラー（preflight）: {e}")
-            sys.exit(1)
+    return parser.parse_args()
 
-    # 動的DB管理システムの初期化
+
+def run_preflight(config, args):
+    """プレフライト実行"""
+    try:
+        logger.info("動的DB管理システムを初期化中（preflight）...")
+        db_manager = DynamicDBManager(config)
+        reference_files = db_manager.analyze_reference_files()
+
+        if args.business:
+            targets = {k: v for k, v in reference_files.items() if k == args.business}
+            if not targets:
+                logger.error(f"指定された業務分野が見つかりません: {args.business}")
+                logger.info(f"検出された業務分野: {list(reference_files.keys())}")
+                sys.exit(1)
+        else:
+            targets = reference_files
+
+        for business_area, files in targets.items():
+            logger.info(f"業務分野 '{business_area}' のプレフライト開始")
+            result = db_manager.preflight_business_db(
+                business_area=business_area,
+                files=files,
+                sample_size=args.sample_size,
+            )
+            logger.info(
+                f"プレフライトOK: {result['business_area']} (sample={result['sample_size']}, dim={result['embedding_dim']})"
+            )
+
+        logger.info("プレフライト完了: すべてOK")
+        sys.exit(0)
+    except DynamicDBError as e:
+        logger.error(f"プレフライト失敗: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"予期しないエラー（preflight）: {e}")
+        sys.exit(1)
+
+
+def run_db_update(config, business_filter=None):
+    """DB更新を実行（業務分野フィルタ対応）"""
     try:
         logger.info("動的DB管理システムを初期化中...")
         db_manager = DynamicDBManager(config)
-        
+
         # 参照ファイルの分析
         reference_files = db_manager.analyze_reference_files()
-        
+
+        # 業務分野フィルタの適用
+        if business_filter:
+            if business_filter not in reference_files:
+                logger.error(f"指定された業務分野が見つかりません: {business_filter}")
+                logger.info(f"検出された業務分野: {list(reference_files.keys())}")
+                sys.exit(1)
+            targets = {business_filter: reference_files[business_filter]}
+            logger.info(f"業務分野 '{business_filter}' のみを処理対象とします")
+        else:
+            targets = reference_files
+            logger.info(f"全業務分野を処理対象とします: {list(reference_files.keys())}")
+
         # 業務分野ごとのDB更新
-        for business_area, files in reference_files.items():
+        for business_area, files in targets.items():
             logger.info(f"業務分野 '{business_area}' の処理開始")
             db_manager.update_business_db(business_area, files)
-        
+
         logger.info("動的DB管理システムの初期化完了")
-        
+        return db_manager
+
     except DynamicDBError as e:
         logger.error(f"動的DB管理エラー: {e}")
         sys.exit(1)
@@ -81,8 +118,21 @@ def main():
         logger.error(f"予期しないエラー: {e}")
         sys.exit(1)
 
-    if len(sys.argv) > 1 and sys.argv[1] == "interactive":
-        logger.info("Starting in interactive mode")
+
+def main():
+    args = parse_args()
+
+    # 設定の初期化
+    config = SearchConfig(base_dir=os.path.dirname(os.path.abspath(__file__)))
+
+    # プレフライトモード
+    if args.command == "preflight":
+        run_preflight(config, args)
+        return
+
+    # インタラクティブモード（UIモード）- DB更新は検索時にオンデマンド実行
+    if args.command == "interactive":
+        logger.info("Starting in interactive mode (DB updates on-demand)")
         config.vector_weight = config.DEFAULT_UI_VECTOR_WEIGHT
         process = None
         try:
@@ -128,7 +178,13 @@ def main():
                     logger.warning("Process did not terminate within 5 seconds, killing...")
                     process.kill()
             sys.exit(1)
+
+    # バッチモード（デフォルト）
     else:
+        # DB更新（業務分野フィルタ対応）
+        business_filter = getattr(args, 'business', None)
+        run_db_update(config, business_filter)
+
         logger.info("Starting in batch mode")
         processor = Processor(config)
         processor.process_data(mode="batch")

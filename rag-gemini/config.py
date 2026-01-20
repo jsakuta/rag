@@ -34,8 +34,7 @@ class SearchConfig:
     
     # 埋め込みモデル設定
     # 有効なプロバイダー: "vertex_ai" (Gemini), "azure_openai" (text-embedding-3-large)
-    DEFAULT_EMBEDDING_PROVIDER: str = "vertex_ai"
-    DEFAULT_EMBEDDING_MODEL: str = "gemini-embedding-001"
+    # 環境変数から読み込み（必須）
     VALID_EMBEDDING_PROVIDERS: Tuple[str, ...] = ("vertex_ai", "azure_openai")
 
     # 検索モードの有効な値（__post_init__で参照されるためクラス定数として先頭付近に配置）
@@ -102,9 +101,9 @@ class SearchConfig:
     multi_stage_enable_judgment_support: bool = True  # LLM判断支援の有効化
     judgment_support_prompt_path: str = "prompt/judgment_support.txt"  # 判断支援プロンプトファイル
     
-    # 埋め込みモデル設定
-    embedding_provider: str = DEFAULT_EMBEDDING_PROVIDER
-    embedding_model: str = DEFAULT_EMBEDDING_MODEL
+    # 埋め込みモデル設定（環境変数から読み込み、未設定時はエラー）
+    embedding_provider: str = field(default_factory=lambda: os.getenv("DEFAULT_EMBEDDING_PROVIDER", ""))
+    embedding_model: str = field(default_factory=lambda: os.getenv("DEFAULT_EMBEDDING_MODEL", ""))
     
     # 動的DB管理設定
     force_db_update: bool = DEFAULT_FORCE_DB_UPDATE  # 強制DB更新フラグ
@@ -121,10 +120,10 @@ class SearchConfig:
     azure_key_vault_scopes: str = field(default_factory=lambda: os.getenv("AZURE_KEY_VAULT_SCOPES", "https://www.googleapis.com/auth/cloud-platform"))
 
     # Azure OpenAI Embedding 設定
-    azure_openai_embedding_endpoint: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_ENDPOINT", ""))
-    azure_openai_embedding_api_key: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_API_KEY", ""))
+    azure_openai_embedding_endpoint: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_ENDPOINT", ""))
+    azure_openai_embedding_api_key: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_API_KEY", ""))
     azure_openai_embedding_deployment: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"))
-    azure_openai_embedding_api_version: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_API_VERSION", "2024-02-01"))
+    azure_openai_embedding_api_version: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"))
 
     def __post_init__(self):
         """パラメータの検証とkeyword_weightの計算"""
@@ -166,6 +165,12 @@ class SearchConfig:
         if self.search_source not in self.VALID_SEARCH_SOURCES:
             raise ValueError(f"search_source must be one of {self.VALID_SEARCH_SOURCES}")
 
+        # 埋め込み設定の必須チェック（環境変数未設定時はエラー）
+        if not self.embedding_provider:
+            raise ValueError("DEFAULT_EMBEDDING_PROVIDER環境変数が設定されていません")
+        if not self.embedding_model:
+            raise ValueError("DEFAULT_EMBEDDING_MODEL環境変数が設定されていません")
+
         # 埋め込みプロバイダーの検証
         if self.embedding_provider not in self.VALID_EMBEDDING_PROVIDERS:
             raise ValueError(f"embedding_provider must be one of {self.VALID_EMBEDDING_PROVIDERS}")
@@ -184,11 +189,11 @@ class SearchConfig:
         elif self.embedding_provider == "azure_openai":
             # Azure OpenAI: 必須環境変数の確認
             if not self.azure_openai_embedding_endpoint:
-                logger.warning("AZURE_OPENAI_EMBEDDING_ENDPOINT is not set")
-                logger.info("Please set AZURE_OPENAI_EMBEDDING_ENDPOINT in .env file")
+                logger.warning("AZURE_OPENAI_ENDPOINT is not set")
+                logger.info("Please set AZURE_OPENAI_ENDPOINT in .env file")
             if not self.azure_openai_embedding_api_key:
-                logger.warning("AZURE_OPENAI_EMBEDDING_API_KEY is not set")
-                logger.info("Please set AZURE_OPENAI_EMBEDDING_API_KEY in .env file")
+                logger.warning("AZURE_OPENAI_API_KEY is not set")
+                logger.info("Please set AZURE_OPENAI_API_KEY in .env file")
 
     # 検索モードのフラグマッピング
     SEARCH_MODE_FLAGS = {

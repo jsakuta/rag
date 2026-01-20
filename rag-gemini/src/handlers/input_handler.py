@@ -1,6 +1,7 @@
 # --- input_handler.py ---
 import os
 import glob
+import re
 import pandas as pd
 from config import SearchConfig
 from src.utils.logger import setup_logger
@@ -45,8 +46,14 @@ class InputHandler:
             text_parts.append(f"回答: {answer}")
         return " | ".join(text_parts) if text_parts else ""
 
-    def _get_latest_file(self, directory: str, file_pattern: str) -> str:
-        """指定ディレクトリ内の最新ファイルを検索（パストラバーサル防止）"""
+    def _get_latest_file(self, directory: str, file_pattern: str, name_regex: Optional[str] = None) -> str:
+        """指定ディレクトリ内の最新ファイルを検索（パストラバーサル防止）
+
+        Args:
+            directory: 検索対象ディレクトリ
+            file_pattern: globパターン（例: "*.xlsx"）
+            name_regex: ファイル名の正規表現パターン（オプション）。指定時はこのパターンにマッチするファイルのみ対象
+        """
         from pathlib import Path
 
         # ベースディレクトリを解決
@@ -69,13 +76,22 @@ class InputHandler:
                 logger.warning(f"Path traversal attempt blocked: {f}")
                 continue
 
-            if (not os.path.basename(f).startswith('~$')
+            basename = os.path.basename(f)
+            if (not basename.startswith('~$')
                     and not f.endswith('.tmp')
-                    and not os.path.basename(f).startswith('.')):
+                    and not basename.startswith('.')):
+                # 命名規則パターンによるフィルタリング
+                if name_regex:
+                    if not re.match(name_regex, basename):
+                        logger.info(f"ファイルをスキップ（命名規則不一致）: {basename}")
+                        continue
                 validated_files.append(str(file_path))
 
         if not validated_files:
-            raise FileNotFoundError(f"No files found matching pattern '{file_pattern}' in {directory}")
+            pattern_info = f"'{file_pattern}'"
+            if name_regex:
+                pattern_info += f" with regex '{name_regex}'"
+            raise FileNotFoundError(f"No files found matching pattern {pattern_info} in {directory}")
         return max(validated_files, key=os.path.getctime)
 
 class ExcelInputHandler(InputHandler):
@@ -99,7 +115,12 @@ class ExcelInputHandler(InputHandler):
         return data
 
     def load_reference_data(self) -> dict:
-      reference_file = self._get_latest_file(self.reference_dir, "*.xlsx")
+      """履歴データExcelから参照データを抽出
+
+      命名規則（REFERENCE_FILE_PATTERN）に従わないファイルはスキップされます。
+      """
+      name_regex = self.config.REFERENCE_FILE_PATTERN
+      reference_file = self._get_latest_file(self.reference_dir, "*.xlsx", name_regex=name_regex)
       logger.info(f"Using reference file: {os.path.basename(reference_file)}")
       reference_df = pd.read_excel(reference_file)
       
@@ -191,8 +212,12 @@ class HierarchicalExcelInputHandler(InputHandler):
         return []
     
     def load_reference_data(self) -> dict:
-        """マージ版シナリオExcelから参照データを抽出（位置ベースの質問・回答判定）"""
-        reference_file = self._get_latest_file(self.reference_dir, "*.xlsx")
+        """マージ版シナリオExcelから参照データを抽出（位置ベースの質問・回答判定）
+
+        命名規則（REFERENCE_FILE_PATTERN）に従わないファイルはスキップされます。
+        """
+        name_regex = self.config.REFERENCE_FILE_PATTERN
+        reference_file = self._get_latest_file(self.reference_dir, "*.xlsx", name_regex=name_regex)
         logger.info(f"Processing hierarchical reference file: {os.path.basename(reference_file)}")
         
         all_sheets = pd.read_excel(reference_file, sheet_name=None)
@@ -365,46 +390,56 @@ class MultiFolderInputHandler(InputHandler):
         return data
 
     def load_reference_data(self) -> dict:
-        """複数フォルダから参照データを読み込み、統合"""
+        """複数フォルダから参照データを読み込み、統合
+
+        命名規則（REFERENCE_FILE_PATTERN）に従わないファイルはスキップされます。
+        """
         all_queries = []
         all_answers = []
         all_metadatas = []
-        
+
+        # 命名規則パターンを取得
+        name_regex = self.config.REFERENCE_FILE_PATTERN
+
         # マージシナリオフォルダから読み込み
         scenario_dir = os.path.join(self.reference_dir, "scenario")
         if os.path.exists(scenario_dir):
             try:
-                scenario_file = self._get_latest_file(scenario_dir, "*.xlsx")
+                scenario_file = self._get_latest_file(scenario_dir, "*.xlsx", name_regex=name_regex)
                 logger.info(f"Processing scenario file: {os.path.basename(scenario_file)}")
-                
+
                 scenario_handler = HierarchicalExcelInputHandler(self.config)
                 scenario_handler.reference_dir = scenario_dir
                 scenario_data = scenario_handler.load_reference_data()
-                
+
                 all_queries.extend(scenario_data['queries'])
                 all_answers.extend(scenario_data['answers'])
                 all_metadatas.extend(scenario_data['metadatas'])
-                    
+
                 logger.info(f"Added {len(scenario_data['queries'])} items from scenario file")
+            except FileNotFoundError as e:
+                logger.warning(f"命名規則に一致するシナリオファイルが見つかりません: {e}")
             except Exception as e:
                 logger.warning(f"Error processing scenario file: {e}")
-        
+
         # 履歴データフォルダから読み込み
         history_dir = os.path.join(self.reference_dir, "faq_data")
         if os.path.exists(history_dir):
             try:
-                history_file = self._get_latest_file(history_dir, "*.xlsx")
+                history_file = self._get_latest_file(history_dir, "*.xlsx", name_regex=name_regex)
                 logger.info(f"Processing history file: {os.path.basename(history_file)}")
-                
+
                 history_handler = ExcelInputHandler(self.config)
                 history_handler.reference_dir = history_dir
                 history_data = history_handler.load_reference_data()
-                
+
                 all_queries.extend(history_data['queries'])
                 all_answers.extend(history_data['answers'])
                 all_metadatas.extend(history_data['metadatas'])
-                
+
                 logger.info(f"Added {len(history_data['queries'])} items from history file")
+            except FileNotFoundError as e:
+                logger.warning(f"命名規則に一致する履歴データファイルが見つかりません: {e}")
             except Exception as e:
                 logger.warning(f"Error processing history file: {e}")
         

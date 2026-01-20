@@ -23,15 +23,24 @@ def initialize_session_state():
     if "processing_query" not in st.session_state:
         st.session_state.processing_query = False
     if "config" not in st.session_state:
+        # 必須環境変数のチェック
+        required_env_vars = [
+            "DEFAULT_LLM_PROVIDER",
+            "DEFAULT_LLM_MODEL",
+            "DEFAULT_UI_VECTOR_WEIGHT"
+        ]
+        missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+        if missing_vars:
+            raise ValueError(f"必須環境変数が設定されていません: {', '.join(missing_vars)}")
+
         st.session_state.config = SearchConfig(
             search_mode="original",  # UIで切り替え可能
             top_k=3,
-            llm_provider="gemini",
-            llm_model="gemini-2.0-flash-001",
-            vector_weight=0.9,
-            embedding_provider="vertex_ai",
-            embedding_model="gemini-embedding-001",
+            llm_provider=os.getenv("DEFAULT_LLM_PROVIDER"),
+            llm_model=os.getenv("DEFAULT_LLM_MODEL"),
+            vector_weight=float(os.getenv("DEFAULT_UI_VECTOR_WEIGHT")),
             base_dir="."
+            # embedding_provider, embedding_model は config.py で環境変数から読み込み
         )
     if "business_area" not in st.session_state:
         st.session_state.business_area = "預金"
