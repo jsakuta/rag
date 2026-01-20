@@ -58,11 +58,18 @@ class MetadataVectorDB:
     _client_cache = LRUCache(max_size=10)
     _cache_lock = threading.Lock()
 
-    def __init__(self, base_dir: str = ".", collection_name: str = None, batch_size: int = 100):
-        self.base_dir = base_dir
+    def __init__(self, base_dir: str = ".", collection_name: str = None, batch_size: int = 100, db_path: str = None):
         self.collection_name = collection_name
         self.batch_size = batch_size  # 設定可能なバッチサイズ
-        self.db_path = os.path.join(base_dir, "reference", "vector_db")
+
+        # db_pathが直接指定されている場合はそれを使用、そうでない場合は従来通りbase_dirから生成
+        if db_path is not None:
+            self.db_path = db_path
+            self.base_dir = None  # db_path直接指定時はbase_dirは使用しない
+        else:
+            self.base_dir = base_dir
+            self.db_path = os.path.join(base_dir, "reference", "vector_db")
+
         os.makedirs(self.db_path, exist_ok=True)
 
         # パフォーマンス + Memory Leak防止: LRUキャッシュを使用

@@ -715,11 +715,11 @@ class Searcher:
             # プロバイダー別のコレクション名を取得
             collection_name = self.db_manager._get_collection_name(business_area)
 
-            # ChromaDBクライアントの切り替え
+            # ChromaDBクライアントの切り替え（階層構造対応: db_pathを直接指定）
             from src.utils.vector_db import MetadataVectorDB
             self.vector_db = MetadataVectorDB(
-                base_dir=self.config.base_dir,
-                collection_name=collection_name
+                collection_name=collection_name,
+                db_path=db_path
             )
 
             # コレクションの有効性チェック（ドキュメント数の確認）

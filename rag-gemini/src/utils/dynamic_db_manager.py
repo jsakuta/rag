@@ -44,9 +44,9 @@ class DynamicDBManager:
         # 埋め込みプロバイダー（DB分離用）
         self.embedding_provider = config.embedding_provider
 
-        # 更新日時記録ファイルのパス（プロバイダー別）
+        # 更新日時記録ファイルのパス（共通1ファイル）
         self.update_timestamp_file = os.path.join(
-            self.base_db_path, f"update_timestamps_{self.embedding_provider}.json"
+            self.base_db_path, "update_timestamps.json"
         )
 
         # 更新日時の読み込み
@@ -96,7 +96,7 @@ class DynamicDBManager:
             self._closed = True
 
     def _load_update_timestamps(self):
-        """更新日時の記録を読み込み（型検証付き）"""
+        """更新日時の記録を読み込み（3階層構造: business_area → provider → faq/scenario）"""
         try:
             if os.path.exists(self.update_timestamp_file):
                 with open(self.update_timestamp_file, 'r', encoding='utf-8') as f:
@@ -109,34 +109,23 @@ class DynamicDBManager:
                     self._last_scenario_mtime = {}
                     return
 
-                faq_data = timestamps.get('faq', {})
-                scenario_data = timestamps.get('scenario', {})
+                # 3階層構造からプロバイダー別データを抽出
+                # 構造: {business_area: {provider: {faq: timestamp, scenario: timestamp}}}
+                self._last_faq_mtime = {}
+                self._last_scenario_mtime = {}
 
-                # 各フィールドの型検証
-                if not isinstance(faq_data, dict):
-                    logger.warning(f"faqフィールドの型が不正です: {type(faq_data)}")
-                    faq_data = {}
-                if not isinstance(scenario_data, dict):
-                    logger.warning(f"scenarioフィールドの型が不正です: {type(scenario_data)}")
-                    scenario_data = {}
+                for business_area, providers in timestamps.items():
+                    if not isinstance(providers, dict):
+                        continue
 
-                # 値の型検証（タイムスタンプはfloat/int）
-                self._last_faq_mtime = {
-                    k: v for k, v in faq_data.items()
-                    if isinstance(k, str) and isinstance(v, (int, float))
-                }
-                self._last_scenario_mtime = {
-                    k: v for k, v in scenario_data.items()
-                    if isinstance(k, str) and isinstance(v, (int, float))
-                }
+                    provider_data = providers.get(self.embedding_provider, {})
+                    if isinstance(provider_data, dict):
+                        if 'faq' in provider_data and isinstance(provider_data['faq'], (int, float)):
+                            self._last_faq_mtime[business_area] = provider_data['faq']
+                        if 'scenario' in provider_data and isinstance(provider_data['scenario'], (int, float)):
+                            self._last_scenario_mtime[business_area] = provider_data['scenario']
 
-                # 無効なエントリがあった場合は警告
-                if len(self._last_faq_mtime) != len(faq_data):
-                    logger.warning(f"FAQタイムスタンプに無効なエントリがありました（スキップ）")
-                if len(self._last_scenario_mtime) != len(scenario_data):
-                    logger.warning(f"シナリオタイムスタンプに無効なエントリがありました（スキップ）")
-
-                logger.info(f"更新日時記録を読み込み: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件")
+                logger.info(f"更新日時記録を読み込み: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件 (プロバイダー: {self.embedding_provider})")
             else:
                 self._last_faq_mtime = {}
                 self._last_scenario_mtime = {}
@@ -151,15 +140,37 @@ class DynamicDBManager:
             self._last_scenario_mtime = {}
     
     def _save_update_timestamps(self):
-        """更新日時の記録を保存"""
+        """更新日時の記録を保存（3階層構造: business_area → provider → faq/scenario）"""
         try:
-            timestamps = {
-                'faq': self._last_faq_mtime,
-                'scenario': self._last_scenario_mtime
-            }
+            # 既存のタイムスタンプファイルを読み込み（他のプロバイダーのデータを保持）
+            existing_timestamps = {}
+            if os.path.exists(self.update_timestamp_file):
+                try:
+                    with open(self.update_timestamp_file, 'r', encoding='utf-8') as f:
+                        existing_timestamps = json.load(f)
+                    if not isinstance(existing_timestamps, dict):
+                        existing_timestamps = {}
+                except Exception as e:
+                    logger.warning(f"既存タイムスタンプの読み込みエラー: {e}")
+                    existing_timestamps = {}
+
+            # 現在のプロバイダーのデータを更新
+            # 構造: {business_area: {provider: {faq: timestamp, scenario: timestamp}}}
+            for business_area in set(list(self._last_faq_mtime.keys()) + list(self._last_scenario_mtime.keys())):
+                if business_area not in existing_timestamps:
+                    existing_timestamps[business_area] = {}
+                if self.embedding_provider not in existing_timestamps[business_area]:
+                    existing_timestamps[business_area][self.embedding_provider] = {}
+
+                provider_data = existing_timestamps[business_area][self.embedding_provider]
+                if business_area in self._last_faq_mtime:
+                    provider_data['faq'] = self._last_faq_mtime[business_area]
+                if business_area in self._last_scenario_mtime:
+                    provider_data['scenario'] = self._last_scenario_mtime[business_area]
+
             with open(self.update_timestamp_file, 'w', encoding='utf-8') as f:
-                json.dump(timestamps, f, ensure_ascii=False, indent=2)
-            logger.info(f"更新日時記録を保存: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件")
+                json.dump(existing_timestamps, f, ensure_ascii=False, indent=2)
+            logger.info(f"更新日時記録を保存: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件 (プロバイダー: {self.embedding_provider})")
         except Exception as e:
             logger.warning(f"更新日時記録の保存エラー: {e}")
 
@@ -190,36 +201,69 @@ class DynamicDBManager:
         logger.info(f"業務分野 '{business_area}' のタイムスタンプを更新しました")
 
     def _get_collection_name(self, business_area: str) -> str:
-        """プロバイダー別のコレクション名を生成
+        """固定のコレクション名を返す（新構造では常に'default'）
 
         Args:
-            business_area: 業務分野名（日本語）
+            business_area: 業務分野名（互換性のため保持、使用されない）
 
         Returns:
-            str: コレクション名（例: deposit_vertex_ai_DB）
+            str: 固定のコレクション名 'default'
         """
-        english_name = self._translate_business_area(business_area)
-        return f"{english_name}_{self.embedding_provider}_DB"
+        # 新構造では業務分野とプロバイダーはディレクトリで分離されるため、
+        # コレクション名は常に'default'
+        return "default"
+
+    def _create_chromadb_client(self, db_path: str) -> chromadb.PersistentClient:
+        """ChromaDB PersistentClient を標準設定で作成（DRY: 設定を一元管理）
+
+        Args:
+            db_path: ChromaDBデータベースのパス
+
+        Returns:
+            chromadb.PersistentClient インスタンス
+        """
+        return chromadb.PersistentClient(
+            path=db_path,
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
+        )
+
+    def _cleanup_chromadb_client(self, client) -> None:
+        """ChromaDB クライアントのリソースをクリーンアップ（Resource Leak防止）
+
+        Args:
+            client: クリーンアップするChromaDBクライアント
+        """
+        if client is not None and hasattr(client, '_server') and client._server is not None:
+            try:
+                client._server = None
+            except Exception as e:
+                logger.warning(f"ChromaDB client cleanup warning: {e}")
 
     def _migrate_existing_db(self):
-        """既存DB移行処理
+        """既存DB移行処理（階層構造への移行）
 
-        注意: プロバイダー別のコレクション名が導入されたため、
-        旧形式のデータは移行せず、新規ベクトル化を強制する。
-        タイムスタンプのコピーは行わない（空のDBを「最新」と誤判定しないため）。
+        旧形式（単一chroma.sqlite3 + プロバイダー別タイムスタンプファイル）から
+        新形式（業務分野/プロバイダー階層構造）への移行を行う。
+        旧データは移行せず、新規ベクトル化を強制する。
         """
-        # 旧形式のタイムスタンプファイルが存在する場合はバックアップ
-        old_timestamp_file = os.path.join(self.base_db_path, "update_timestamps.json")
-        if os.path.exists(old_timestamp_file):
-            backup_file = old_timestamp_file + ".backup"
+        # 旧形式のプロバイダー別タイムスタンプファイルをバックアップ
+        old_provider_timestamp = os.path.join(
+            self.base_db_path, f"update_timestamps_{self.embedding_provider}.json"
+        )
+        if os.path.exists(old_provider_timestamp):
+            backup_file = old_provider_timestamp + ".backup"
             if not os.path.exists(backup_file):
                 try:
-                    os.rename(old_timestamp_file, backup_file)
-                    logger.info(f"旧タイムスタンプファイルをバックアップ: {backup_file}")
+                    shutil.copy2(old_provider_timestamp, backup_file)
+                    os.remove(old_provider_timestamp)
+                    logger.info(f"旧プロバイダー別タイムスタンプファイルをバックアップ: {backup_file}")
                 except Exception as e:
                     logger.warning(f"旧タイムスタンプファイルのバックアップに失敗: {e}")
 
-        logger.info(f"プロバイダー '{self.embedding_provider}' 用のDB初期化（新規ベクトル化が必要）")
+        logger.info(f"プロバイダー '{self.embedding_provider}' 用のDB初期化（階層構造）")
     
     def analyze_reference_files(self) -> Dict[str, Dict[str, List[Tuple[str, str]]]]:
         """参照ファイルを業務分野ごとに分類"""
@@ -280,9 +324,11 @@ class DynamicDBManager:
         return latest_file
     
     def needs_update(self, db_path: str, latest_faq: Optional[str], latest_scenario: Optional[str], business_area: str) -> bool:
-        """DB更新の必要性をチェック"""
-        if not os.path.exists(db_path):
-            logger.info(f"DBが存在しないため新規作成: {db_path}")
+        """DB更新の必要性をチェック（階層構造対応）"""
+        # 新構造: db_path/chroma.sqlite3 の存在をチェック
+        sqlite_path = os.path.join(db_path, "chroma.sqlite3")
+        if not os.path.exists(sqlite_path):
+            logger.info(f"DBファイルが存在しないため新規作成: {sqlite_path}")
             return True
 
         # 強制更新フラグのチェック（早期リターン）
@@ -290,33 +336,43 @@ class DynamicDBManager:
             logger.info(f"強制更新フラグが有効のため、DB更新を実行: {db_path}")
             return True
 
-        collection_name = os.path.basename(db_path)
+        # 新構造: コレクション名は固定で "default"
+        collection_name = "default"
 
+        # 新構造: 専用のChromaDBクライアントでコレクションを確認（Resource Leak防止）
+        temp_client = None
         try:
-            collection = self._chroma_client.get_collection(name=collection_name)
-            logger.info(f"コレクション存在確認: {collection_name}")
-        except Exception:
-            logger.info(f"コレクションが存在しません: {collection_name}")
+            temp_client = self._create_chromadb_client(db_path)
+            collection = temp_client.get_collection(name=collection_name)
+            logger.info(f"コレクション存在確認: {collection_name} in {db_path}")
+
+            # コレクション内のドキュメント数をチェック
+            db_is_current = self._check_collection_has_documents(collection)
+
+            # ファイルの更新日時をチェック
+            faq_needs_update = self._check_file_needs_update(
+                latest_faq, self.reference_faq_path,
+                self._last_faq_mtime.get(business_area, 0),
+                db_is_current, "履歴データ"
+            )
+            scenario_needs_update = self._check_file_needs_update(
+                latest_scenario, self.reference_scenario_path,
+                self._last_scenario_mtime.get(business_area, 0),
+                db_is_current, "シナリオデータ"
+            )
+
+            needs_update = faq_needs_update or scenario_needs_update
+            logger.info(f"DB{'更新が必要' if needs_update else 'は最新'}: {db_path}")
+            return needs_update
+
+        except (ValueError, ChromaNotFoundError):
+            logger.info(f"コレクションが存在しません: {collection_name} in {db_path}")
             return True
-
-        # コレクション内のドキュメント数をチェック
-        db_is_current = self._check_collection_has_documents(collection)
-
-        # ファイルの更新日時をチェック
-        faq_needs_update = self._check_file_needs_update(
-            latest_faq, self.reference_faq_path,
-            self._last_faq_mtime.get(business_area, 0),
-            db_is_current, "履歴データ"
-        )
-        scenario_needs_update = self._check_file_needs_update(
-            latest_scenario, self.reference_scenario_path,
-            self._last_scenario_mtime.get(business_area, 0),
-            db_is_current, "シナリオデータ"
-        )
-
-        needs_update = faq_needs_update or scenario_needs_update
-        logger.info(f"DB{'更新が必要' if needs_update else 'は最新'}: {db_path}")
-        return needs_update
+        except Exception as e:
+            logger.warning(f"コレクション確認エラー: {e}")
+            return True
+        finally:
+            self._cleanup_chromadb_client(temp_client)
 
     def _check_collection_has_documents(self, collection) -> bool:
         """コレクションにドキュメントが存在するかチェック"""
@@ -357,11 +413,10 @@ class DynamicDBManager:
     
     def update_business_db(self, business_area: str, files: Dict[str, List[Tuple[str, str]]]):
         """特定業務分野のDBを更新"""
-        # プロバイダー別のコレクション名を生成
-        db_name = self._get_collection_name(business_area)
-        db_path = os.path.join(self.base_db_path, db_name)
-        
         logger.info(f"業務分野 '{business_area}' のDB更新開始")
+
+        # 階層構造対応: 業務分野とプロバイダーに対応するDBパスを取得
+        db_path = self.get_db_path_for_business(business_area)
         
         # 最新ファイルの選択
         latest_faq = self.get_latest_file(files["faq"])
@@ -468,10 +523,13 @@ class DynamicDBManager:
         # プロバイダー情報も含める
         temp_collection_name = f"preflight_{english_name}_{self.embedding_provider}_DB_{timestamp}"
 
+        # 階層構造対応: ビジネス領域のdb_pathを取得
+        preflight_db_path = self.get_db_path_for_business(business_area)
+
         try:
             from src.utils.vector_db import MetadataVectorDB
 
-            vector_db = MetadataVectorDB(self.config.base_dir, temp_collection_name)
+            vector_db = MetadataVectorDB(collection_name=temp_collection_name, db_path=preflight_db_path)
             vector_db.add_documents(
                 texts=sample_texts,
                 embeddings=sample_embeddings.tolist(),
@@ -488,11 +546,15 @@ class DynamicDBManager:
         except Exception as e:
             raise DynamicDBError(f"ChromaDB書込/検索の事前検証に失敗しました: {e}")
         finally:
-            # 一時コレクションを必ず削除
+            # 一時コレクションを必ず削除（階層構造対応: Resource Leak防止）
+            cleanup_client = None
             try:
-                self._chroma_client.delete_collection(name=temp_collection_name)
+                cleanup_client = self._create_chromadb_client(preflight_db_path)
+                cleanup_client.delete_collection(name=temp_collection_name)
             except Exception:
                 pass
+            finally:
+                self._cleanup_chromadb_client(cleanup_client)
 
         return {
             "business_area": business_area,
@@ -525,22 +587,26 @@ class DynamicDBManager:
         self._vectorize_data(db_path, business_area, latest_faq, latest_scenario)
     
     def _delete_chromadb_collection(self, business_area: str):
-        """ChromaDBのコレクションを削除（キャッシュされたクライアントを使用）"""
+        """ChromaDBのコレクションを削除（階層構造対応: 専用クライアントを使用）"""
+        temp_client = None
         try:
-            # プロバイダー別のコレクション名を生成
+            # 階層構造のdb_pathを取得
+            db_path = self.get_db_path_for_business(business_area)
             collection_name = self._get_collection_name(business_area)
 
-            # コレクションが存在する場合は削除
-            try:
-                self._chroma_client.get_collection(name=collection_name)
-                self._chroma_client.delete_collection(name=collection_name)
-                logger.info(f"ChromaDBコレクション削除: {collection_name}")
-            except ChromaNotFoundError:
-                logger.info(f"ChromaDBコレクションは存在しません: {collection_name}")
+            # 専用クライアントでコレクションを削除（Resource Leak防止）
+            temp_client = self._create_chromadb_client(db_path)
+            temp_client.get_collection(name=collection_name)
+            temp_client.delete_collection(name=collection_name)
+            logger.info(f"ChromaDBコレクション削除: {collection_name} in {db_path}")
 
+        except ChromaNotFoundError:
+            logger.info(f"ChromaDBコレクションは存在しません: {collection_name} in {db_path}")
         except Exception as e:
             logger.warning(f"ChromaDBコレクション削除エラー: {e}")
             # エラーが発生しても処理を続行
+        finally:
+            self._cleanup_chromadb_client(temp_client)
     
     def _vectorize_data(self, db_path: str, business_area: str,
                         latest_faq: Optional[str], latest_scenario: Optional[str]):
@@ -563,9 +629,9 @@ class DynamicDBManager:
             metadatas = reference_data.get('metadatas', [])
             logger.info(f"ベクトル化開始: {len(texts)}件のテキスト")
 
-            # パフォーマンス: VectorDBを先に初期化
+            # パフォーマンス: VectorDBを先に初期化（階層構造対応: db_pathを直接指定）
             from src.utils.vector_db import MetadataVectorDB
-            vector_db = MetadataVectorDB(self.config.base_dir, collection_name)
+            vector_db = MetadataVectorDB(collection_name=collection_name, db_path=db_path)
 
             # パフォーマンス: バッチごとにベクトル化してストリーミング書き込み（メモリ効率化）
             batch_size = self.config.VECTOR_DB_BATCH_SIZE
@@ -690,14 +756,26 @@ class DynamicDBManager:
         return sanitized if sanitized else "default"
     
     def get_db_path_for_business(self, business_area: str) -> str:
-        """業務分野に対応するDBパスを取得（プロバイダー別）"""
-        # プロバイダー別のコレクション名を生成
-        db_name = self._get_collection_name(business_area)
-        db_path = os.path.join(self.base_db_path, db_name)
+        """業務分野とプロバイダーに対応するDBパスを取得（階層構造対応）
 
-        # ChromaDBの実際の動作では、コレクション名のフォルダは空になる
-        # 実際のデータはUUIDフォルダに格納されるため、フォルダの存在チェックは不要
-        # 代わりにChromaDBのメタデータでコレクションの存在を確認
+        Args:
+            business_area: 業務分野名（日本語）
+
+        Returns:
+            str: DBディレクトリパス（例: reference/vector_db/general/vertex_ai/）
+        """
+        # 業務分野名を英語に変換
+        english_name = self._translate_business_area(business_area)
+
+        # 階層的パス生成: {base}/{business}/{provider}/
+        db_path = os.path.join(
+            self.base_db_path,
+            english_name,
+            self.embedding_provider
+        )
+
+        # ディレクトリが存在しない場合は作成
+        os.makedirs(db_path, exist_ok=True)
 
         return db_path
     
