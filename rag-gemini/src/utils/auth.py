@@ -3,12 +3,14 @@
 import os
 from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, Type
 
-import vertexai
-from google.oauth2 import service_account
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
-from langchain_google_vertexai import ChatVertexAI
 from src.utils.logger import setup_logger
+
+# 遅延インポート: Vertex AI関連（インストールされていない場合もエラーにしない）
+vertexai = None
+service_account = None
+ChatVertexAI = None
 
 if TYPE_CHECKING:
     from config import SearchConfig
@@ -23,7 +25,19 @@ LLM_PROVIDER_CONFIG: Dict[str, Tuple[str, Type, str]] = {
 }
 
 
-def get_google_credentials(config: 'SearchConfig') -> service_account.Credentials:
+def _load_vertex_ai_modules():
+    """Vertex AI関連モジュールを遅延ロード"""
+    global vertexai, service_account, ChatVertexAI
+    if vertexai is None:
+        import vertexai as _vertexai
+        from google.oauth2 import service_account as _service_account
+        from langchain_google_vertexai import ChatVertexAI as _ChatVertexAI
+        vertexai = _vertexai
+        service_account = _service_account
+        ChatVertexAI = _ChatVertexAI
+
+
+def get_google_credentials(config: 'SearchConfig'):
     """Google Cloud認証情報を取得
 
     Args:
@@ -35,6 +49,7 @@ def get_google_credentials(config: 'SearchConfig') -> service_account.Credential
     Raises:
         FileNotFoundError: 認証ファイルが存在しない場合
     """
+    _load_vertex_ai_modules()
     credentials_path = os.path.join(config.base_dir, config.gemini_credentials_path)
 
     if not os.path.exists(credentials_path):
@@ -48,7 +63,7 @@ def get_google_credentials(config: 'SearchConfig') -> service_account.Credential
 
 def initialize_vertex_ai(
     config: 'SearchConfig',
-    credentials: Optional[service_account.Credentials] = None
+    credentials = None
 ) -> None:
     """Vertex AIを初期化
 
@@ -59,6 +74,7 @@ def initialize_vertex_ai(
     Raises:
         FileNotFoundError: 認証ファイルが存在しない場合
     """
+    _load_vertex_ai_modules()
     if credentials is None:
         credentials = get_google_credentials(config)
 
@@ -86,6 +102,7 @@ def create_llm(config: 'SearchConfig'):
 
     # Vertex AI (Gemini) の場合は専用の認証を使用
     if provider == "gemini":
+        _load_vertex_ai_modules()
         if not config.gemini_project_id:
             raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
         credentials = get_google_credentials(config)
