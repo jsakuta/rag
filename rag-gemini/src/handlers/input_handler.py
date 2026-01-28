@@ -207,17 +207,33 @@ class ExcelInputHandler(InputHandler):
 
 class HierarchicalExcelInputHandler(InputHandler):
     """階層構造Excelファイルを読み込むハンドラー（位置ベースの質問・回答判定）"""
-    
+
+    def __init__(self, config: 'SearchConfig', scenario_file: Optional[str] = None):
+        """初期化
+
+        Args:
+            config: SearchConfig インスタンス
+            scenario_file: 特定のシナリオファイルパス（指定時はそのファイルのみ処理）
+        """
+        super().__init__(config)
+        self.scenario_file = scenario_file
+
     def load_data(self) -> list:
         return []
-    
+
     def load_reference_data(self) -> dict:
         """マージ版シナリオExcelから参照データを抽出（位置ベースの質問・回答判定）
 
         命名規則（REFERENCE_FILE_PATTERN）に従わないファイルはスキップされます。
+        scenario_file が指定されている場合は、そのファイルのみを処理します。
         """
-        name_regex = self.config.REFERENCE_FILE_PATTERN
-        reference_file = self._get_latest_file(self.reference_dir, "*.xlsx", name_regex=name_regex)
+        if self.scenario_file:
+            # 特定ファイルが指定されている場合はそのファイルを使用
+            reference_file = self.scenario_file
+        else:
+            # 従来の動作: 最新ファイルを自動検出
+            name_regex = self.config.REFERENCE_FILE_PATTERN
+            reference_file = self._get_latest_file(self.reference_dir, "*.xlsx", name_regex=name_regex)
         logger.info(f"Processing hierarchical reference file: {os.path.basename(reference_file)}")
         
         all_sheets = pd.read_excel(reference_file, sheet_name=None)

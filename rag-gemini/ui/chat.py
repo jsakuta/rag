@@ -10,11 +10,30 @@ load_dotenv()  # .envファイルから環境変数を読み込み
 from config import SearchConfig
 from src.core.processor import Processor
 from src.utils.logger import setup_logger
+from src.utils.dynamic_db_manager import DynamicDBManager
 import datetime
 import os
 import html
 
 logger = setup_logger(__name__)
+
+# デフォルトの業務分野リスト（DBが存在しない場合のフォールバック）
+DEFAULT_BUSINESS_AREAS = ["預金", "融資", "外貨", "投信", "住宅ローン", "カード", "保険", "年金", "総則"]
+
+
+@st.cache_data(ttl=60)  # 60秒キャッシュ
+def get_available_business_areas() -> list:
+    """利用可能な業務分野を動的に取得"""
+    try:
+        config = SearchConfig(base_dir=".")
+        db_manager = DynamicDBManager(config)
+        areas = db_manager.get_all_business_areas()
+        if areas:
+            return areas
+    except Exception as e:
+        logger.warning(f"業務分野一覧の取得に失敗: {e}")
+    return DEFAULT_BUSINESS_AREAS
+
 
 def initialize_session_state():
     """セッションステートの初期化"""
@@ -336,12 +355,17 @@ def run_streamlit_ui():
                     value=st.session_state.config.multi_stage_enable_judgment_support
                 )
 
-            # 業務分野選択
-            business_areas = ["預金", "融資", "外貨", "投信", "住宅ローン", "カード", "保険", "年金", "総則"]
+            # 業務分野選択（動的に取得）
+            business_areas = get_available_business_areas()
+            # 現在選択中の業務分野がリストにない場合は先頭を選択
+            current_area = st.session_state.business_area
+            if current_area not in business_areas:
+                current_area = business_areas[0] if business_areas else "預金"
+                st.session_state.business_area = current_area
             st.session_state.business_area = st.selectbox(
                 "業務分野",
                 business_areas,
-                index=business_areas.index(st.session_state.business_area)
+                index=business_areas.index(current_area)
             )
             st.session_state.config.vector_weight = st.slider("ベクトルの重み", 0.0, 1.0, st.session_state.config.vector_weight, 0.1)
 

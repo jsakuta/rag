@@ -82,12 +82,12 @@ def find_source_files():
     return files
 
 
-def remove_char_count_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """文字数列を削除"""
-    # 保持する列: Lv1~Lv10, シナリオパス
+def remove_unnecessary_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """不要な列を削除（文字数列、シナリオパス列）"""
+    # 保持する列: Lv1~Lv10 のみ（シナリオパスは削除）
     keep_columns = []
     for col in df.columns:
-        if col.startswith("Lv") or col == "シナリオパス":
+        if col.startswith("Lv"):
             keep_columns.append(col)
 
     return df[keep_columns]
@@ -128,13 +128,13 @@ def process_files(dry_run: bool = False):
             # ドライラン: 列情報を表示
             df = pd.read_excel(source_path)
             print(f"  元の列数: {len(df.columns)}")
-            df_cleaned = remove_char_count_columns(df)
+            df_cleaned = remove_unnecessary_columns(df)
             print(f"  処理後の列数: {len(df_cleaned.columns)}")
             print(f"  保持する列: {list(df_cleaned.columns)}")
         else:
             # 実際の処理
             df = pd.read_excel(source_path)
-            df_cleaned = remove_char_count_columns(df)
+            df_cleaned = remove_unnecessary_columns(df)
             df_cleaned.to_excel(output_path, index=False)
             print(f"  保存完了: {len(df_cleaned)}行")
 

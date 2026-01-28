@@ -617,8 +617,8 @@ class DynamicDBManager:
             # プロバイダー別のコレクション名を生成
             collection_name = self._get_collection_name(business_area)
 
-            # 参照データの準備
-            reference_data = self._prepare_reference_data_for_vectorization()
+            # 参照データの準備（業務分野に対応するファイルのみ読み込み）
+            reference_data = self._prepare_reference_data_for_vectorization(latest_scenario)
 
             # ベクトル化モデルの初期化（プロバイダー設定に応じて自動切替）
             from src.utils.auth import create_embedding_model
@@ -795,29 +795,70 @@ class DynamicDBManager:
             raise DynamicDBError(f"DB作成権限がありません: {db_path}")
     
     def get_all_business_areas(self) -> List[str]:
-        """全業務分野の一覧を取得"""
+        """全業務分野の一覧を取得（新旧両構造対応）
+
+        新構造: {business}/{provider}/chroma.sqlite3
+        旧構造: {business}_DB/chroma.sqlite3
+        """
         business_areas = set()
-        
-        # 既存DBから業務分野を抽出
-        if os.path.exists(self.base_db_path):
-            for item in os.listdir(self.base_db_path):
-                if item.endswith('_DB') and os.path.isdir(os.path.join(self.base_db_path, item)):
-                    business_area = item[:-3]  # "_DB"を除去
-                    business_areas.add(business_area)
-        
-        return list(business_areas)
+
+        if not os.path.exists(self.base_db_path):
+            return list(business_areas)
+
+        for item in os.listdir(self.base_db_path):
+            item_path = os.path.join(self.base_db_path, item)
+            if not os.path.isdir(item_path):
+                continue
+
+            # 旧構造: {business}_DB/
+            if item.endswith('_DB'):
+                business_area = item[:-3]  # "_DB"を除去
+                business_areas.add(business_area)
+                continue
+
+            # 新構造: {business}/{provider}/chroma.sqlite3
+            # プロバイダーサブディレクトリをチェック
+            for provider in self.config.VALID_EMBEDDING_PROVIDERS:
+                provider_path = os.path.join(item_path, provider)
+                db_file = os.path.join(provider_path, "chroma.sqlite3")
+                if os.path.exists(db_file):
+                    business_areas.add(item)
+                    break
+
+        return sorted(list(business_areas))
     
-    def _prepare_reference_data_for_vectorization(self) -> dict:
-        """動的DB管理システム用の参照データ準備（既存実装を活用）"""
-        logger.info("動的DB管理システム用の参照データ準備開始（既存実装を活用）")
-        
-        # 既存のMultiFolderInputHandlerを使用してデータを読み込み
-        from src.handlers.input_handler import MultiFolderInputHandler
-        input_handler = MultiFolderInputHandler(self.config)
-        
-        # 参照データの読み込み
-        reference_data = input_handler.load_reference_data()
-        
-        logger.info(f"参照データ準備完了: 総件数{len(reference_data['combined_texts'])}件")
-        
+    def _prepare_reference_data_for_vectorization(self, latest_scenario: Optional[str] = None) -> dict:
+        """動的DB管理システム用の参照データ準備（業務分野フィルタリング対応）
+
+        Args:
+            latest_scenario: 読み込むシナリオファイル名（指定時はそのファイルのみ読み込み）
+
+        Returns:
+            dict: 参照データ（combined_texts, metadatas）
+        """
+        logger.info(f"動的DB管理システム用の参照データ準備開始 (シナリオ: {latest_scenario})")
+
+        if latest_scenario:
+            # 指定されたシナリオファイルのみを読み込み（業務分野別DB構築用）
+            from src.handlers.input_handler import HierarchicalExcelInputHandler
+
+            scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
+            if not os.path.exists(scenario_path):
+                raise DynamicDBError(f"シナリオファイルが見つかりません: {scenario_path}")
+
+            logger.info(f"Processing scenario file: {latest_scenario}")
+
+            # HierarchicalExcelInputHandlerで指定ファイルのみ読み込み
+            handler = HierarchicalExcelInputHandler(self.config, scenario_path)
+            reference_data = handler.load_reference_data()
+
+            logger.info(f"参照データ準備完了（シナリオ指定）: {len(reference_data['combined_texts'])}件")
+        else:
+            # 従来の動作: MultiFolderInputHandlerで全データ読み込み
+            from src.handlers.input_handler import MultiFolderInputHandler
+            input_handler = MultiFolderInputHandler(self.config)
+            reference_data = input_handler.load_reference_data()
+
+            logger.info(f"参照データ準備完了（全データ）: {len(reference_data['combined_texts'])}件")
+
         return reference_data
