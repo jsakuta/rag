@@ -572,6 +572,11 @@ class Searcher:
             search_result_query = parsed_text['query']
             search_result_answer = parsed_text['answer']
 
+        # シナリオIDを生成（シート名_行番号）
+        sheet_name = metadata.get('sheet_name', '')
+        row_index = metadata.get('row_index', '')
+        scenario_id = f"{sheet_name}_{row_index}" if sheet_name and row_index != '' else ''
+
         return {
             'Input_Number': '',
             'Original_Query': '',
@@ -580,6 +585,9 @@ class Searcher:
             'Search_Result_Q': search_result_query,
             'Search_Result_A': search_result_answer,
             'Similarity': combined_score,
+            'Scenario_ID': scenario_id,
+            'Sheet_Name': sheet_name,
+            'Row_Index': row_index,
             'Vector_Weight': self.config.vector_weight,
             'Top_K': self.config.top_k
         }

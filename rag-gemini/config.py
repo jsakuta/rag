@@ -31,6 +31,12 @@ class SearchConfig:
     # 多段階検索設定
     MULTI_STAGE_THRESHOLD: float = 0.45        # 統合スコアのしきい値
     MULTI_STAGE_MAX_RESULTS: int = 100        # 各検索の最大結果数
+
+    # 両プロバイダー比較モード（多段階検索時のみ有効）
+    DEFAULT_DUAL_PROVIDER_MODE: bool = False
+
+    # 正解ID列の候補
+    CORRECT_ID_COLUMNS: Tuple[str, ...] = ('正解ID', '正解', 'CorrectID', 'Expected')
     
     # 埋め込みモデル設定
     # 有効なプロバイダー: "vertex_ai" (Gemini), "azure_openai" (text-embedding-3-large)
@@ -100,6 +106,7 @@ class SearchConfig:
     multi_stage_max_results: int = MULTI_STAGE_MAX_RESULTS
     multi_stage_enable_judgment_support: bool = True  # LLM判断支援の有効化
     judgment_support_prompt_path: str = "prompt/judgment_support.txt"  # 判断支援プロンプトファイル
+    dual_provider_mode: bool = DEFAULT_DUAL_PROVIDER_MODE  # 両プロバイダー比較モード
     
     # 埋め込みモデル設定（環境変数から読み込み、未設定時はエラー）
     embedding_provider: str = field(default_factory=lambda: os.getenv("DEFAULT_EMBEDDING_PROVIDER", ""))

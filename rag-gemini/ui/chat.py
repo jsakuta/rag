@@ -157,13 +157,58 @@ def _needs_processor_reinit() -> bool:
     )
 
 
+def _load_reference_data_for_business(config, business_area: str) -> dict:
+    """業務分野に応じた参照データを読み込む"""
+    # rev系の業務分野かチェック
+    if business_area.startswith("rev"):
+        # rev系の場合は対応するシナリオファイルから読み込み
+        try:
+            with DynamicDBManager(config) as db_manager:
+                business_areas = db_manager.analyze_reference_files()
+
+                if business_area in business_areas:
+                    area_data = business_areas[business_area]
+                    # 構造: {'faq': [], 'scenario': [('filename.xlsx', timestamp), ...]}
+                    scenario_list = area_data.get("scenario", [])
+
+                    if scenario_list:
+                        # 最新のシナリオファイルを使用（タプルの最初の要素がファイル名）
+                        scenario_file = scenario_list[0][0]
+                        # db_managerからシナリオパスを取得
+                        scenario_path = os.path.join(db_manager.reference_scenario_path, scenario_file)
+
+                        from src.handlers.input_handler import HierarchicalExcelInputHandler
+                        handler = HierarchicalExcelInputHandler(config, scenario_path)
+                        reference_data = handler.load_reference_data()
+                        logger.info(f"rev系業務分野 '{business_area}' の参照データ読み込み完了: {len(reference_data['combined_texts'])}件")
+                        return reference_data
+                    else:
+                        logger.warning(f"業務分野 '{business_area}' のシナリオファイルが見つかりません")
+                else:
+                    logger.warning(f"業務分野 '{business_area}' が参照ファイル分析結果に存在しません")
+        except Exception as e:
+            import traceback
+            logger.error(f"rev系参照データの読み込みエラー: {e}")
+            logger.error(traceback.format_exc())
+            # rev系でエラーの場合は空のデータを返さず例外を再送出
+            raise
+
+    # 従来の方法で読み込み（非rev系の業務分野のみ）
+    processor = Processor(config)
+    return processor.reference_handler.load_reference_data()
+
+
 def _initialize_processor():
     """Processorを初期化してセッションステートを更新"""
     st.session_state.processor = Processor(st.session_state.config)
-    reference_data = st.session_state.processor.reference_handler.load_reference_data()
+
+    # 業務分野に応じた参照データを読み込み
+    business_area = st.session_state.business_area
+    reference_data = _load_reference_data_for_business(st.session_state.config, business_area)
+
     st.session_state.processor.searcher.prepare_search(reference_data)
-    st.session_state.processor.searcher._select_db_for_business(st.session_state.business_area)
-    st.session_state.last_business_area = st.session_state.business_area
+    st.session_state.processor.searcher._select_db_for_business(business_area)
+    st.session_state.last_business_area = business_area
     st.session_state.last_search_mode = st.session_state.config.search_mode
     st.session_state.last_judgment_support = st.session_state.config.multi_stage_enable_judgment_support
     st.session_state.last_search_source = st.session_state.config.search_source

@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 import os
 import json
+import copy
 from datetime import datetime
 from config import SearchConfig
 from src.handlers.input_handler import InputHandlerFactory
@@ -10,6 +11,7 @@ from src.handlers.output_handler import OutputHandlerFactory
 from src.core.searcher import Searcher
 from src.core.judgment_support import JudgmentSupport
 from src.utils.logger import setup_logger
+from src.utils.auth import create_embedding_model
 from tqdm import tqdm
 
 logger = setup_logger(__name__)
@@ -96,9 +98,14 @@ class Processor:
             logger.info(f"=== 全処理完了 ===")
             logger.info(f"最終的なall_resultsの総数: {len(all_results)}")
 
-            # 多段階検索モードの場合は影響分析と3シート出力
+            # 多段階検索モードの場合
             if self.config.search_mode == "multi_stage":
-                self._process_multi_stage_results(all_results, input_data)
+                # 両プロバイダー比較モードの場合
+                if self.config.dual_provider_mode:
+                    self._process_dual_provider_multi_stage(input_data)
+                else:
+                    # 従来の3シート出力
+                    self._process_multi_stage_results(all_results, input_data)
             else:
                 # 通常モード: 従来の出力
                 self.output_handler.save_data(all_results, mode=mode)
@@ -163,3 +170,89 @@ class Processor:
         logger.info("3シートExcel出力を実行中...")
         self.output_handler.save_data_multi_stage(results, mode="multi_stage")
         logger.info("=== 多段階検索結果の後処理完了 ===")
+
+    def _process_dual_provider_multi_stage(self, input_data: list):
+        """両プロバイダー比較モードで多段階検索を実行
+
+        Azure OpenAIとVertex AI両方で検索を行い、結果を横並びで出力する
+        """
+        logger.info("=== 両プロバイダー比較モード開始 ===")
+
+        # 参照データの読み込み（共通）
+        reference_data = self.reference_handler.load_reference_data()
+
+        # 入力ファイル名を取得（動的DB選択用）
+        input_file = getattr(self.input_handler, 'current_file', None)
+
+        # Azure OpenAIで検索
+        logger.info("=== Azure OpenAI検索開始 ===")
+        azure_results = self._execute_provider_search(
+            input_data, reference_data, input_file, "azure_openai"
+        )
+        logger.info(f"Azure OpenAI検索完了: {len(azure_results)}件")
+
+        # Vertex AIで検索
+        logger.info("=== Vertex AI検索開始 ===")
+        vertex_results = self._execute_provider_search(
+            input_data, reference_data, input_file, "vertex_ai"
+        )
+        logger.info(f"Vertex AI検索完了: {len(vertex_results)}件")
+
+        # 両プロバイダー結果を1シートに統合して出力
+        logger.info("=== 両プロバイダー結果を統合出力 ===")
+        self.output_handler.save_data_dual_provider(
+            azure_results, vertex_results, input_data, mode="dual_provider"
+        )
+        logger.info("=== 両プロバイダー比較モード完了 ===")
+
+    def _execute_provider_search(self, input_data: list, reference_data: dict,
+                                  input_file: str, provider: str) -> list:
+        """指定されたプロバイダーで検索を実行
+
+        Args:
+            input_data: 入力データリスト
+            reference_data: 参照データ
+            input_file: 入力ファイル名
+            provider: 埋め込みプロバイダー ("azure_openai" or "vertex_ai")
+
+        Returns:
+            list: 検索結果リスト
+        """
+        # プロバイダー用の設定をコピー
+        provider_config = copy.copy(self.config)
+        provider_config.embedding_provider = provider
+
+        # プロバイダーに対応する埋め込みモデル名を設定
+        if provider == "azure_openai":
+            provider_config.embedding_model = os.getenv(
+                "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"
+            )
+        else:  # vertex_ai
+            provider_config.embedding_model = os.getenv(
+                "DEFAULT_EMBEDDING_MODEL", "text-multilingual-embedding-002"
+            )
+
+        # プロバイダー用のSearcherを作成
+        provider_embedding = create_embedding_model(provider_config)
+        provider_searcher = Searcher(provider_config, embedding_model=provider_embedding)
+
+        # 検索の準備
+        provider_searcher.prepare_search(reference_data)
+
+        all_results = []
+        for item in tqdm(input_data, desc=f"Searching ({provider})"):
+            query_number = item.get("number")
+            query_text = item.get("query")
+            if query_number is None or query_text is None:
+                continue
+            original_answer = item.get("answer", "")
+
+            results = provider_searcher.search(query_number, query_text, original_answer, input_file)
+
+            # 全結果にInput_Numberを設定（順位管理用）
+            for result in results:
+                result['Input_Number'] = str(query_number)
+
+            all_results.extend(results)
+
+        return all_results

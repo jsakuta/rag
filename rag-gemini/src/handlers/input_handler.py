@@ -35,6 +35,22 @@ class InputHandler:
         logger.info(f"Using columns: Number='{number_col}', Query='{query_col}', Answer='{answer_col}'")
         return number_col, query_col, answer_col
 
+    def _find_correct_id_column(self, df: pd.DataFrame) -> Optional[str]:
+        """正解ID列を検出"""
+        for col_name in self.config.CORRECT_ID_COLUMNS:
+            if col_name in df.columns:
+                logger.info(f"Found correct ID column: '{col_name}'")
+                return col_name
+        return None
+
+    def _parse_correct_ids(self, value: str) -> List[str]:
+        """正解ID値をパース（カンマ区切り対応）"""
+        if not value or pd.isna(value):
+            return []
+        # カンマで分割して空白をトリム
+        ids = [id_str.strip() for id_str in str(value).split(',')]
+        return [id_str for id_str in ids if id_str]
+
     def _build_combined_text(self, hierarchy: str, query: str, answer: str) -> str:
         """結合テキストを生成"""
         text_parts = []
@@ -291,20 +307,25 @@ class HierarchicalExcelInputHandler(InputHandler):
                 # 原則文の判定
                 is_principle = "以下の選択肢から選んでください" in answer
                 
+                # A列が日付列（作成日）かどうかを判定
+                # 日付列でない場合はA列（インデックス0）から階層を開始
+                is_first_col_date = '作成日' in str(df.columns[0])
+                hierarchy_start_idx = 1 if is_first_col_date else 0
+
                 if is_principle:
                     # 原則文の場合：回答の左隣を質問として処理
-                    if answer_col_idx > 1:
+                    if answer_col_idx > hierarchy_start_idx:
                         question_col_idx = answer_col_idx - 1
                         query = str(row[df.columns[question_col_idx]]).strip() if pd.notna(row[df.columns[question_col_idx]]) else ""
                     else:
                         # 品質: エッジケースの警告（回答が最初の列付近にある）
                         logger.warning(f"原則文の質問列が見つかりません（行{idx}, answer_col_idx={answer_col_idx}）")
                         query = ""
-                    
+
                     # 質問の左側が階層構造
                     hierarchy_parts = []
                     hierarchy_end_idx = answer_col_idx - 1 if query else answer_col_idx
-                    for col_idx in range(1, hierarchy_end_idx):  # 作成日列と質問・回答列以外
+                    for col_idx in range(hierarchy_start_idx, hierarchy_end_idx):  # A列から（日付列がなければ）
                         col = df.columns[col_idx]
                         if col != creation_date_col:
                             cell_value = str(row[col]).strip() if pd.notna(row[col]) else ""
@@ -312,18 +333,18 @@ class HierarchicalExcelInputHandler(InputHandler):
                                 hierarchy_parts.append(cell_value)
                 else:
                     # 通常の場合：回答の左隣が質問
-                    if answer_col_idx > 1:
+                    if answer_col_idx > hierarchy_start_idx:
                         question_col_idx = answer_col_idx - 1
                         query = str(row[df.columns[question_col_idx]]).strip() if pd.notna(row[df.columns[question_col_idx]]) else ""
                     else:
                         # 品質: エッジケースの警告（回答が最初の列付近にある）
                         logger.warning(f"質問列が見つかりません（行{idx}, answer_col_idx={answer_col_idx}）")
                         query = ""
-                    
+
                     # 質問の左側が階層構造
                     hierarchy_parts = []
                     hierarchy_end_idx = answer_col_idx - 1 if query else answer_col_idx
-                    for col_idx in range(1, hierarchy_end_idx):  # 作成日列と質問・回答列以外
+                    for col_idx in range(hierarchy_start_idx, hierarchy_end_idx):  # A列から（日付列がなければ）
                         col = df.columns[col_idx]
                         if col != creation_date_col:
                             cell_value = str(row[col]).strip() if pd.notna(row[col]) else ""
@@ -502,16 +523,59 @@ class TextInputHandler(InputHandler):
     """テキストファイル入力用ハンドラー（多段階検索の改定内容入力用）"""
 
     def load_data(self) -> list:
-        """テキストファイルから改定内容を読み込み"""
-        import re
+        """テキストファイルまたはExcelから改定内容を読み込み（正解ID対応）"""
+        # 最初にExcelファイルを探す（正解ID列対応のため優先）
+        xlsx_files = sorted([
+            f for f in glob.glob(os.path.join(self.input_dir, "*.xlsx"))
+            if not os.path.basename(f).startswith(('~$', '.'))
+        ])
 
+        if xlsx_files:
+            return self._load_from_excel(xlsx_files[0])
+
+        # Excelがなければテキストファイルを探す
+        return self._load_from_text_files()
+
+    def _load_from_excel(self, xlsx_file: str) -> list:
+        """Excelファイルから改定内容と正解IDを読み込み"""
+        self.current_file = os.path.basename(xlsx_file)
+        logger.info(f"Processing input Excel file: {self.current_file}")
+
+        df = pd.read_excel(xlsx_file)
+
+        # 列名の取得
+        number_col, query_col, answer_col = self._get_column_names(df)
+        correct_id_col = self._find_correct_id_column(df)
+
+        valid_df = df.dropna(subset=[query_col])
+
+        data = []
+        for _, row in valid_df.iterrows():
+            item = {
+                "number": str(row[number_col]),
+                "query": str(row[query_col]),
+                "answer": str(row[answer_col]) if answer_col and pd.notna(row[answer_col]) else ""
+            }
+            # 正解ID列が存在する場合は追加
+            if correct_id_col:
+                correct_ids = self._parse_correct_ids(row.get(correct_id_col, ''))
+                item["correct_ids"] = correct_ids
+            else:
+                item["correct_ids"] = []
+            data.append(item)
+
+        logger.info(f"Loaded {len(data)} items from Excel (correct_id_col: {correct_id_col})")
+        return data
+
+    def _load_from_text_files(self) -> list:
+        """テキストファイルから改定内容を読み込み（従来の動作）"""
         txt_files = sorted([
             f for f in glob.glob(os.path.join(self.input_dir, "*.txt"))
             if not os.path.basename(f).startswith(('~', '.'))
         ])
 
         if not txt_files:
-            raise FileNotFoundError(f"No .txt files found in {self.input_dir}")
+            raise FileNotFoundError(f"No .txt or .xlsx files found in {self.input_dir}")
 
         data = []
         for i, txt_file in enumerate(txt_files, start=1):
@@ -525,7 +589,12 @@ class TextInputHandler(InputHandler):
                 content = f.read().strip()
 
             if content:
-                data.append({"number": number, "query": content, "answer": ""})
+                data.append({
+                    "number": number,
+                    "query": content,
+                    "answer": "",
+                    "correct_ids": []  # テキストファイルの場合は空
+                })
                 logger.info(f"Loaded: {filename} (number={number}, length={len(content)})")
 
         logger.info(f"Total {len(data)} text files loaded")
