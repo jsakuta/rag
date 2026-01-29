@@ -1,0 +1,46 @@
+# 業務分野マッピング設定
+# 日本語の業務分野名 → ChromaDB互換の英語名への変換
+
+# 基本マッピング（完全一致を優先）
+mappings:
+  総則: general
+  預金: deposit
+  融資: loan
+  外貨: foreign_currency
+  投信: investment_trust
+  住宅ローン: housing_loan
+  投資信託: investment_fund
+  カード: card
+  保険: insurance
+  年金: pension
+
+# 事務改定用マッピング
+revision_mappings:
+  # ①スマイル機能変更（台帳No.20）
+  rev01smile: rev01smile
+  # ②相続少額払い（台帳No.21）
+  rev02souzoku: rev02souzoku
+  # ③保険証→資格確認証（台帳No.25-30, 35-36）
+  rev03smile: rev03smile
+  rev03naibujimu: rev03naibujimu
+  rev03souzoku: rev03souzoku
+  rev03torikaku: rev03torikaku
+  # ④0円新規開設可能（台帳No.37）
+  rev04naibujimu: rev04naibujimu
+  # ⑤AML→GPLEX（台帳No.41-42）
+  rev05smile: rev05smile
+  # ⑥DC→MDC（台帳No.43-45）
+  rev06smile: rev06smile
+
+# ChromaDBコレクション名の制約
+collection_constraints:
+  min_length: 3
+  max_length: 512
+  # 許可される文字: [a-zA-Z0-9._-]
+  # 先頭・末尾は英数字である必要がある
+
+# デフォルト値
+defaults:
+  collection_name: default
+  fallback_prefix: c
+  fallback_suffix: c

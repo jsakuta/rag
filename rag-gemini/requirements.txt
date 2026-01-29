@@ -29,5 +29,7 @@ azure-keyvault-secrets>=4.7.0
 chromadb>=1.0.15
 # 新規追加: リトライロジック用（API一時障害対応）
 tenacity>=8.0.0
+# 新規追加: YAML設定ファイル読み込み用
+PyYAML>=6.0
 # 新規追加: Azure OpenAI Embedding用（text-embedding-3-large）
 openai>=1.0.0
