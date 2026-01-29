@@ -97,10 +97,11 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
         try:
             initialize_vertex_ai(self.config)
 
-            # gemini-embedding-001 モデルの初期化
-            model = TextEmbeddingModel.from_pretrained("gemini-embedding-001")
+            # モデル名を環境変数から取得（デフォルト: gemini-embedding-001）
+            model_name = self.config.embedding_model or "gemini-embedding-001"
+            model = TextEmbeddingModel.from_pretrained(model_name)
 
-            logger.info("Gemini Embedding API initialized successfully")
+            logger.info(f"Gemini Embedding API initialized successfully (model: {model_name})")
             return model
 
         except Exception as e:

@@ -10,7 +10,7 @@
 処理内容:
     - rev* DBディレクトリを削除
     - タイムスタンプファイルをリセット
-    - 全9つのDBを再構築
+    - 全9つのDBをAzure OpenAIとVertexAI両方で再構築
 """
 
 import os
@@ -44,6 +44,9 @@ REVISION_AREAS = [
     "rev05smile",
     "rev06smile",
 ]
+
+# 対応するプロバイダー
+PROVIDERS = ["azure_openai", "vertex_ai"]
 
 
 def delete_existing_dbs():
@@ -92,33 +95,53 @@ def reset_timestamps():
 
 
 def rebuild_dbs():
-    """全DBを再構築"""
-    config = SearchConfig(base_dir=str(PROJECT_ROOT))
+    """全DBを両プロバイダーで再構築"""
+    for provider in PROVIDERS:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"=== {provider} でDB構築開始 ===")
+        logger.info(f"{'='*60}")
 
-    with DynamicDBManager(config) as db_manager:
-        # 参照ファイルの分析
-        business_areas = db_manager.analyze_reference_files()
+        # プロバイダー別に設定を作成
+        config = SearchConfig(base_dir=str(PROJECT_ROOT))
+        config.embedding_provider = provider
 
-        logger.info(f"検出された業務分野: {list(business_areas.keys())}")
+        # embedding_modelをプロバイダーに応じて環境変数から取得
+        if provider == "azure_openai":
+            config.embedding_model = os.getenv(
+                "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"
+            )
+        else:  # vertex_ai
+            config.embedding_model = os.getenv(
+                "VERTEX_AI_EMBEDDING_MODEL", "gemini-embedding-001"
+            )
 
-        # rev*業務分野のみ再構築
-        for area in REVISION_AREAS:
-            if area not in business_areas:
-                logger.warning(f"業務分野が見つかりません: {area}")
-                continue
+        with DynamicDBManager(config) as db_manager:
+            # 参照ファイルの分析
+            business_areas = db_manager.analyze_reference_files()
 
-            logger.info(f"=== {area} の再構築開始 ===")
-            try:
-                db_manager.update_business_db(area, business_areas[area])
-                logger.info(f"=== {area} の再構築完了 ===")
-            except Exception as e:
-                logger.error(f"{area} の再構築エラー: {e}")
-                raise
+            logger.info(f"検出された業務分野: {list(business_areas.keys())}")
+
+            # rev*業務分野のみ再構築
+            for area in REVISION_AREAS:
+                if area not in business_areas:
+                    logger.warning(f"業務分野が見つかりません: {area}")
+                    continue
+
+                logger.info(f"=== {area} ({provider}) の再構築開始 ===")
+                try:
+                    db_manager.update_business_db(area, business_areas[area])
+                    logger.info(f"=== {area} ({provider}) の再構築完了 ===")
+                except Exception as e:
+                    logger.error(f"{area} ({provider}) の再構築エラー: {e}")
+                    raise
+
+        logger.info(f"=== {provider} でDB構築完了 ===\n")
 
 
 def main():
     print("=" * 60)
     print("変更前シナリオDB 再構築スクリプト")
+    print("（Azure OpenAI + VertexAI 両プロバイダー対応）")
     print("=" * 60)
 
     # Step 1: 既存DBの削除
@@ -134,12 +157,12 @@ def main():
         print("エラー: タイムスタンプの更新に失敗しました")
         sys.exit(1)
 
-    # Step 3: DB再構築
-    print("\n[Step 3/3] DB再構築...")
+    # Step 3: DB再構築（両プロバイダー）
+    print("\n[Step 3/3] DB再構築（Azure OpenAI + VertexAI）...")
     rebuild_dbs()
 
     print("\n" + "=" * 60)
-    print("再構築完了！")
+    print("再構築完了！（Azure OpenAI + VertexAI 両方）")
     print("=" * 60)
 
 

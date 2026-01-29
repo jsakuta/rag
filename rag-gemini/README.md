@@ -19,6 +19,7 @@
 - [詳細セットアップガイド](#詳細セットアップガイド)
 - [検索エンジン仕様](#検索エンジン仕様)
 - [データベース管理](#データベース管理)
+- [多段階検索（事務改定評価）](#多段階検索事務改定評価)
 - [入出力フォーマット](#入出力フォーマット)
 - [使用方法](#使用方法)
 - [トラブルシューティング](#トラブルシューティング)
@@ -59,6 +60,7 @@ RAG-Gemini は、Google Vertex AI の Gemini Embedding API と ChromaDB を活�
 | **動的 DB 管理** | 業務領域別の自動 DB 管理 |
 | **複数フォルダ対応** | シナリオ + FAQ 履歴の統合処理 |
 | **マルチ LLM 対応** | Gemini / Claude / ChatGPT |
+| **多段階検索評価** | 事務改定の検索精度評価（Azure/VertexAI比較） |
 
 ---
 
@@ -487,6 +489,127 @@ flowchart TD
 
 ---
 
+## 多段階検索（事務改定評価）
+
+### 目的
+
+事務改定によるシナリオ変更の影響範囲を特定するため、**改定内容の説明文から変更対象のシナリオ行を正しく検索できるか**を評価するシステム。
+
+**ユースケース:**
+- 事務改定（手続き変更、用語変更等）が発生した際、影響を受けるシナリオ行を自動特定
+- 検索精度を Azure OpenAI と VertexAI で比較し、最適なプロバイダーを選定
+- 改定ごとの検索難易度を把握し、検索クエリの改善に活用
+
+### 処理フロー
+
+```
+1. 変更前シナリオをベクトル化（rev*DB構築）
+   └── Azure OpenAI / VertexAI 両方で構築
+
+2. 改定内容をクエリとして検索
+   └── 各rev*DBに対して検索実行
+
+3. 正解ID（変更対象行）との照合
+   └── Top-1/3/5/10 の正解率を算出
+
+4. Excel出力（改定ごとのシート + サマリー）
+```
+
+### DB構造（事務改定評価用）
+
+```
+reference/vector_db/
+├── general/              # 通常検索用（総則）
+├── deposit/              # 通常検索用（預金）
+│
+├── rev01smile/           # 事務改定①用（smile-bot）
+│   ├── azure_openai/     # Azure OpenAI 埋め込み
+│   │   └── chroma.sqlite3
+│   └── vertex_ai/        # VertexAI 埋め込み
+│       └── chroma.sqlite3
+├── rev02souzoku/         # 事務改定②用
+├── rev03naibujimu/       # 事務改定③用（naibujimu-bot）
+├── rev03smile/           # 事務改定③用（smile-bot）
+├── rev03souzoku/         # 事務改定③用（souzoku-bot）
+├── rev03torikaku/        # 事務改定③用（torikaku-bot）
+├── rev04naibujimu/       # 事務改定④用
+├── rev05smile/           # 事務改定⑤用
+└── rev06smile/           # 事務改定⑥用
+```
+
+**プロバイダー別DBの理由:**
+- 埋め込みベクトルの次元・特性がプロバイダーにより異なる
+- 同一コレクションに異なるモデルのベクトルは混在不可
+- 検索時はクエリと同じモデルでベクトル化されたDBを使用
+
+### 改定番号とDBの対応
+
+| 改定番号 | 台帳No. | 内容 | 対応DB |
+|---------|--------|------|--------|
+| ① | 20 | スマイル機能変更 | rev01smile |
+| ② | 21 | 相続少額払い | rev02souzoku |
+| ③ | 25-30, 35-36 | 保険証→資格確認証 | rev03naibujimu, rev03smile, rev03souzoku, rev03torikaku |
+| ④ | 37 | 0円新規開設可能 | rev04naibujimu |
+| ⑤ | 41-42 | AML→GPLEX | rev05smile |
+| ⑥ | 43-45 | DC→MDC | rev06smile |
+
+### 使用方法
+
+**Step 1: DB再構築**
+```bash
+# Streamlit UIを停止してから実行
+python scripts/rebuild_before_scenario_db.py
+```
+
+**Step 2: 評価実行**
+```bash
+python scripts/evaluate_revisions.py
+```
+
+**出力:**
+```
+output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
+├── サマリーシート（改定×プロバイダーの正解率一覧）
+├── 改定①シート（検索結果詳細）
+├── 改定②シート
+└── ...
+```
+
+### 正解IDフォーマット
+
+```
+{ボット名}_{Excel行番号}
+例: smile-bot_129, naibujimu-bot_641
+```
+
+| ボット名 | 対象システム |
+|---------|-------------|
+| smile-bot | スマイルタブレット |
+| naibujimu-bot | 内部事務 |
+| souzoku-bot | 相続 |
+| torikaku-bot | 取引時確認 |
+
+### 環境変数
+
+```env
+# Azure OpenAI 埋め込み
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+
+# VertexAI 埋め込み
+VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
+```
+
+### 関連スクリプト
+
+| ファイル | 説明 |
+|---------|------|
+| `scripts/rebuild_before_scenario_db.py` | rev*DB再構築（両プロバイダー対応） |
+| `scripts/evaluate_revisions.py` | 評価実行・Excel出力 |
+| `scripts/generate_correct_ids.py` | 正解ID対応表生成 |
+| `scripts/README_REVISION_EVAL.md` | 詳細ドキュメント |
+
+---
+
 ## 入出力フォーマット
 
 ### 入力ファイル
@@ -667,7 +790,17 @@ Source distribution:
 
 ## 変更履歴
 
-### V2.4 (最新)
+### V2.5 (最新)
+
+- **多段階検索（事務改定評価）機能追加**
+  - 改定内容から変更対象シナリオを検索する精度評価システム
+  - Azure OpenAI / VertexAI 両プロバイダーでの比較評価
+  - 改定ごとのシート分割Excel出力
+- rev*ベクトルDB構造（改定別×プロバイダー別）
+- `VERTEX_AI_EMBEDDING_MODEL` 環境変数対応
+- `gemini_embedding.py` の埋め込みモデル名を環境変数化
+
+### V2.4
 
 - Azure OpenAI text-embedding-3-large 対応
 - 埋め込みモデルのプロバイダー切り替え機能
