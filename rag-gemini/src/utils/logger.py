@@ -1,25 +1,46 @@
 # --- utils/logger.py ---
+"""
+ターミナルログ出力モジュール
+
+デザインコンセプト: インダストリアル・ダッシュボード
+- 情報密度と視認性のバランス
+- 改定ごとの明確な視覚的区切り
+- プロバイダー別の色分け（Azure=青、VertexAI=緑）
+"""
 import logging
 import os
 import sys
-from typing import Optional
+from typing import Optional, List, Tuple, Any
 
 # richがインストールされているか確認
 try:
     from rich.logging import RichHandler
-    from rich.console import Console
+    from rich.console import Console, Group
     from rich.theme import Theme
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    from rich.columns import Columns
+    from rich.box import ROUNDED, HEAVY, SIMPLE, MINIMAL, DOUBLE
+    from rich.style import Style
+    from rich.padding import Padding
+    from rich import box
     RICH_AVAILABLE = True
 
-    # カスタムテーマ（色設定）
+    # カスタムテーマ（インダストリアル・ダッシュボード）
     CUSTOM_THEME = Theme({
-        "info": "cyan",
-        "warning": "yellow",
-        "error": "red bold",
-        "critical": "red bold reverse",
-        "debug": "dim",
-        "success": "green",
-        "highlight": "bold magenta",
+        "info": "#64B5F6",           # ライトブルー
+        "warning": "#FFB74D",        # オレンジ
+        "error": "#EF5350 bold",     # レッド
+        "critical": "#EF5350 bold reverse",
+        "debug": "#9E9E9E",          # グレー
+        "success": "#81C784",        # グリーン
+        "highlight": "#BA68C8 bold", # パープル
+        "azure": "#2196F3",          # Azure Blue
+        "vertex": "#4CAF50",         # Google Green
+        "revision": "#FF9800 bold",  # オレンジ（改定番号）
+        "muted": "#757575",          # ミュート
+        "accent": "#00BCD4",         # シアン
     })
 except ImportError:
     RICH_AVAILABLE = False
@@ -128,10 +149,19 @@ def setup_logger(name: str) -> logging.Logger:
 
 
 def print_section(title: str, char: str = "=", width: int = 60):
-    """セクション区切りを出力"""
+    """セクション区切りを出力（改定番号用の強調版）"""
     if RICH_AVAILABLE:
         console = get_console()
-        console.rule(f"[bold]{title}[/bold]", style="cyan")
+        # 改定番号を検出してスタイル適用
+        if title.startswith("改定"):
+            console.print()
+            console.rule(
+                f"[bold #FF9800]▶ {title}[/bold #FF9800]",
+                style="#FF9800",
+                characters="━"
+            )
+        else:
+            console.rule(f"[bold #00BCD4]{title}[/bold #00BCD4]", style="#546E7A")
     else:
         line = char * width
         print(f"\n{line}")
@@ -144,9 +174,29 @@ def print_table(title: str, data: list, columns: list):
     if RICH_AVAILABLE:
         from rich.table import Table
         console = get_console()
-        table = Table(title=title, show_header=True, header_style="bold cyan")
-        for col in columns:
-            table.add_column(col)
+        table = Table(
+            title=f"[bold #00BCD4]{title}[/bold #00BCD4]",
+            show_header=True,
+            header_style="bold #90A4AE",
+            border_style="#546E7A",
+            box=box.ROUNDED,
+            padding=(0, 1),
+            collapse_padding=True,
+        )
+
+        # 列スタイルを設定
+        for i, col in enumerate(columns):
+            if col == "番号":
+                table.add_column(col, style="#FF9800 bold", justify="center", width=6)
+            elif col == "正解数":
+                table.add_column(col, style="#81C784", justify="right", width=8)
+            elif "Azure" in col:
+                table.add_column(col, style="#64B5F6", justify="right")
+            elif "VertexAI" in col or "Vertex" in col:
+                table.add_column(col, style="#81C784", justify="right")
+            else:
+                table.add_column(col, style="#B0BEC5")
+
         for row in data:
             table.add_row(*[str(cell) for cell in row])
         console.print(table)
@@ -165,13 +215,13 @@ def print_status(message: str, status: str = "info"):
     if RICH_AVAILABLE:
         console = get_console()
         icons = {
-            "info": "[cyan]ℹ[/cyan]",
-            "success": "[green]✓[/green]",
-            "warning": "[yellow]⚠[/yellow]",
-            "error": "[red]✗[/red]",
+            "info": "[#64B5F6]│[/#64B5F6]",
+            "success": "[#81C784]✓[/#81C784]",
+            "warning": "[#FFB74D]⚠[/#FFB74D]",
+            "error": "[#EF5350]✗[/#EF5350]",
         }
         icon = icons.get(status, icons["info"])
-        console.print(f"{icon} {message}")
+        console.print(f"  {icon} {message}")
     else:
         icons = {
             "info": "[i]",
@@ -181,3 +231,142 @@ def print_status(message: str, status: str = "info"):
         }
         icon = icons.get(status, icons["info"])
         print(f"{icon} {message}")
+
+
+def print_revision_header(
+    revision: str,
+    content: str,
+    correct_count: int,
+    current: int,
+    total: int
+):
+    """改定評価のヘッダーを表示（視認性重視）"""
+    if RICH_AVAILABLE:
+        console = get_console()
+
+        # プログレスバー風の表示
+        progress_text = f"[#757575]{current}/{total}[/#757575]"
+
+        # 改定内容パネル
+        content_preview = content[:100] + "..." if len(content) > 100 else content
+
+        header_text = Text()
+        header_text.append(f"  {revision} ", style="bold #FF9800")
+        header_text.append(f"  正解ID: {correct_count}件", style="#81C784")
+        header_text.append(f"  {progress_text}", style="#757575")
+
+        console.print()
+        console.print(Panel(
+            Group(
+                header_text,
+                Text(f"\n  {content_preview}", style="#B0BEC5"),
+            ),
+            border_style="#FF9800",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        ))
+    else:
+        print(f"\n{'='*60}")
+        print(f" [{current}/{total}] {revision}")
+        print(f" 正解ID: {correct_count}件")
+        print(f" {content[:80]}...")
+        print("="*60)
+
+
+def print_search_result(
+    provider: str,
+    result_count: int,
+    areas: List[str],
+    found_correct: int = 0,
+    total_correct: int = 0
+):
+    """検索結果をコンパクトに表示"""
+    if RICH_AVAILABLE:
+        console = get_console()
+
+        if provider.lower() in ("azure", "azure_openai"):
+            color = "#2196F3"
+            icon = "◆"
+            name = "Azure"
+        else:
+            color = "#4CAF50"
+            icon = "◇"
+            name = "VertexAI"
+
+        # 正解発見率
+        rate = f"{found_correct}/{total_correct}" if total_correct > 0 else "-"
+        rate_pct = f"({found_correct/total_correct*100:.0f}%)" if total_correct > 0 and found_correct > 0 else ""
+
+        areas_str = ", ".join(areas) if areas else "-"
+
+        result_text = Text()
+        result_text.append(f"  {icon} ", style=f"bold {color}")
+        result_text.append(f"{name:10}", style=f"bold {color}")
+        result_text.append(f" {result_count:>4}件", style="#B0BEC5")
+        result_text.append(f"  正解: {rate} {rate_pct}", style="#81C784" if found_correct > 0 else "#757575")
+        result_text.append(f"  [{areas_str}]", style="#757575")
+
+        console.print(result_text)
+    else:
+        print(f"  {provider}: {result_count}件 ({', '.join(areas)})")
+
+
+def print_summary_table(results: List[Tuple[str, int, int, float, int, int, float]]):
+    """評価結果サマリーをテーブル表示
+
+    results: [(revision, azure_count, azure_found, azure_rate, vertex_count, vertex_found, vertex_rate), ...]
+    """
+    if RICH_AVAILABLE:
+        console = get_console()
+        table = Table(
+            title="[bold #00BCD4]評価結果サマリー[/bold #00BCD4]",
+            show_header=True,
+            header_style="bold #90A4AE",
+            border_style="#546E7A",
+            box=box.ROUNDED,
+        )
+
+        table.add_column("改定", style="#FF9800 bold", justify="center", width=6)
+        table.add_column("Azure件数", style="#64B5F6", justify="right")
+        table.add_column("Azure正解", style="#64B5F6", justify="right")
+        table.add_column("Azure率", style="#64B5F6", justify="right")
+        table.add_column("Vertex件数", style="#81C784", justify="right")
+        table.add_column("Vertex正解", style="#81C784", justify="right")
+        table.add_column("Vertex率", style="#81C784", justify="right")
+
+        for row in results:
+            revision, az_cnt, az_found, az_rate, vx_cnt, vx_found, vx_rate = row
+            table.add_row(
+                str(revision),
+                str(az_cnt),
+                str(az_found),
+                f"{az_rate:.1%}" if az_rate > 0 else "-",
+                str(vx_cnt),
+                str(vx_found),
+                f"{vx_rate:.1%}" if vx_rate > 0 else "-",
+            )
+
+        console.print()
+        console.print(table)
+    else:
+        print("\n評価結果サマリー")
+        for row in results:
+            print(f"  {row[0]}: Azure={row[1]}件, Vertex={row[4]}件")
+
+
+def print_completion(output_file: str, elapsed_time: float = 0):
+    """完了メッセージを表示"""
+    if RICH_AVAILABLE:
+        console = get_console()
+        console.print()
+        console.print(Panel(
+            f"[bold #81C784]✓ 評価完了[/bold #81C784]\n\n"
+            f"[#B0BEC5]出力ファイル:[/#B0BEC5] [bold]{output_file}[/bold]"
+            + (f"\n[#757575]処理時間: {elapsed_time:.1f}秒[/#757575]" if elapsed_time > 0 else ""),
+            border_style="#81C784",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        ))
+    else:
+        print(f"\n✓ 評価完了")
+        print(f"  出力: {output_file}")

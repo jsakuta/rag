@@ -31,7 +31,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from config import SearchConfig, load_settings
-from src.utils.logger import setup_logger, print_section, print_table, print_status, get_console
+from src.utils.logger import (
+    setup_logger, print_section, print_table, print_status, get_console,
+    print_revision_header, print_search_result, print_completion
+)
 from src.utils.auth import create_embedding_model, create_llm
 
 # richプログレスバー（利用可能な場合）
@@ -55,22 +58,10 @@ logger = setup_logger(__name__)
 _eval_settings = load_settings("evaluation")
 
 # 改定番号 → rev*業務分野のマッピング（YAMLから読み込み）
-REVISION_TO_AREAS = _eval_settings.get("revision_areas", {
-    '①': ['rev01smile'],
-    '②': ['rev02souzoku'],
-    '③': ['rev03naibujimu', 'rev03smile', 'rev03souzoku', 'rev03torikaku'],
-    '④': ['rev04naibujimu'],
-    '⑤': ['rev05smile'],
-    '⑥': ['rev06smile'],
-})
+REVISION_TO_AREAS = _eval_settings["revision_areas"]
 
 # ボット名マッピング（YAMLから読み込み）
-AREA_TO_BOT = _eval_settings.get("area_to_bot", {
-    'smile': 'smile-bot',
-    'naibujimu': 'naibujimu-bot',
-    'souzoku': 'souzoku-bot',
-    'torikaku': 'torikaku-bot',
-})
+AREA_TO_BOT = _eval_settings["area_to_bot"]
 
 # 入力ファイル
 INPUT_FILE = PROJECT_ROOT / "input" / "multi_stage_input.xlsx"
@@ -82,12 +73,9 @@ OUTPUT_DIR = PROJECT_ROOT / "output"
 VECTOR_DB_BASE = PROJECT_ROOT / "reference" / "vector_db"
 
 # 検索設定（YAMLから読み込み）
-THRESHOLD_BY_PROVIDER = _eval_settings.get("thresholds", {
-    'azure_openai': 0.30,
-    'vertex_ai': 0.50,
-})
-VECTOR_WEIGHT = _eval_settings.get("vector_weight", 0.9)  # ベクトル重み
-MAX_RESULTS = _eval_settings.get("max_results", 100)  # 最大検索結果数
+THRESHOLD_BY_PROVIDER = _eval_settings["thresholds"]
+VECTOR_WEIGHT = _eval_settings["vector_weight"]
+MAX_RESULTS = _eval_settings["max_results"]
 
 
 class RevisionEvaluator:
@@ -520,8 +508,7 @@ class RevisionEvaluator:
         Returns:
             評価結果辞書（エリア別の結果を含む）
         """
-        print_section(f"改定 {revision} の評価")
-        print_status(f"正解ID数: {len(correct_ids)}", "info")
+        # ヘッダーは evaluate_all_revisions で表示済み
 
         evaluation_result = {
             'revision': revision,
@@ -534,22 +521,28 @@ class RevisionEvaluator:
         }
 
         # Azure検索
-        print_status("[bold blue]Azure[/bold blue] で検索中...", "info")
         azure_results_by_area, llm_query, keywords, azure_areas = self.search_revision_multi_stage(
             revision, revision_content, correct_ids, 'azure_openai'
         )
         evaluation_result['llm_query'] = llm_query
         evaluation_result['keywords'] = keywords
         total_azure = sum(len(results) for results in azure_results_by_area.values())
-        print_status(f"Azure: {total_azure}件 (エリア: {', '.join(azure_areas)})", "success")
+        azure_correct_found = sum(
+            1 for area_results in azure_results_by_area.values()
+            for r in area_results if r.get('正解フラグ') == 'TRUE'
+        )
+        print_search_result("azure", total_azure, azure_areas, azure_correct_found, len(correct_ids))
 
         # VertexAI検索
-        print_status("[bold green]VertexAI[/bold green] で検索中...", "info")
         vertex_results_by_area, _, _, vertex_areas = self.search_revision_multi_stage(
             revision, revision_content, correct_ids, 'vertex_ai'
         )
         total_vertex = sum(len(results) for results in vertex_results_by_area.values())
-        print_status(f"VertexAI: {total_vertex}件 (エリア: {', '.join(vertex_areas)})", "success")
+        vertex_correct_found = sum(
+            1 for area_results in vertex_results_by_area.values()
+            for r in area_results if r.get('正解フラグ') == 'TRUE'
+        )
+        print_search_result("vertex", total_vertex, vertex_areas, vertex_correct_found, len(correct_ids))
 
         # エリア別に整理（Azure/VertexAIで取得できたエリアを統合）
         all_areas = list(set(azure_areas) | set(vertex_areas))
@@ -582,6 +575,25 @@ class RevisionEvaluator:
         input_df = self.load_input_data()
         results_by_revision = {}
 
+        total_revisions = len(input_df)
+        print_section(f"評価対象: {total_revisions}件の改定")
+
+        # 改定一覧をテーブル表示
+        revision_list_data = []
+        for idx, row in input_df.iterrows():
+            revision = row['番号']
+            content = row['改定内容']
+            content_preview = content[:40] + '...' if len(content) > 40 else content
+            correct_ids_str = row.get('正解ID', '')
+            correct_count = len([id.strip() for id in str(correct_ids_str).split(',') if id.strip()])
+            revision_list_data.append((revision, content_preview, correct_count))
+
+        print_table(
+            "改定一覧",
+            revision_list_data,
+            ["番号", "改定内容", "正解数"]
+        )
+
         for idx, row in input_df.iterrows():
             revision = row['番号']
             revision_content = row['改定内容']
@@ -592,6 +604,15 @@ class RevisionEvaluator:
                 id.strip() for id in str(correct_ids_str).split(',')
                 if id.strip()
             ]
+
+            # 改定ヘッダー表示（視認性向上）
+            print_revision_header(
+                revision=revision,
+                content=revision_content,
+                correct_count=len(correct_ids),
+                current=idx + 1,
+                total=total_revisions
+            )
 
             # 評価実行
             result = self.evaluate_revision(revision, revision_content, correct_ids)
@@ -1016,11 +1037,11 @@ def main():
         ["改定", "エリア", "Azure", "VertexAI"]
     )
 
-    # 設定を初期化（閾値はプロバイダー別に設定されるためデフォルト値）
+    # 設定を初期化（閾値は_create_orchestrator内でTHRESHOLD_BY_PROVIDERを使用）
     config = SearchConfig(
         base_dir=str(PROJECT_ROOT),
         top_k=MAX_RESULTS,
-        multi_stage_threshold=0.45,  # デフォルト値（実際はプロバイダー別に設定）
+        multi_stage_threshold=THRESHOLD_BY_PROVIDER['azure_openai'],  # SearchConfig検証用（実際はプロバイダー別）
         multi_stage_max_results=MAX_RESULTS,
         multi_stage_enable_judgment_support=True,
     )
@@ -1033,8 +1054,8 @@ def main():
     print_status(f"LLM分析: {'[green]有効[/green]' if enable_llm else '[yellow]無効[/yellow]'}", "info")
     print_status(f"最大検索結果数: {MAX_RESULTS}", "info")
     print_status(f"ベクトル重み: {VECTOR_WEIGHT}", "info")
-    print_status(f"閾値 (Azure): {THRESHOLD_BY_PROVIDER.get('azure_openai', 0.4)}", "info")
-    print_status(f"閾値 (VertexAI): {THRESHOLD_BY_PROVIDER.get('vertex_ai', 0.5)}", "info")
+    print_status(f"閾値 (Azure): {THRESHOLD_BY_PROVIDER['azure_openai']}", "info")
+    print_status(f"閾値 (VertexAI): {THRESHOLD_BY_PROVIDER['vertex_ai']}", "info")
 
     # 評価を実行
     evaluator = RevisionEvaluator(config, enable_llm_analysis=enable_llm)
@@ -1043,8 +1064,7 @@ def main():
     # 結果を保存
     output_file = evaluator.save_results(results)
 
-    print_section("評価完了")
-    print_status(f"出力ファイル: {output_file}", "success")
+    print_completion(str(output_file))
 
 
 if __name__ == "__main__":
