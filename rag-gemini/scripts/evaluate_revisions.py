@@ -83,7 +83,7 @@ VECTOR_DB_BASE = PROJECT_ROOT / "reference" / "vector_db"
 
 # 検索設定（YAMLから読み込み）
 THRESHOLD_BY_PROVIDER = _eval_settings.get("thresholds", {
-    'azure_openai': 0.40,
+    'azure_openai': 0.30,
     'vertex_ai': 0.50,
 })
 VECTOR_WEIGHT = _eval_settings.get("vector_weight", 0.9)  # ベクトル重み
