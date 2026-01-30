@@ -84,8 +84,8 @@ class SearchConfig:
 
     top_k: int = DEFAULT_TOP_K
     model_name: str = DEFAULT_MODEL_NAME
-    llm_provider: str = DEFAULT_LLM_PROVIDER
-    llm_model: str = DEFAULT_LLM_MODEL
+    llm_provider: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_PROVIDER", "anthropic"))
+    llm_model: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_MODEL", "claude-3-5-sonnet-20241022"))
     vector_weight: float = DEFAULT_VECTOR_WEIGHT
     keyword_weight: float = field(init=False)  # keyword_weight は vector_weight から自動計算
     base_dir: str = "."

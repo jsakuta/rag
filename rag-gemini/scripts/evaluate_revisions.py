@@ -224,16 +224,12 @@ class RevisionEvaluator:
                 db_path=db_path,
                 collection_name="default"
             )
-            # コレクション情報からドキュメントを取得
-            info = vector_db.get_collection_info()
-            count = info.get('count', 0)
-
-            if count == 0:
-                return []
-
-            # 全ドキュメントを取得
+            # 全ドキュメントを取得（countは信頼できないため直接取得）
             collection = vector_db.collection
             result = collection.get(include=['documents'])
+
+            if not result.get('documents'):
+                return []
             documents = result.get('documents', [])
 
             # ドキュメントからクエリ部分を抽出
