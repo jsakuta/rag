@@ -13,7 +13,7 @@ logger = setup_logger(__name__)
 
 
 class JudgmentSupport:
-    """LLMを使用して人間の判断を支援するクラス（関連性判定・根拠・修正案提示）"""
+    """LLMを使用して人間の判断を支援するクラス（関連性判定・根拠提示）"""
 
     def __init__(self, config: SearchConfig):
         self.config = config
@@ -58,8 +58,7 @@ class JudgmentSupport:
         if self.llm is None:
             return {
                 "relevance_judgment": "判断支援無効",
-                "judgment_reason": "",
-                "modification_suggestion": ""
+                "judgment_reason": ""
             }
 
         user_message = f"""【改定内容】
@@ -83,21 +82,18 @@ class JudgmentSupport:
             logger.error(f"Judgment support error: {e}")
             return {
                 "relevance_judgment": "エラー",
-                "judgment_reason": f"評価エラー: {str(e)[:50]}",
-                "modification_suggestion": ""
+                "judgment_reason": f"評価エラー: {str(e)[:50]}"
             }
 
     def _parse_response(self, response_text: str) -> Dict[str, str]:
         """LLMレスポンスをパース"""
         result = {
             "relevance_judgment": "",
-            "judgment_reason": "",
-            "modification_suggestion": ""
+            "judgment_reason": ""
         }
         field_map = {
             "関連性:": "relevance_judgment",
-            "根拠:": "judgment_reason",
-            "修正案:": "modification_suggestion"
+            "根拠:": "judgment_reason"
         }
 
         current_field = None
@@ -131,7 +127,6 @@ class JudgmentSupport:
             for result in results:
                 result['Relevance_Judgment'] = ""
                 result['Judgment_Reason'] = ""
-                result['Modification_Suggestion'] = ""
             return results
 
         logger.info(f"=== LLM判断支援開始 ({len(results)}件) ===")
@@ -145,7 +140,6 @@ class JudgmentSupport:
             )
             result['Relevance_Judgment'] = evaluation['relevance_judgment']
             result['Judgment_Reason'] = evaluation['judgment_reason']
-            result['Modification_Suggestion'] = evaluation['modification_suggestion']
 
         logger.info("=== LLM判断支援完了 ===")
         return results

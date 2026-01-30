@@ -1,31 +1,80 @@
 # --- config.py ---
 from dataclasses import dataclass, field
 import os
-from typing import Dict, Any, Tuple
+from pathlib import Path
+from typing import Dict, Any, Tuple, Optional
+import yaml
 from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+def load_settings(section: Optional[str] = None) -> Dict[str, Any]:
+    """settings.yamlを読み込み、指定セクションの設定を返す
+
+    Args:
+        section: 読み込むセクション名 ("ui", "batch", "evaluation")
+                 Noneの場合は全設定を返す
+
+    Returns:
+        commonセクションと指定セクションをマージした辞書
+        sectionがNoneの場合は全設定辞書
+    """
+    settings_path = Path(__file__).parent / "config" / "settings.yaml"
+
+    if not settings_path.exists():
+        logger.warning(f"設定ファイルが見つかりません: {settings_path}")
+        return {}
+
+    with open(settings_path, "r", encoding="utf-8") as f:
+        settings = yaml.safe_load(f)
+
+    if settings is None:
+        return {}
+
+    if section is None:
+        return settings
+
+    # commonセクションと指定セクションをマージ
+    common = settings.get("common", {})
+    section_settings = settings.get(section, {})
+
+    # 深いマージを行う（セクション設定がcommonを上書き）
+    merged = _deep_merge(common.copy(), section_settings)
+    return merged
+
+
+def _deep_merge(base: Dict, override: Dict) -> Dict:
+    """辞書を再帰的にマージ（overrideがbaseを上書き）"""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+# バッチ処理用のデフォルト設定をYAMLから読み込み
+_batch_settings = load_settings("batch")
+_common_settings = load_settings("common") if load_settings("common") else {}
 
 @dataclass
 class SearchConfig:
     """
     検索設定を管理するデータクラス
     """
-    # デフォルト設定
-    DEFAULT_TOP_K: int = 4
+    # デフォルト設定（YAMLから読み込み、フォールバック値付き）
+    DEFAULT_TOP_K: int = _batch_settings.get("top_k", 4)
     DEFAULT_MODEL_NAME: str = "intfloat/multilingual-e5-base"
-    DEFAULT_LLM_PROVIDER: str = "anthropic"
-    DEFAULT_LLM_MODEL: str = "claude-3-5-sonnet-20241022"
-    DEFAULT_VECTOR_WEIGHT: float = 0.9  # バッチ処理用のデフォルト値
-    DEFAULT_UI_VECTOR_WEIGHT: float = 0.9 # UI用のデフォルト値
-    
+    DEFAULT_VECTOR_WEIGHT: float = _batch_settings.get("vector_weight", 0.9)  # バッチ処理用
+
     # 検索方式設定（LLM拡張検索対応）
-    DEFAULT_SEARCH_MODE: str = "original"  # "original" | "llm_enhanced" | "multi_stage"
-    DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = False
+    DEFAULT_SEARCH_MODE: str = _common_settings.get("search_mode", "original")
+    DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = _common_settings.get("enable_query_enhancement", False)
 
     # 検索対象設定
-    # "all": シナリオ+FAQ両方, "scenario": シナリオのみ, "history_data": FAQのみ
-    DEFAULT_SEARCH_SOURCE: str = "all"
+    DEFAULT_SEARCH_SOURCE: str = _common_settings.get("search_source", "all")
     VALID_SEARCH_SOURCES: Tuple[str, ...] = ("all", "scenario", "history_data")
 
     # 多段階検索設定
@@ -35,8 +84,10 @@ class SearchConfig:
     # 両プロバイダー比較モード（多段階検索時のみ有効）
     DEFAULT_DUAL_PROVIDER_MODE: bool = False
 
-    # 正解ID列の候補
-    CORRECT_ID_COLUMNS: Tuple[str, ...] = ('正解ID', '正解', 'CorrectID', 'Expected')
+    # 正解ID列の候補（YAMLから読み込み）
+    CORRECT_ID_COLUMNS: Tuple[str, ...] = tuple(
+        _common_settings.get("columns", {}).get("correct_id", ['正解ID', '正解', 'CorrectID', 'Expected'])
+    )
     
     # 埋め込みモデル設定
     # 有効なプロバイダー: "vertex_ai" (Gemini), "azure_openai" (text-embedding-3-large)
@@ -61,18 +112,24 @@ class SearchConfig:
     # VECTOR_SEARCH_MULTIPLIER: top_k に対する取得倍率。
     # リランキング用に多めに取得します。2-3が推奨。
     VECTOR_SEARCH_MULTIPLIER: int = 2
-    # POSITION_WEIGHT: キーワードがテキスト前半にある場合の重み係数。
-    # 1.0より大きいと前半マッチを優先。1.0-1.5が推奨範囲。
-    POSITION_WEIGHT: float = 1.2
-    # STOP_WORDS: キーワード抽出時に除外する一般的な単語
-    STOP_WORDS: Tuple[str, ...] = ('こと', 'もの', 'これ', 'それ', 'ところ', '方', 'する', 'ある', 'いる', 'れる', 'られる', 'なる', 'その')
+    # POSITION_WEIGHT: キーワードがテキスト前半にある場合の重み係数（YAMLから読み込み）
+    POSITION_WEIGHT: float = _common_settings.get("keyword", {}).get("position_weight", 1.2)
+    # STOP_WORDS: キーワード抽出時に除外する一般的な単語（YAMLから読み込み）
+    STOP_WORDS: Tuple[str, ...] = tuple(
+        _common_settings.get("keyword", {}).get("stop_words", ['こと', 'もの', 'これ', 'それ', 'ところ', '方', 'する', 'ある', 'いる', 'れる', 'られる', 'なる', 'その'])
+    )
 
-    # 列名候補
+    # 列名候補（YAMLから読み込み）
     # Excel/CSVファイルから質問・回答・タグ列を自動検出する際の候補名。
-    # 優先順位順に検索され、最初にマッチした列が使用されます。
-    QUERY_COLUMN_CANDIDATES: Tuple[str, ...] = ('分割後質問', '問合せ内容', '質問内容', '問い合わせ', '質問', 'query', 'Query')
-    ANSWER_COLUMN_CANDIDATES: Tuple[str, ...] = ('分割後回答', '回答', '既存回答', 'answer', 'Answer')
-    TAG_COLUMN_CANDIDATES: Tuple[str, ...] = ('タグ付け', 'タグ', '分類', 'category', 'Category', 'tag', 'Tag')
+    QUERY_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(
+        _common_settings.get("columns", {}).get("query", ['分割後質問', '問合せ内容', '質問内容', '問い合わせ', '質問', 'query', 'Query'])
+    )
+    ANSWER_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(
+        _common_settings.get("columns", {}).get("answer", ['分割後回答', '回答', '既存回答', 'answer', 'Answer'])
+    )
+    TAG_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(
+        _common_settings.get("columns", {}).get("tag", ['タグ付け', 'タグ', '分類', 'category', 'Category', 'tag', 'Tag'])
+    )
 
     # 原則文判定マーカー
     # このテキストを含む回答は「原則文」として特別扱いされます。
@@ -84,8 +141,8 @@ class SearchConfig:
 
     top_k: int = DEFAULT_TOP_K
     model_name: str = DEFAULT_MODEL_NAME
-    llm_provider: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_PROVIDER", "anthropic"))
-    llm_model: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_MODEL", "claude-3-5-sonnet-20241022"))
+    llm_provider: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_PROVIDER", ""))
+    llm_model: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_MODEL", ""))
     vector_weight: float = DEFAULT_VECTOR_WEIGHT
     keyword_weight: float = field(init=False)  # keyword_weight は vector_weight から自動計算
     base_dir: str = "."
@@ -181,6 +238,12 @@ class SearchConfig:
         # 埋め込みプロバイダーの検証
         if self.embedding_provider not in self.VALID_EMBEDDING_PROVIDERS:
             raise ValueError(f"embedding_provider must be one of {self.VALID_EMBEDDING_PROVIDERS}")
+
+        # LLM設定の必須チェック（環境変数未設定時はエラー）
+        if not self.llm_provider:
+            raise ValueError("DEFAULT_LLM_PROVIDER環境変数が設定されていません（gemini / anthropic / openai）")
+        if not self.llm_model:
+            raise ValueError("DEFAULT_LLM_MODEL環境変数が設定されていません")
 
         self._validate_embedding_config()  # 埋め込み設定の検証
 

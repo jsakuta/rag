@@ -30,9 +30,16 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # .envファイルを読み込み
 load_dotenv(PROJECT_ROOT / ".env")
 
-from config import SearchConfig
-from src.utils.logger import setup_logger
+from config import SearchConfig, load_settings
+from src.utils.logger import setup_logger, print_section, print_table, print_status, get_console
 from src.utils.auth import create_embedding_model, create_llm
+
+# richプログレスバー（利用可能な場合）
+try:
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
 from src.utils.vector_db import MetadataVectorDB
 from src.core.search.vector_search_engine import VectorSearchEngine
 from src.core.search.keyword_search_engine import KeywordSearchEngine
@@ -44,23 +51,26 @@ from src.types.search_types import SearchResultKeys, SearchCategoryValues
 
 logger = setup_logger(__name__)
 
-# 改定番号 → rev*業務分野のマッピング
-REVISION_TO_AREAS = {
+# 事務改定評価専用設定をYAMLから読み込み
+_eval_settings = load_settings("evaluation")
+
+# 改定番号 → rev*業務分野のマッピング（YAMLから読み込み）
+REVISION_TO_AREAS = _eval_settings.get("revision_areas", {
     '①': ['rev01smile'],
     '②': ['rev02souzoku'],
     '③': ['rev03naibujimu', 'rev03smile', 'rev03souzoku', 'rev03torikaku'],
     '④': ['rev04naibujimu'],
     '⑤': ['rev05smile'],
     '⑥': ['rev06smile'],
-}
+})
 
-# ボット名マッピング
-AREA_TO_BOT = {
+# ボット名マッピング（YAMLから読み込み）
+AREA_TO_BOT = _eval_settings.get("area_to_bot", {
     'smile': 'smile-bot',
     'naibujimu': 'naibujimu-bot',
     'souzoku': 'souzoku-bot',
     'torikaku': 'torikaku-bot',
-}
+})
 
 # 入力ファイル
 INPUT_FILE = PROJECT_ROOT / "input" / "multi_stage_input.xlsx"
@@ -71,10 +81,13 @@ OUTPUT_DIR = PROJECT_ROOT / "output"
 # ベクトルDBベースパス
 VECTOR_DB_BASE = PROJECT_ROOT / "reference" / "vector_db"
 
-# 検索設定
-THRESHOLD = 0.45  # 閾値
-VECTOR_WEIGHT = 0.9  # ベクトル重み
-MAX_RESULTS = 100  # 最大検索結果数
+# 検索設定（YAMLから読み込み）
+THRESHOLD_BY_PROVIDER = _eval_settings.get("thresholds", {
+    'azure_openai': 0.40,
+    'vertex_ai': 0.50,
+})
+VECTOR_WEIGHT = _eval_settings.get("vector_weight", 0.9)  # ベクトル重み
+MAX_RESULTS = _eval_settings.get("max_results", 100)  # 最大検索結果数
 
 
 class RevisionEvaluator:
@@ -135,6 +148,19 @@ class RevisionEvaluator:
                 return bot_name
         return 'unknown-bot'
 
+    def _filter_correct_ids_by_area(self, correct_ids: List[str], area: str) -> List[str]:
+        """エリアに属する正解IDのみをフィルタリング
+
+        Args:
+            correct_ids: 全正解IDリスト
+            area: エリア名（例: rev03smile）
+
+        Returns:
+            エリアに対応するボット名で始まる正解IDのリスト
+        """
+        bot_name = self._extract_bot_name_from_area(area)
+        return [id for id in correct_ids if id.startswith(f"{bot_name}_")]
+
     def _create_orchestrator(
         self,
         provider: str,
@@ -193,6 +219,9 @@ class RevisionEvaluator:
                 base_dir=str(PROJECT_ROOT)
             )
 
+            # プロバイダー別の閾値を取得（未定義プロバイダーはKeyError）
+            threshold = THRESHOLD_BY_PROVIDER[provider]
+
             # オーケストレーター
             orchestrator = MultiStageOrchestrator(
                 vector_engine=vector_engine,
@@ -200,7 +229,7 @@ class RevisionEvaluator:
                 query_enhancer=query_enhancer,
                 text_combiner=self.text_combiner,
                 vector_weight=VECTOR_WEIGHT,
-                threshold=THRESHOLD,
+                threshold=threshold,
                 max_results=MAX_RESULTS
             )
 
@@ -298,7 +327,7 @@ class RevisionEvaluator:
         query: str,
         correct_ids: List[str],
         provider: str
-    ) -> Tuple[List[Dict], str, str, List[str]]:
+    ) -> Tuple[Dict[str, List[Dict]], str, List[str], List[str]]:
         """多段階検索を実行
 
         Args:
@@ -308,14 +337,14 @@ class RevisionEvaluator:
             provider: プロバイダー
 
         Returns:
-            (検索結果リスト, LLM強化クエリ, 抽出キーワード, 検索エリアリスト)
+            (エリア別検索結果辞書, LLM強化クエリ, 抽出キーワード, 検索エリアリスト)
         """
         areas = REVISION_TO_AREAS.get(revision, [])
         if not areas:
             logger.warning(f"改定 {revision} に対応するDBがありません")
-            return [], "", [], ""
+            return {}, "", [], []
 
-        all_results = []
+        results_by_area = {}
         searched_areas = []
         llm_query = ""
         keywords = []
@@ -347,10 +376,12 @@ class RevisionEvaluator:
                 if not llm_query and results:
                     llm_query = results[0].get(SearchResultKeys.SEARCH_QUERY, query)
 
-                # 結果を変換
+                # 結果をエリア別に格納
+                area_results = []
                 for result in results:
                     converted = self._convert_result_to_dict(result, correct_ids, area)
-                    all_results.append(converted)
+                    area_results.append(converted)
+                results_by_area[area] = area_results
 
                 searched_areas.append(area)
                 logger.info(f"  {area}: {len(results)}件取得")
@@ -360,7 +391,41 @@ class RevisionEvaluator:
                 import traceback
                 traceback.print_exc()
 
-        return all_results, llm_query, keywords, ', '.join(searched_areas)
+        return results_by_area, llm_query, keywords, searched_areas
+
+    def _calculate_metrics(
+        self,
+        results: List[Dict],
+        correct_ids: List[str]
+    ) -> Dict[str, Any]:
+        """日本語指標を計算
+
+        Args:
+            results: 検索結果リスト（類似度降順でソート済み）
+            correct_ids: 正解IDリスト
+
+        Returns:
+            指標辞書
+        """
+        candidate_count = len(results)
+        found_correct_count = sum(1 for r in results if r.get('正解フラグ') == 'TRUE')
+
+        # 正解発見率
+        total_correct = len(correct_ids)
+        discovery_rate = (found_correct_count / total_correct * 100) if total_correct > 0 else 0
+
+        # 最終正解の発見順位（結果は類似度降順でソート済み前提）
+        last_correct_rank = 0
+        for i, r in enumerate(results, start=1):
+            if r.get('正解フラグ') == 'TRUE':
+                last_correct_rank = i
+
+        return {
+            '候補数': candidate_count,
+            '正解発見数': found_correct_count,
+            '正解発見率': discovery_rate / 100,  # 0.0〜1.0の数値として返す（Excel側で%表示）
+            '最終正解発見順位': last_correct_rank if last_correct_rank > 0 else '-'
+        }
 
     def _run_llm_analysis(
         self,
@@ -380,30 +445,62 @@ class RevisionEvaluator:
             for r in results:
                 r['関連性判定'] = ''
                 r['判定根拠'] = ''
-                r['修正案'] = ''
             return results
 
-        logger.info(f"LLM分析を実行中: {len(results)}件")
+        total = len(results)
 
-        for i, result in enumerate(results):
-            try:
-                evaluation = self.judgment_support.evaluate(
-                    revision_content,
-                    result.get('質問', ''),
-                    result.get('回答', '')
-                )
-                result['関連性判定'] = evaluation.get('relevance_judgment', '')
-                result['判定根拠'] = evaluation.get('judgment_reason', '')
-                result['修正案'] = evaluation.get('modification_suggestion', '')
+        if RICH_AVAILABLE:
+            # richプログレスバーを使用
+            console = get_console()
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task(f"[cyan]LLM分析中...", total=total)
 
-                if (i + 1) % 10 == 0:
-                    logger.info(f"  LLM分析: {i + 1}/{len(results)}件完了")
+                for i, result in enumerate(results):
+                    try:
+                        evaluation = self.judgment_support.evaluate(
+                            revision_content,
+                            result.get('質問', ''),
+                            result.get('回答', '')
+                        )
+                        result['関連性判定'] = evaluation.get('relevance_judgment', '')
+                        result['判定根拠'] = evaluation.get('judgment_reason', '')
 
-            except Exception as e:
-                logger.error(f"LLM分析エラー: {e}")
-                result['関連性判定'] = 'エラー'
-                result['判定根拠'] = str(e)[:50]
-                result['修正案'] = ''
+                    except Exception as e:
+                        logger.error(f"LLM分析エラー: {e}")
+                        result['関連性判定'] = 'エラー'
+                        result['判定根拠'] = str(e)[:50]
+
+                    progress.update(task, advance=1)
+
+            print_status(f"LLM分析完了: {total}件", "success")
+        else:
+            # 従来のログ出力
+            logger.info(f"LLM分析を実行中: {total}件")
+            for i, result in enumerate(results):
+                try:
+                    evaluation = self.judgment_support.evaluate(
+                        revision_content,
+                        result.get('質問', ''),
+                        result.get('回答', '')
+                    )
+                    result['関連性判定'] = evaluation.get('relevance_judgment', '')
+                    result['判定根拠'] = evaluation.get('judgment_reason', '')
+
+                    if (i + 1) % 10 == 0:
+                        logger.info(f"  LLM分析: {i + 1}/{total}件完了")
+
+                except Exception as e:
+                    logger.error(f"LLM分析エラー: {e}")
+                    result['関連性判定'] = 'エラー'
+                    result['判定根拠'] = str(e)[:50]
 
         return results
 
@@ -421,51 +518,62 @@ class RevisionEvaluator:
             correct_ids: 正解IDリスト
 
         Returns:
-            評価結果辞書 (azure_results, vertex_results, llm_query, keywords)
+            評価結果辞書（エリア別の結果を含む）
         """
-        logger.info(f"\n{'='*60}")
-        logger.info(f"改定 {revision} の評価開始")
-        logger.info(f"正解ID数: {len(correct_ids)}")
+        print_section(f"改定 {revision} の評価")
+        print_status(f"正解ID数: {len(correct_ids)}", "info")
 
         evaluation_result = {
             'revision': revision,
             'revision_content': revision_content,
             'correct_ids': correct_ids,
-            'azure_results': [],
-            'vertex_results': [],
+            'areas': [],
+            'by_area': {},
             'llm_query': '',
             'keywords': [],
         }
 
         # Azure検索
-        logger.info(f"\nAzure で検索中...")
-        azure_results, llm_query, keywords, azure_areas = self.search_revision_multi_stage(
+        print_status("[bold blue]Azure[/bold blue] で検索中...", "info")
+        azure_results_by_area, llm_query, keywords, azure_areas = self.search_revision_multi_stage(
             revision, revision_content, correct_ids, 'azure_openai'
         )
-        evaluation_result['azure_results'] = azure_results
         evaluation_result['llm_query'] = llm_query
         evaluation_result['keywords'] = keywords
-        logger.info(f"  Azure: {len(azure_results)}件, エリア: {azure_areas}")
+        total_azure = sum(len(results) for results in azure_results_by_area.values())
+        print_status(f"Azure: {total_azure}件 (エリア: {', '.join(azure_areas)})", "success")
 
         # VertexAI検索
-        logger.info(f"\nVertexAI で検索中...")
-        vertex_results, _, _, vertex_areas = self.search_revision_multi_stage(
+        print_status("[bold green]VertexAI[/bold green] で検索中...", "info")
+        vertex_results_by_area, _, _, vertex_areas = self.search_revision_multi_stage(
             revision, revision_content, correct_ids, 'vertex_ai'
         )
-        evaluation_result['vertex_results'] = vertex_results
-        logger.info(f"  VertexAI: {len(vertex_results)}件, エリア: {vertex_areas}")
+        total_vertex = sum(len(results) for results in vertex_results_by_area.values())
+        print_status(f"VertexAI: {total_vertex}件 (エリア: {', '.join(vertex_areas)})", "success")
 
-        # LLM分析（Azure結果に対して実行）
-        if self.enable_llm_analysis and azure_results:
-            evaluation_result['azure_results'] = self._run_llm_analysis(
-                azure_results, revision_content
-            )
+        # エリア別に整理（Azure/VertexAIで取得できたエリアを統合）
+        all_areas = list(set(azure_areas) | set(vertex_areas))
+        all_areas.sort()  # 一貫した順序のため
+        evaluation_result['areas'] = all_areas
 
-        # LLM分析（VertexAI結果に対して実行）
-        if self.enable_llm_analysis and vertex_results:
-            evaluation_result['vertex_results'] = self._run_llm_analysis(
-                vertex_results, revision_content
-            )
+        for area in all_areas:
+            area_correct_ids = self._filter_correct_ids_by_area(correct_ids, area)
+            azure_results = azure_results_by_area.get(area, [])
+            vertex_results = vertex_results_by_area.get(area, [])
+
+            # LLM分析（Azure結果に対して実行）
+            if self.enable_llm_analysis and azure_results:
+                azure_results = self._run_llm_analysis(azure_results, revision_content)
+
+            # LLM分析（VertexAI結果に対して実行）
+            if self.enable_llm_analysis and vertex_results:
+                vertex_results = self._run_llm_analysis(vertex_results, revision_content)
+
+            evaluation_result['by_area'][area] = {
+                'azure_results': azure_results,
+                'vertex_results': vertex_results,
+                'correct_ids': area_correct_ids,
+            }
 
         return evaluation_result
 
@@ -570,47 +678,166 @@ class RevisionEvaluator:
         header_format,
         cell_format
     ):
-        """サマリーシートを書き込み"""
+        """サマリーシートを書き込み（エリア別行出力・2行ヘッダー版）"""
+        workbook = writer.book
+
+        # 書式定義（Meiryo UI、格子線付き）
+        common_header_format = workbook.add_format({
+            'font_name': 'Meiryo UI',
+            'font_size': 10,
+            'bold': True,
+            'border': 1,
+            'bg_color': '#D9D9D9',
+            'align': 'center',
+            'valign': 'vcenter',
+        })
+
+        azure_header_format = workbook.add_format({
+            'font_name': 'Meiryo UI',
+            'font_size': 10,
+            'bold': True,
+            'border': 1,
+            'bg_color': '#DCE6F1',
+            'align': 'center',
+            'valign': 'vcenter',
+        })
+
+        vertex_header_format = workbook.add_format({
+            'font_name': 'Meiryo UI',
+            'font_size': 10,
+            'bold': True,
+            'border': 1,
+            'bg_color': '#E2EFDA',
+            'align': 'center',
+            'valign': 'vcenter',
+        })
+
+        cell_format_with_border = workbook.add_format({
+            'font_name': 'Meiryo UI',
+            'font_size': 10,
+            'border': 1,
+            'valign': 'top',
+        })
+
+        percent_format = workbook.add_format({
+            'font_name': 'Meiryo UI',
+            'font_size': 10,
+            'border': 1,
+            'num_format': '0.0%',
+            'valign': 'top',
+        })
+
+        # データ収集（エリアごとに1行）
         summary_data = []
 
         for revision, data in results.items():
             revision_content = data['revision_content']
-            correct_ids = data['correct_ids']
-            azure_results = data['azure_results']
-            vertex_results = data['vertex_results']
+            areas = data.get('areas', [])
+            by_area = data.get('by_area', {})
 
-            # Azure集計
-            azure_count = len(azure_results)
-            azure_correct = sum(1 for r in azure_results if r.get('正解フラグ') == 'TRUE')
+            # エリアがない場合は従来どおり1行出力
+            if not areas:
+                correct_ids = data.get('correct_ids', [])
+                summary_data.append({
+                    '改定番号': revision,
+                    'エリア': '-',
+                    '改定内容': revision_content[:50] + '...' if len(revision_content) > 50 else revision_content,
+                    '正解数': len(correct_ids),
+                    'Azure_候補数': 0,
+                    'Azure_正解発見数': 0,
+                    'Azure_正解発見率': 0,
+                    'Azure_最終正解発見順位': '-',
+                    'VertexAI_候補数': 0,
+                    'VertexAI_正解発見数': 0,
+                    'VertexAI_正解発見率': 0,
+                    'VertexAI_最終正解発見順位': '-',
+                })
+                continue
 
-            # VertexAI集計
-            vertex_count = len(vertex_results)
-            vertex_correct = sum(1 for r in vertex_results if r.get('正解フラグ') == 'TRUE')
+            # エリアごとに1行出力
+            for area in areas:
+                area_data = by_area.get(area, {})
+                area_correct_ids = area_data.get('correct_ids', [])
+                azure_results = area_data.get('azure_results', [])
+                vertex_results = area_data.get('vertex_results', [])
 
-            summary_data.append({
-                '改定番号': revision,
-                '改定内容（先頭50文字）': revision_content[:50] + '...' if len(revision_content) > 50 else revision_content,
-                '正解ID数': len(correct_ids),
-                'Azure_候補数': azure_count,
-                'Azure_正解一致数': azure_correct,
-                'VertexAI_候補数': vertex_count,
-                'VertexAI_正解一致数': vertex_correct,
-            })
+                # Azure指標を計算
+                azure_metrics = self._calculate_metrics(azure_results, area_correct_ids)
 
-        if summary_data:
-            summary_df = pd.DataFrame(summary_data)
-            summary_df.to_excel(writer, index=False, sheet_name='サマリー')
+                # VertexAI指標を計算
+                vertex_metrics = self._calculate_metrics(vertex_results, area_correct_ids)
 
-            worksheet = writer.sheets['サマリー']
+                summary_data.append({
+                    '改定番号': revision,
+                    'エリア': area,
+                    '改定内容': revision_content[:50] + '...' if len(revision_content) > 50 else revision_content,
+                    '正解数': len(area_correct_ids),
+                    'Azure_候補数': azure_metrics['候補数'],
+                    'Azure_正解発見数': azure_metrics['正解発見数'],
+                    'Azure_正解発見率': azure_metrics['正解発見率'],
+                    'Azure_最終正解発見順位': azure_metrics['最終正解発見順位'],
+                    'VertexAI_候補数': vertex_metrics['候補数'],
+                    'VertexAI_正解発見数': vertex_metrics['正解発見数'],
+                    'VertexAI_正解発見率': vertex_metrics['正解発見率'],
+                    'VertexAI_最終正解発見順位': vertex_metrics['最終正解発見順位'],
+                })
 
-            # ヘッダー書式
-            for col_num, col_name in enumerate(summary_df.columns):
-                worksheet.write(0, col_num, col_name, header_format)
+        if not summary_data:
+            return
 
-            # 列幅
-            column_widths = [10, 50, 10, 15, 18, 18, 20]
-            for col_num, width in enumerate(column_widths):
-                worksheet.set_column(col_num, col_num, width)
+        # ワークシートを作成（pandas経由ではなく直接作成）
+        worksheet = workbook.add_worksheet('サマリー')
+
+        # 1行目: プロバイダーラベル（セル結合）
+        # A1:D1は空（共通列: 改定番号, エリア, 改定内容, 正解数）
+        worksheet.write(0, 0, '', common_header_format)
+        worksheet.write(0, 1, '', common_header_format)
+        worksheet.write(0, 2, '', common_header_format)
+        worksheet.write(0, 3, '', common_header_format)
+        # E1:H1 = Azure（4列結合）
+        worksheet.merge_range('E1:H1', 'Azure', azure_header_format)
+        # I1:L1 = VertexAI（4列結合）
+        worksheet.merge_range('I1:L1', 'VertexAI', vertex_header_format)
+
+        # 2行目: 列名
+        headers_row2 = [
+            '改定番号', 'エリア', '改定内容', '正解数',
+            '候補数', '正解発見数', '正解発見率', '最終正解発見順位',
+            '候補数', '正解発見数', '正解発見率', '最終正解発見順位'
+        ]
+
+        for col_num, header in enumerate(headers_row2):
+            if col_num < 4:
+                worksheet.write(1, col_num, header, common_header_format)
+            elif col_num < 8:
+                worksheet.write(1, col_num, header, azure_header_format)
+            else:
+                worksheet.write(1, col_num, header, vertex_header_format)
+
+        # データ行（3行目から）
+        for row_num, row_data in enumerate(summary_data, start=2):
+            # 共通列
+            worksheet.write(row_num, 0, row_data['改定番号'], cell_format_with_border)
+            worksheet.write(row_num, 1, row_data['エリア'], cell_format_with_border)
+            worksheet.write(row_num, 2, row_data['改定内容'], cell_format_with_border)
+            worksheet.write(row_num, 3, row_data['正解数'], cell_format_with_border)
+
+            # Azure列
+            worksheet.write(row_num, 4, row_data['Azure_候補数'], cell_format_with_border)
+            worksheet.write(row_num, 5, row_data['Azure_正解発見数'], cell_format_with_border)
+            worksheet.write(row_num, 6, row_data['Azure_正解発見率'], percent_format)
+            worksheet.write(row_num, 7, row_data['Azure_最終正解発見順位'], cell_format_with_border)
+
+            # VertexAI列
+            worksheet.write(row_num, 8, row_data['VertexAI_候補数'], cell_format_with_border)
+            worksheet.write(row_num, 9, row_data['VertexAI_正解発見数'], cell_format_with_border)
+            worksheet.write(row_num, 10, row_data['VertexAI_正解発見率'], percent_format)
+            worksheet.write(row_num, 11, row_data['VertexAI_最終正解発見順位'], cell_format_with_border)
+
+        # 列幅設定
+        column_widths = [10, 20, 50, 8, 8, 12, 12, 18, 8, 12, 12, 18]
+        for col_num, width in enumerate(column_widths):
+            worksheet.set_column(col_num, col_num, width)
 
     def _write_detail_sheet(
         self,
@@ -633,15 +860,13 @@ class RevisionEvaluator:
         # Azure列のヘッダー
         azure_headers = [
             'Azure_シナリオID', 'Azure_類似度', 'Azure_カテゴリ', 'Azure_正解フラグ',
-            'Azure_質問', 'Azure_回答', 'Azure_関連性判定', 'Azure_判定根拠',
-            'Azure_修正案', 'Azure_ソース'
+            'Azure_質問', 'Azure_回答', 'Azure_関連性判定', 'Azure_判定根拠', 'Azure_ソース'
         ]
 
         # VertexAI列のヘッダー
         vertex_headers = [
             'VertexAI_シナリオID', 'VertexAI_類似度', 'VertexAI_カテゴリ', 'VertexAI_正解フラグ',
-            'VertexAI_質問', 'VertexAI_回答', 'VertexAI_関連性判定', 'VertexAI_判定根拠',
-            'VertexAI_修正案', 'VertexAI_ソース'
+            'VertexAI_質問', 'VertexAI_回答', 'VertexAI_関連性判定', 'VertexAI_判定根拠', 'VertexAI_ソース'
         ]
 
         # ヘッダー書き込み
@@ -661,8 +886,18 @@ class RevisionEvaluator:
         correct_ids = data['correct_ids']
         llm_query = data.get('llm_query', '')
         keywords = data.get('keywords', [])
-        azure_results = data['azure_results']
-        vertex_results = data['vertex_results']
+
+        # 新しいデータ構造からエリア別の結果を結合
+        areas = data.get('areas', [])
+        by_area = data.get('by_area', {})
+
+        azure_results = []
+        vertex_results = []
+
+        for area in areas:
+            area_data = by_area.get(area, {})
+            azure_results.extend(area_data.get('azure_results', []))
+            vertex_results.extend(area_data.get('vertex_results', []))
 
         # 行数を揃える（多い方に合わせる）
         max_rows = max(len(azure_results), len(vertex_results), 1)
@@ -696,7 +931,6 @@ class RevisionEvaluator:
                 azure_row.get('回答', ''),
                 azure_row.get('関連性判定', ''),
                 azure_row.get('判定根拠', ''),
-                azure_row.get('修正案', ''),
                 azure_row.get('ソース', ''),
             ]
             for i, value in enumerate(azure_values):
@@ -716,7 +950,6 @@ class RevisionEvaluator:
                 vertex_row.get('回答', ''),
                 vertex_row.get('関連性判定', ''),
                 vertex_row.get('判定根拠', ''),
-                vertex_row.get('修正案', ''),
                 vertex_row.get('ソース', ''),
             ]
             for i, value in enumerate(vertex_values):
@@ -741,19 +974,17 @@ class RevisionEvaluator:
             10: 50,  # 回答
             11: 15,  # 関連性判定
             12: 40,  # 判定根拠
-            13: 40,  # 修正案
-            14: 15,  # ソース
+            13: 15,  # ソース
             # VertexAI列
-            15: 18,  # シナリオID
-            16: 10,  # 類似度
-            17: 18,  # カテゴリ
-            18: 12,  # 正解フラグ
-            19: 50,  # 質問
-            20: 50,  # 回答
-            21: 15,  # 関連性判定
-            22: 40,  # 判定根拠
-            23: 40,  # 修正案
-            24: 15,  # ソース
+            14: 18,  # シナリオID
+            15: 10,  # 類似度
+            16: 18,  # カテゴリ
+            17: 12,  # 正解フラグ
+            18: 50,  # 質問
+            19: 50,  # 回答
+            20: 15,  # 関連性判定
+            21: 40,  # 判定根拠
+            22: 15,  # ソース
         }
 
         for col_num, width in column_widths.items():
@@ -766,29 +997,44 @@ class RevisionEvaluator:
 
 def main():
     """メイン処理"""
-    logger.info("事務改定評価を開始します（多段階検索・横並び比較版）")
+    print_section("事務改定評価 (多段階検索・横並び比較版)")
 
-    # DBの存在確認
-    logger.info("\n=== DB存在確認 ===")
+    # DBの存在確認（テーブル形式）
+    print_section("DB存在確認")
+    db_status_data = []
     for revision, areas in REVISION_TO_AREAS.items():
         for area in areas:
-            for provider in ['azure_openai', 'vertex_ai']:
-                db_path = VECTOR_DB_BASE / area / provider / "chroma.sqlite3"
-                status = "OK" if db_path.exists() else "MISSING"
-                logger.info(f"  {revision} {area}/{provider}: {status}")
+            azure_path = VECTOR_DB_BASE / area / "azure_openai" / "chroma.sqlite3"
+            vertex_path = VECTOR_DB_BASE / area / "vertex_ai" / "chroma.sqlite3"
+            azure_status = "[green]OK[/green]" if azure_path.exists() else "[red]MISSING[/red]"
+            vertex_status = "[green]OK[/green]" if vertex_path.exists() else "[red]MISSING[/red]"
+            db_status_data.append((revision, area, azure_status, vertex_status))
 
-    # 設定を初期化
+    print_table(
+        "ベクトルDB状態",
+        db_status_data,
+        ["改定", "エリア", "Azure", "VertexAI"]
+    )
+
+    # 設定を初期化（閾値はプロバイダー別に設定されるためデフォルト値）
     config = SearchConfig(
         base_dir=str(PROJECT_ROOT),
         top_k=MAX_RESULTS,
-        multi_stage_threshold=THRESHOLD,
+        multi_stage_threshold=0.45,  # デフォルト値（実際はプロバイダー別に設定）
         multi_stage_max_results=MAX_RESULTS,
         multi_stage_enable_judgment_support=True,
     )
 
     # LLM分析を有効化するかの確認
-    enable_llm = os.getenv("ENABLE_LLM_ANALYSIS", "true").lower() == "true"
-    logger.info(f"LLM分析: {'有効' if enable_llm else '無効'}")
+    enable_llm = os.getenv("ENABLE_LLM_ANALYSIS", "false").lower() == "true"
+
+    # 設定表示
+    print_section("評価設定")
+    print_status(f"LLM分析: {'[green]有効[/green]' if enable_llm else '[yellow]無効[/yellow]'}", "info")
+    print_status(f"最大検索結果数: {MAX_RESULTS}", "info")
+    print_status(f"ベクトル重み: {VECTOR_WEIGHT}", "info")
+    print_status(f"閾値 (Azure): {THRESHOLD_BY_PROVIDER.get('azure_openai', 0.4)}", "info")
+    print_status(f"閾値 (VertexAI): {THRESHOLD_BY_PROVIDER.get('vertex_ai', 0.5)}", "info")
 
     # 評価を実行
     evaluator = RevisionEvaluator(config, enable_llm_analysis=enable_llm)
@@ -797,9 +1043,8 @@ def main():
     # 結果を保存
     output_file = evaluator.save_results(results)
 
-    logger.info("\n" + "=" * 60)
-    logger.info("評価完了")
-    logger.info(f"出力ファイル: {output_file}")
+    print_section("評価完了")
+    print_status(f"出力ファイル: {output_file}", "success")
 
 
 if __name__ == "__main__":

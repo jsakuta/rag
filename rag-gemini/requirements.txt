@@ -33,3 +33,5 @@ tenacity>=8.0.0
 PyYAML>=6.0
 # 新規追加: Azure OpenAI Embedding用（text-embedding-3-large）
 openai>=1.0.0
+# 新規追加: 色付きログ・プログレスバー用
+rich>=13.0.0

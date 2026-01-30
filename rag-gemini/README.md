@@ -29,6 +29,38 @@
 
 ---
 
+## AI使用箇所マップ
+
+本システムでは以下の箇所でAI（LLM/埋め込みモデル）を使用しています。
+
+```
+入力
+  │
+  ├─ ベクトル化 ─────────────────────────────────── [Embedding Model]
+  │   └─ azure_openai: text-embedding-3-large
+  │   └─ vertex_ai: gemini-embedding-001
+  │   └─ 呼び出し元: src/utils/azure_embedding.py, src/utils/gemini_embedding.py
+  │
+  ├─ クエリ拡張 ─────────────────────────────────── [LLM]
+  │   └─ プロンプト: prompt/summarize_v1.0.txt
+  │   └─ 呼び出し元: src/core/searcher.py, src/core/search/query_enhancer.py
+  │
+  ├─ 検索 ───────────────────────────────────────── [ベクトルDB]
+  │   └─ ChromaDB（AI不使用）
+  │
+  └─ 関連性判定 ─────────────────────────────────── [LLM]
+      └─ プロンプト: prompt/judgment_support.txt
+      └─ 呼び出し元: src/core/judgment_support.py
+```
+
+| 処理 | AIモデル | 設定環境変数 |
+|-----|---------|-------------|
+| ベクトル化 | text-embedding-3-large / gemini-embedding-001 | `DEFAULT_EMBEDDING_PROVIDER`, `DEFAULT_EMBEDDING_MODEL` |
+| クエリ拡張 | gemini-2.5-flash-lite | `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL` |
+| 関連性判定 | gemini-2.5-flash-lite | `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL` |
+
+---
+
 ## 他プロジェクトとの違い
 
 | 特徴 | rag-gemini | rag-batch | rag-streamlit |
@@ -185,18 +217,30 @@ echo "gemini_credentials.json" >> .gitignore
 
 #### 3. 環境変数設定
 
-`.env` ファイルを編集:
+`.env` ファイルを編集（**全ての変数にデフォルト値はありません。必ず設定してください**）:
 
 ```env
-# Gemini 認証（必須）
+# LLM設定（必須）
+DEFAULT_LLM_PROVIDER=gemini          # gemini | anthropic | openai
+DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
+
+# 埋め込みモデル設定（必須）
+DEFAULT_EMBEDDING_PROVIDER=azure_openai   # azure_openai | vertex_ai
+DEFAULT_EMBEDDING_MODEL=text-embedding-3-large
+
+# Vertex AI設定（geminiを使う場合必須）
 GEMINI_CREDENTIALS_PATH=gemini_credentials.json
 GEMINI_PROJECT_ID=your-project-id
 GEMINI_LOCATION=us-central1
 
-# LLM API キー（オプション）
-ANTHROPIC_API_KEY=sk-ant-your_key
-OPENAI_API_KEY=sk-your_key
+# Azure OpenAI設定（azure_openaiを使う場合必須）
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
 ```
+
+詳細は `.env.example` を参照してください。
 
 #### 4. Azure Key Vault 連携（オプション）
 
@@ -394,17 +438,19 @@ gemini-embedding-001はMRLを採用しており、用途に応じて出力次元
 |-----------|-----|-----------|------|
 | `top_k` | int | 4 | 返却する類似文書数 |
 | `vector_weight` | float | 0.9 (batch) / 0.7 (UI) | ベクトル検索の重み |
-| `llm_provider` | str | anthropic | LLM プロバイダー |
-| `llm_model` | str | claude-3-5-sonnet-20241022 | LLM モデル |
-| `embedding_provider` | str | vertex_ai | 埋め込みプロバイダー |
-| `embedding_model` | str | gemini-embedding-001 | 埋め込みモデル |
-| `azure_openai_embedding_endpoint` | str | (環境変数) | Azure OpenAI エンドポイント |
-| `azure_openai_embedding_api_key` | str | (環境変数) | Azure OpenAI API キー |
-| `azure_openai_embedding_deployment` | str | text-embedding-3-large | デプロイメント名 |
-| `azure_openai_embedding_api_version` | str | 2024-02-01 | API バージョン |
+| `llm_provider` | str | **必須** | LLM プロバイダー（環境変数 `DEFAULT_LLM_PROVIDER`） |
+| `llm_model` | str | **必須** | LLM モデル（環境変数 `DEFAULT_LLM_MODEL`） |
+| `embedding_provider` | str | **必須** | 埋め込みプロバイダー（環境変数 `DEFAULT_EMBEDDING_PROVIDER`） |
+| `embedding_model` | str | **必須** | 埋め込みモデル（環境変数 `DEFAULT_EMBEDDING_MODEL`） |
+| `azure_openai_embedding_endpoint` | str | **必須**※ | Azure OpenAI エンドポイント |
+| `azure_openai_embedding_api_key` | str | **必須**※ | Azure OpenAI API キー |
+| `azure_openai_embedding_deployment` | str | (環境変数) | デプロイメント名 |
+| `azure_openai_embedding_api_version` | str | (環境変数) | API バージョン |
 | `search_mode` | str | original | 検索モード |
 | `enable_query_enhancement` | bool | False | LLM クエリ拡張 |
 | `reference_type` | str | multi_folder | 参照データ形式 |
+
+※ `embedding_provider=azure_openai` の場合に必須
 
 **参照データ形式:**
 
