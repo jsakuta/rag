@@ -115,7 +115,18 @@ evaluation:
   judgment_support_prompt: prompt/judgment_support.txt
 
   # -------------------------------------------
+  # フィルタリングモード: threshold | top_k
+  # threshold: 類似度の閾値でフィルタリング
+  # top_k: 上位K件でフィルタリング（閾値は無視）
+  # -------------------------------------------
+  filter_mode: top_k
+
+  # TOP-K件数（filter_mode: top_k の場合に使用）
+  top_k: 130
+
+  # -------------------------------------------
   # プロバイダー別閾値（類似度の足切り）
+  # filter_mode: threshold の場合に使用
   # Azure: 高精度モデルのため低め、VertexAI: 汎用モデルのため高め
   # -------------------------------------------
   thresholds:

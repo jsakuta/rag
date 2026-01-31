@@ -71,6 +71,8 @@ AREA_TO_BOT = _settings["area_to_bot"]
 THRESHOLD_BY_PROVIDER = _settings["thresholds"]
 VECTOR_WEIGHT = _settings["vector_weight"]
 MAX_RESULTS = _settings["max_results"]
+FILTER_MODE = _settings.get("filter_mode", "threshold")
+TOP_K = _settings.get("top_k", 50)
 
 # パス定数
 INPUT_FILE = PROJECT_ROOT / "input" / "multi_stage_input.xlsx"
@@ -167,6 +169,8 @@ class RevisionEvaluator:
                 vector_weight=VECTOR_WEIGHT,
                 threshold=THRESHOLD_BY_PROVIDER[provider],
                 max_results=MAX_RESULTS,
+                filter_mode=FILTER_MODE,
+                top_k=TOP_K,
             )
         except Exception as e:
             logger.error(f"オーケストレーター作成エラー ({area}/{provider}): {e}")
@@ -284,7 +288,7 @@ class RevisionEvaluator:
             "候補数": candidate_count,
             "正解発見数": found_correct_count,
             "正解発見率": discovery_rate,
-            "最終正解発見順位": last_correct_rank if last_correct_rank > 0 else "-",
+            "必要確認件数": last_correct_rank if last_correct_rank > 0 else "-",
         }
 
     def _evaluate_single_result(self, result: Dict, revision_content: str) -> None:
@@ -523,11 +527,11 @@ class RevisionEvaluator:
                     "Azure_候補数": azure_metrics["候補数"],
                     "Azure_正解発見数": azure_metrics["正解発見数"],
                     "Azure_正解発見率": azure_metrics["正解発見率"],
-                    "Azure_最終正解発見順位": azure_metrics["最終正解発見順位"],
+                    "Azure_必要確認件数": azure_metrics["必要確認件数"],
                     "VertexAI_候補数": vertex_metrics["候補数"],
                     "VertexAI_正解発見数": vertex_metrics["正解発見数"],
                     "VertexAI_正解発見率": vertex_metrics["正解発見率"],
-                    "VertexAI_最終正解発見順位": vertex_metrics["最終正解発見順位"],
+                    "VertexAI_必要確認件数": vertex_metrics["必要確認件数"],
                 })
 
         if not summary_data:
@@ -557,11 +561,11 @@ class RevisionEvaluator:
             "Azure_候補数": 0,
             "Azure_正解発見数": 0,
             "Azure_正解発見率": 0,
-            "Azure_最終正解発見順位": "-",
+            "Azure_必要確認件数": "-",
             "VertexAI_候補数": 0,
             "VertexAI_正解発見数": 0,
             "VertexAI_正解発見率": 0,
-            "VertexAI_最終正解発見順位": "-",
+            "VertexAI_必要確認件数": "-",
         }
 
     def _write_summary_headers(self, worksheet, formats: Dict[str, Any]) -> None:
@@ -576,8 +580,8 @@ class RevisionEvaluator:
 
         headers = [
             "改定番号", "エリア", "改定内容", "正解数",
-            "候補数", "正解発見数", "正解発見率", "最終正解発見順位",
-            "候補数", "正解発見数", "正解発見率", "最終正解発見順位",
+            "候補数", "正解発見数", "正解発見率", "必要確認件数",
+            "候補数", "正解発見数", "正解発見率", "必要確認件数",
         ]
         for col, header in enumerate(headers):
             if col < 4:
@@ -602,11 +606,11 @@ class RevisionEvaluator:
             worksheet.write(row_num, 4, row_data["Azure_候補数"], cell_fmt)
             worksheet.write(row_num, 5, row_data["Azure_正解発見数"], cell_fmt)
             worksheet.write(row_num, 6, row_data["Azure_正解発見率"], percent_fmt)
-            worksheet.write(row_num, 7, row_data["Azure_最終正解発見順位"], cell_fmt)
+            worksheet.write(row_num, 7, row_data["Azure_必要確認件数"], cell_fmt)
             worksheet.write(row_num, 8, row_data["VertexAI_候補数"], cell_fmt)
             worksheet.write(row_num, 9, row_data["VertexAI_正解発見数"], cell_fmt)
             worksheet.write(row_num, 10, row_data["VertexAI_正解発見率"], percent_fmt)
-            worksheet.write(row_num, 11, row_data["VertexAI_最終正解発見順位"], cell_fmt)
+            worksheet.write(row_num, 11, row_data["VertexAI_必要確認件数"], cell_fmt)
 
     def _write_detail_sheet(
         self,
@@ -706,8 +710,12 @@ def main() -> None:
     print_status(f"LLM分析: {'[green]有効[/green]' if enable_llm else '[yellow]無効[/yellow]'}", "info")
     print_status(f"最大検索結果数: {MAX_RESULTS}", "info")
     print_status(f"ベクトル重み: {VECTOR_WEIGHT}", "info")
-    print_status(f"閾値 (Azure): {THRESHOLD_BY_PROVIDER['azure_openai']}", "info")
-    print_status(f"閾値 (VertexAI): {THRESHOLD_BY_PROVIDER['vertex_ai']}", "info")
+    print_status(f"フィルタモード: {FILTER_MODE}", "info")
+    if FILTER_MODE == "top_k":
+        print_status(f"TOP-K: {TOP_K}件", "info")
+    else:
+        print_status(f"閾値 (Azure): {THRESHOLD_BY_PROVIDER['azure_openai']}", "info")
+        print_status(f"閾値 (VertexAI): {THRESHOLD_BY_PROVIDER['vertex_ai']}", "info")
 
     evaluator = RevisionEvaluator(config, enable_llm_analysis=enable_llm)
     results = evaluator.evaluate_all_revisions()

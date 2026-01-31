@@ -37,6 +37,8 @@ class MultiStageOrchestrator:
         keyword_weight: キーワードスコアの重み
         threshold: 結果に含めるスコアしきい値
         max_results: 各検索の最大結果数
+        filter_mode: フィルタリングモード ('threshold' or 'top_k')
+        top_k: TOP-K件数（filter_mode='top_k'の場合に使用）
     """
 
     def __init__(
@@ -47,7 +49,9 @@ class MultiStageOrchestrator:
         text_combiner: TextCombiner,
         vector_weight: float = 0.9,
         threshold: float = 0.45,
-        max_results: int = 100
+        max_results: int = 100,
+        filter_mode: str = "threshold",
+        top_k: int = 50
     ):
         """MultiStageOrchestratorを初期化
 
@@ -59,6 +63,8 @@ class MultiStageOrchestrator:
             vector_weight: ベクトルスコアの重み
             threshold: 結果に含めるスコアしきい値
             max_results: 各検索の最大結果数
+            filter_mode: フィルタリングモード ('threshold' or 'top_k')
+            top_k: TOP-K件数（filter_mode='top_k'の場合に使用）
         """
         self.vector_engine = vector_engine
         self.keyword_engine = keyword_engine
@@ -68,6 +74,8 @@ class MultiStageOrchestrator:
         self.keyword_weight = 1.0 - vector_weight
         self.threshold = threshold
         self.max_results = max_results
+        self.filter_mode = filter_mode
+        self.top_k = top_k
 
         logger.info("MultiStageOrchestratorを初期化しました")
 
@@ -90,7 +98,8 @@ class MultiStageOrchestrator:
             List[MultiStageSearchResultDict]: 検索結果のリスト
         """
         logger.info(f"=== 多段階OR検索開始 (No.{input_number}) ===")
-        logger.info(f"  Threshold: {self.threshold}, Max: {self.max_results}")
+        filter_info = f"TOP-K: {self.top_k}" if self.filter_mode == "top_k" else f"Threshold: {self.threshold}"
+        logger.info(f"  FilterMode: {self.filter_mode}, {filter_info}, Max: {self.max_results}")
 
         # キーワード抽出
         keywords = self.keyword_engine.extract_keywords(query_text)
@@ -135,7 +144,7 @@ class MultiStageOrchestrator:
         keywords: List[str],
         filter_metadata: Dict[str, str] = None
     ) -> List[Dict[str, Any]]:
-        """しきい値ベースのハイブリッド検索を実行
+        """ハイブリッド検索を実行（閾値またはTOP-Kでフィルタリング）
 
         Args:
             query: 検索クエリ
@@ -152,7 +161,7 @@ class MultiStageOrchestrator:
 
         # キーワード類似度計算
         query_keywords_set = set(keywords)
-        filtered_results = []
+        all_results = []
 
         for search_result in search_results:
             # キーワード類似度計算
@@ -178,15 +187,20 @@ class MultiStageOrchestrator:
             )
             combined_score = max(0.0, min(1.0, combined_score))
 
-            # しきい値フィルタリング
-            if combined_score >= self.threshold:
-                result_data = self._build_result_data(search_result, combined_score)
-                result_data['_doc_id'] = search_result['id']
-                filtered_results.append(result_data)
+            result_data = self._build_result_data(search_result, combined_score)
+            result_data['_doc_id'] = search_result['id']
+            all_results.append(result_data)
 
         # スコアでソート
-        filtered_results.sort(key=lambda x: x[SearchResultKeys.SIMILARITY], reverse=True)
-        return filtered_results
+        all_results.sort(key=lambda x: x[SearchResultKeys.SIMILARITY], reverse=True)
+
+        # フィルタリングモードに応じて結果をフィルタリング
+        if self.filter_mode == "top_k":
+            # TOP-Kモード: 上位K件を返す
+            return all_results[:self.top_k]
+        else:
+            # 閾値モード: 閾値以上のスコアを持つ結果を返す
+            return [r for r in all_results if r[SearchResultKeys.SIMILARITY] >= self.threshold]
 
     def _build_result_data(
         self,
