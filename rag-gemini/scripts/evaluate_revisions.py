@@ -125,7 +125,8 @@ class RevisionEvaluator:
         """シナリオIDから質問・回答を取得"""
         try:
             bot_name, excel_row = scenario_id.rsplit("_", 1)
-            row_index = int(excel_row) - 2  # Excel行→0-based index
+            # シナリオID = Excel行番号 なので、row_index = Excel行 - 2
+            row_index = int(excel_row) - 2
 
             db_path = VECTOR_DB_BASE / area / provider
             if not db_path.exists():
@@ -256,6 +257,7 @@ class RevisionEvaluator:
         scenario_id = result.get(SearchResultKeys.SCENARIO_ID, "")
         if sheet_name and row_index != "":
             try:
+                # シナリオID = row_index + 2 (Excel行番号)
                 excel_row = int(row_index) + 2
                 bot_name = self._extract_bot_name_from_area(area)
                 scenario_id = f"{bot_name}_{excel_row}"
