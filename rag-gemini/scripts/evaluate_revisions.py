@@ -113,8 +113,42 @@ class RevisionEvaluator:
         if not INPUT_FILE.exists():
             raise FileNotFoundError(f"入力ファイルが見つかりません: {INPUT_FILE}")
         df = pd.read_excel(INPUT_FILE)
+        # 変更内容列がない場合は空文字で初期化
+        if "変更内容" not in df.columns:
+            df["変更内容"] = ""
         logger.info(f"入力データを読み込み: {len(df)}件")
         return df
+
+    def _fetch_scenario_content(
+        self, scenario_id: str, area: str, provider: str = "azure_openai"
+    ) -> Optional[Dict[str, str]]:
+        """シナリオIDから質問・回答を取得"""
+        try:
+            bot_name, excel_row = scenario_id.rsplit("_", 1)
+            row_index = int(excel_row) - 2  # Excel行→0-based index
+
+            db_path = VECTOR_DB_BASE / area / provider
+            if not db_path.exists():
+                return None
+
+            vector_db = MetadataVectorDB(db_path=str(db_path), collection_name="default")
+            result = vector_db.collection.get(
+                where={"row_index": row_index},
+                include=["documents", "metadatas"]
+            )
+
+            if not result["documents"]:
+                return None
+
+            parsed = self.text_combiner.parse(result["documents"][0])
+            return {
+                "質問": parsed.query,
+                "回答": parsed.answer,
+                "カテゴリ": parsed.hierarchy,
+            }
+        except Exception as e:
+            logger.warning(f"シナリオ取得エラー ({scenario_id}): {e}")
+            return None
 
     def _get_embedding_model(self, provider: str):
         provider_config = copy.copy(self.config)
@@ -358,15 +392,24 @@ class RevisionEvaluator:
         return results
 
     def evaluate_revision(
-        self, revision: str, revision_content: str, correct_ids: List[str]
+        self,
+        revision: str,
+        revision_content: str,
+        correct_ids: List[str],
+        change_details_map: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         # 改定番号別のベクトル重みを取得
         vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
+
+        # change_details_mapがない場合は空の辞書で初期化
+        if change_details_map is None:
+            change_details_map = {}
 
         evaluation_result = {
             "revision": revision,
             "revision_content": revision_content,
             "correct_ids": correct_ids,
+            "change_details_map": change_details_map,
             "areas": [],
             "by_area": {},
             "llm_query": "",
@@ -423,10 +466,34 @@ class RevisionEvaluator:
                 if vertex_results:
                     vertex_results = self._run_llm_analysis(vertex_results, revision_content)
 
+            # 検索結果から発見済みシナリオIDを収集
+            found_ids = set()
+            for result in azure_results:
+                if result.get("正解フラグ") == "TRUE":
+                    found_ids.add(result["シナリオID"])
+            for result in vertex_results:
+                if result.get("正解フラグ") == "TRUE":
+                    found_ids.add(result["シナリオID"])
+
+            # 未発見シナリオを特定（エリアに該当する正解IDのみ）
+            unfound_scenarios = []
+            for scenario_id in area_correct_ids:
+                if scenario_id not in found_ids:
+                    # ベクトルDBから内容を取得
+                    content = self._fetch_scenario_content(scenario_id, area)
+                    unfound_scenarios.append({
+                        "シナリオID": scenario_id,
+                        "変更内容": change_details_map.get(scenario_id, ""),
+                        "質問": content.get("質問", "") if content else "",
+                        "回答": content.get("回答", "") if content else "",
+                        "カテゴリ": content.get("カテゴリ", "") if content else "",
+                    })
+
             evaluation_result["by_area"][area] = {
                 "azure_results": azure_results,
                 "vertex_results": vertex_results,
                 "correct_ids": area_correct_ids,
+                "unfound_scenarios": unfound_scenarios,
             }
 
         return evaluation_result
@@ -434,30 +501,31 @@ class RevisionEvaluator:
     def evaluate_all_revisions(self) -> Dict[str, Dict[str, Any]]:
         input_df = self.load_input_data()
         results_by_revision = {}
-        total_revisions = len(input_df)
+
+        # 改定番号でグループ化
+        grouped = input_df.groupby("番号", sort=False)
+        total_revisions = len(grouped)
 
         print_section(f"評価対象: {total_revisions}件の改定")
 
         revision_list_data = []
-        for _, row in input_df.iterrows():
-            revision = row["番号"]
-            content = row["改定内容"]
+        for revision, group in grouped:
+            content = group.iloc[0]["改定内容"]
             content_preview = content[:40] + "..." if len(content) > 40 else content
-            correct_ids_str = row.get("正解ID", "")
-            correct_count = len(
-                [id.strip() for id in str(correct_ids_str).split(",") if id.strip()]
-            )
+            correct_count = len(group)
             revision_list_data.append((revision, content_preview, correct_count))
 
         print_table("改定一覧", revision_list_data, ["番号", "改定内容", "正解数"])
 
-        for idx, row in input_df.iterrows():
-            revision = row["番号"]
-            revision_content = row["改定内容"]
-            correct_ids_str = row.get("正解ID", "")
-            correct_ids = [
-                id.strip() for id in str(correct_ids_str).split(",") if id.strip()
-            ]
+        for idx, (revision, group) in enumerate(grouped):
+            revision_content = group.iloc[0]["改定内容"]
+            correct_ids = group["正解ID"].tolist()
+
+            # 正解IDと変更内容の辞書を構築
+            change_details_map = {
+                row["正解ID"]: row["変更内容"]
+                for _, row in group.iterrows()
+            }
 
             print_revision_header(
                 revision=revision,
@@ -468,7 +536,7 @@ class RevisionEvaluator:
             )
 
             results_by_revision[revision] = self.evaluate_revision(
-                revision, revision_content, correct_ids
+                revision, revision_content, correct_ids, change_details_map
             )
 
         return results_by_revision
@@ -497,9 +565,13 @@ class RevisionEvaluator:
             "header": workbook.add_format({**header_style, "bg_color": "#D9D9D9", "text_wrap": True}),
             "azure_header": workbook.add_format({**header_style, "bg_color": "#DCE6F1", "text_wrap": True}),
             "vertex_header": workbook.add_format({**header_style, "bg_color": "#E2EFDA", "text_wrap": True}),
+            "unfound_header": workbook.add_format({**header_style, "bg_color": "#FDE9D9", "text_wrap": True}),
             "cell": workbook.add_format({**base_style, "valign": "top", "text_wrap": True}),
             "correct": workbook.add_format({
                 **base_style, "bg_color": "#C6EFCE", "font_color": "#006100", "valign": "top"
+            }),
+            "unfound_cell": workbook.add_format({
+                **base_style, "bg_color": "#FDE9D9", "valign": "top", "text_wrap": True
             }),
             "percent": workbook.add_format({**base_style, "num_format": "0.0%", "valign": "top"}),
         }
@@ -535,6 +607,11 @@ class RevisionEvaluator:
                     area_data.get("vertex_results", []), area_correct_ids
                 )
 
+                # 未発見情報
+                unfound_scenarios = area_data.get("unfound_scenarios", [])
+                unfound_count = len(unfound_scenarios)
+                unfound_ids = ", ".join([s["シナリオID"] for s in unfound_scenarios])
+
                 content_preview = (
                     revision_content[:50] + "..."
                     if len(revision_content) > 50
@@ -553,6 +630,8 @@ class RevisionEvaluator:
                     "VertexAI_正解発見数": vertex_metrics["正解発見数"],
                     "VertexAI_正解発見率": vertex_metrics["正解発見率"],
                     "VertexAI_必要確認件数": vertex_metrics["必要確認件数"],
+                    "未発見数": unfound_count,
+                    "未発見ID": unfound_ids,
                 })
 
         if not summary_data:
@@ -562,7 +641,7 @@ class RevisionEvaluator:
         self._write_summary_headers(worksheet, formats)
         self._write_summary_data(worksheet, summary_data, formats)
 
-        column_widths = [10, 20, 50, 8, 8, 12, 12, 18, 8, 12, 12, 18]
+        column_widths = [10, 20, 50, 8, 8, 12, 12, 18, 8, 12, 12, 18, 10, 40]
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
@@ -587,30 +666,37 @@ class RevisionEvaluator:
             "VertexAI_正解発見数": 0,
             "VertexAI_正解発見率": 0,
             "VertexAI_必要確認件数": "-",
+            "未発見数": len(correct_ids),
+            "未発見ID": ", ".join(correct_ids),
         }
 
     def _write_summary_headers(self, worksheet, formats: Dict[str, Any]) -> None:
         header_fmt = formats["header"]
         azure_fmt = formats["azure_header"]
         vertex_fmt = formats["vertex_header"]
+        unfound_fmt = formats["unfound_header"]
 
         for col in range(4):
             worksheet.write(0, col, "", header_fmt)
         worksheet.merge_range("E1:H1", "Azure", azure_fmt)
         worksheet.merge_range("I1:L1", "VertexAI", vertex_fmt)
+        worksheet.merge_range("M1:N1", "未発見", unfound_fmt)
 
         headers = [
             "改定番号", "エリア", "改定内容", "正解数",
             "候補数", "正解発見数", "正解発見率", "必要確認件数",
             "候補数", "正解発見数", "正解発見率", "必要確認件数",
+            "未発見数", "未発見ID",
         ]
         for col, header in enumerate(headers):
             if col < 4:
                 fmt = header_fmt
             elif col < 8:
                 fmt = azure_fmt
-            else:
+            elif col < 12:
                 fmt = vertex_fmt
+            else:
+                fmt = unfound_fmt
             worksheet.write(1, col, header, fmt)
 
     def _write_summary_data(
@@ -618,6 +704,7 @@ class RevisionEvaluator:
     ) -> None:
         cell_fmt = formats["cell"]
         percent_fmt = formats["percent"]
+        unfound_fmt = formats["unfound_cell"]
 
         for row_num, row_data in enumerate(summary_data, start=2):
             worksheet.write(row_num, 0, row_data["改定番号"], cell_fmt)
@@ -632,6 +719,8 @@ class RevisionEvaluator:
             worksheet.write(row_num, 9, row_data["VertexAI_正解発見数"], cell_fmt)
             worksheet.write(row_num, 10, row_data["VertexAI_正解発見率"], percent_fmt)
             worksheet.write(row_num, 11, row_data["VertexAI_必要確認件数"], cell_fmt)
+            worksheet.write(row_num, 12, row_data.get("未発見数", 0), unfound_fmt)
+            worksheet.write(row_num, 13, row_data.get("未発見ID", ""), unfound_fmt)
 
     def _write_detail_sheets(
         self,
@@ -681,6 +770,7 @@ class RevisionEvaluator:
 
         common_headers = ["改定内容", "正解ID一覧", "LLM強化クエリ", "抽出キーワード", "ベクトル重み"]
         result_headers = ["シナリオID", "類似度", "カテゴリ", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "ソース"]
+        unfound_headers = ["未発見ID", "変更内容", "カテゴリ", "質問", "回答"]
 
         col = 0
         for header in common_headers:
@@ -692,18 +782,23 @@ class RevisionEvaluator:
         for header in result_headers:
             worksheet.write(0, col, f"VertexAI_{header}", formats["vertex_header"])
             col += 1
+        for header in unfound_headers:
+            worksheet.write(0, col, f"未発見_{header}", formats["unfound_header"])
+            col += 1
 
         azure_results = []
         vertex_results = []
+        unfound_scenarios = []
         for area in data.get("areas", []):
             area_data = data.get("by_area", {}).get(area, {})
             azure_results.extend(area_data.get("azure_results", []))
             vertex_results.extend(area_data.get("vertex_results", []))
+            unfound_scenarios.extend(area_data.get("unfound_scenarios", []))
 
-        max_rows = max(len(azure_results), len(vertex_results), 1)
+        max_rows = max(len(azure_results), len(vertex_results), len(unfound_scenarios), 1)
 
-        for row_num, (azure_row, vertex_row) in enumerate(
-            zip_longest(azure_results, vertex_results, fillvalue={}), start=1
+        for row_num, (azure_row, vertex_row, unfound_row) in enumerate(
+            zip_longest(azure_results, vertex_results, unfound_scenarios, fillvalue={}), start=1
         ):
             col = 0
 
@@ -721,8 +816,11 @@ class RevisionEvaluator:
             self._write_result_row(worksheet, row_num, col, azure_row, formats)
             col += len(result_headers)
             self._write_result_row(worksheet, row_num, col, vertex_row, formats)
+            col += len(result_headers)
+            self._write_unfound_row(worksheet, row_num, col, unfound_row, formats)
 
-        column_widths = [60, 30, 50, 25, 12] + [18, 10, 18, 12, 50, 50, 15, 40, 15] * 2
+        # 列幅設定（common + azure + vertex + unfound）
+        column_widths = [60, 30, 50, 25, 12] + [18, 10, 18, 12, 50, 50, 15, 40, 15] * 2 + [18, 12, 18, 50, 50]
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
@@ -737,6 +835,14 @@ class RevisionEvaluator:
             value = row_data.get(key, "")
             fmt = formats["correct"] if key == "正解フラグ" and value == "TRUE" else formats["cell"]
             worksheet.write(row_num, start_col + i, value if value != "" else "", fmt)
+
+    def _write_unfound_row(
+        self, worksheet, row_num: int, start_col: int, row_data: Dict, formats: Dict[str, Any]
+    ) -> None:
+        keys = ["シナリオID", "変更内容", "カテゴリ", "質問", "回答"]
+        for i, key in enumerate(keys):
+            value = row_data.get(key, "")
+            worksheet.write(row_num, start_col + i, value if value != "" else "", formats["unfound_cell"])
 
 
 def main() -> None:

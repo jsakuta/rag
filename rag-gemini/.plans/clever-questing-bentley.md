@@ -1,8 +1,13 @@
-# 詳細シート分割 & 改定番号別ベクトル重み設定
+# 変更内容列の追加（Phase 2）
 
 ## 概要
-1. 詳細シートを事務改定③のようにエリアごとに分割
-2. 改定番号ごとにベクトル重みを設定可能にする（⑤⑥はキーワード検索重視）
+
+前回実装した「未発見シナリオ表示機能」に加えて：
+1. 入力ファイルの「変更種別」列を「変更内容」列に置き換え
+2. 各正解IDの具体的な変更内容を入力ファイルに記載
+3. 出力に変更内容を表示
+
+※ 「変更種別」列は廃止し、「変更内容」列のみとする
 
 ---
 
@@ -10,186 +15,200 @@
 
 | ファイル | 変更内容 |
 |---------|---------|
-| `config/settings.yaml` | 改定番号別`vector_weight`設定を追加 |
-| `scripts/evaluate_revisions.py` | 詳細シート分割、改定番号別vector_weight適用 |
+| `input/multi_stage_input.xlsx` | 「変更種別」→「変更内容」に置換・データ入力 |
+| `scripts/evaluate_revisions.py` | 変更種別→変更内容に変更 |
+
+---
+
+## 入力ファイル形式
+
+### 現状（カンマ区切り形式）
+| 番号 | 改定内容 | 正解ID |
+|-----|---------|--------|
+| ① | 個人事業主の場合でも... | smile-bot_130, smile-bot_186, smile-bot_187 |
+
+### 変更後（行ごと形式）
+| 番号 | 改定内容 | 正解ID | 変更内容 |
+|-----|---------|--------|---------|
+| ① | 個人事業主の場合でも... | smile-bot_130 | 【本人確認】の文言変更 |
+| ① | 個人事業主の場合でも... | smile-bot_186 | 【本人確認】の文言変更 |
+| ① | 個人事業主の場合でも... | smile-bot_187 | 「キャッシュカード暗証一致もしくは」を追加 |
+
+※ 1行に1正解ID、改定番号でグループ化して処理
+
+---
+
+## 入力データ（台帳記載に基づく）
+
+### ① 台帳No.20（スマイル機能変更）
+| 正解ID | 変更内容 |
+|--------|---------|
+| smile-bot_130 | 【本人確認】の文言変更 |
+| smile-bot_186 | 【本人確認】の文言変更 |
+| smile-bot_187 | 「キャッシュカード暗証一致もしくは」を追加 |
+
+### ② 台帳No.21（相続少額払い）
+| 正解ID | 変更内容 |
+|--------|---------|
+| souzoku-bot_146 | 少額払いフローチャート画像変更 |
+| souzoku-bot_149 | 設問新設/書類内容修正 |
+| souzoku-bot_156 | 設問新設/書類内容修正 |
+| souzoku-bot_157 | 設問新設/書類内容修正 |
+| souzoku-bot_162 | 書類内容修正 |
+| souzoku-bot_163 | 書類内容修正 |
+| souzoku-bot_164 | 書類内容修正 |
+| souzoku-bot_165 | 書類内容修正 |
+| souzoku-bot_166 | 書類内容修正 |
+| souzoku-bot_167 | 書類内容修正 |
+| souzoku-bot_168 | 書類内容修正 |
+| souzoku-bot_169 | 書類内容修正 |
+| souzoku-bot_174 | 書類内容修正 |
+| souzoku-bot_175 | 書類内容修正 |
+
+### ③ 台帳No.25-30,35-36（保険証→資格確認証）
+| 正解ID | 変更内容 |
+|--------|---------|
+| naibujimu-bot_96 | 画像01修正 |
+| naibujimu-bot_99 | 健康保険被保険者証→資格確認書 |
+| naibujimu-bot_138 | 健康保険証→資格確認書 |
+| naibujimu-bot_141 | 健康保険証→資格確認書 |
+| naibujimu-bot_642 | 画像02修正 |
+| naibujimu-bot_707 | 問答文修正 |
+| souzoku-bot_146 | 画像01.02修正 |
+| souzoku-bot_167 | 保険証→資格確認書 |
+| torikaku-bot_22 | 画像7修正 |
+| torikaku-bot_25 | 画像9修正 |
+| torikaku-bot_35 | 画像12修正 |
+| torikaku-bot_88 | 保険証→資格確認書 |
+| torikaku-bot_89 | 保険証→資格確認書 |
+| torikaku-bot_90 | 保険証→資格確認書 |
+| smile-bot_436 | 画像03内の文言修正 |
+| smile-bot_366 | 「国民健康保険被保険者証、国民年金手帳等」削除 |
+
+### ④ 台帳No.37（0円新規開設可能）
+| 正解ID | 変更内容 |
+|--------|---------|
+| naibujimu-bot_641 | 「住宅ローン推進室等の場合」→「0円新規可能」 |
+
+### ⑤ 台帳No.41-42（AML→GPLEX）
+| 正解ID | 変更内容 |
+|--------|---------|
+| smile-bot_41 | AML検索→GPLEX |
+| smile-bot_237 | AMLメニュー→GPLEX |
+| smile-bot_268 | AMLメニュー→GPLEX |
+| smile-bot_316 | AMLメニュー→GPLEX |
+
+### ⑥ 台帳No.43-45（DC→MDC）
+全32件すべて：変更内容=「DC→MDC」
 
 ---
 
 ## 実装計画
 
-### 1. settings.yaml の変更
+### 1. 入力ファイル（multi_stage_input.xlsx）の更新
 
-**現状**:
-```yaml
-revision_areas:
-  "①":
-    - rev01smile
-  "③":
-    - rev03naibujimu
-    - rev03smile
-    ...
+xlsxスキルを使用して行ごと形式に変換：
+1. カンマ区切りの正解IDを1行1IDに展開
+2. 「変更種別」列を削除、「変更内容」列を追加
+3. 各行に対応する変更内容を入力
+4. **条件付き書式**: 同じ改定番号の2行目以降は「番号」「改定内容」列を灰色文字に
+
+**例: ①の場合**
+```
+| ① | 個人事業主の場合でも... | smile-bot_130 | 【本人確認】の文言変更 |           ← 先頭行：通常表示
+| ① | 個人事業主の場合でも... | smile-bot_186 | 【本人確認】の文言変更 |           ← 灰色文字
+| ① | 個人事業主の場合でも... | smile-bot_187 | 「キャッシュカード暗証一致もしくは」を追加 | ← 灰色文字
 ```
 
-**変更後**:
-```yaml
-revision_areas:
-  "①":
-    areas:
-      - rev01smile
-    vector_weight: 0.9  # デフォルト（ベクトル重視）
-  "②":
-    areas:
-      - rev02souzoku
-    vector_weight: 0.9
-  "③":
-    areas:
-      - rev03naibujimu
-      - rev03smile
-      - rev03souzoku
-      - rev03torikaku
-    vector_weight: 0.9
-  "④":
-    areas:
-      - rev04naibujimu
-    vector_weight: 0.9
-  "⑤":
-    areas:
-      - rev05smile
-    vector_weight: 0.3  # キーワード重視
-  "⑥":
-    areas:
-      - rev06smile
-    vector_weight: 0.3  # キーワード重視
-```
+**条件付き書式の設定**:
+- 適用範囲: A列（番号）、B列（改定内容）
+- 条件: `=A2=A1`（上の行と同じ番号の場合）
+- 書式: フォント色をグレー（#808080）に
 
----
+### 2. evaluate_revisions.py の更新
 
-### 2. evaluate_revisions.py の変更
-
-#### 2.1 設定読み込み部分（行67-75付近）
-
-**現状**:
+#### 2.1 load_input_data の変更
 ```python
-REVISION_TO_AREAS = _settings["revision_areas"]
-VECTOR_WEIGHT = _settings["vector_weight"]
+def load_input_data(self) -> pd.DataFrame:
+    df = pd.read_excel(INPUT_FILE)
+    if "変更内容" not in df.columns:
+        df["変更内容"] = ""
+    return df
 ```
 
-**変更後**:
-```python
-# 新しい形式に対応（areas/vector_weightを含む辞書）
-_raw_revision_areas = _settings["revision_areas"]
-REVISION_TO_AREAS = {}
-REVISION_VECTOR_WEIGHTS = {}
-DEFAULT_VECTOR_WEIGHT = _settings["vector_weight"]
-
-for rev, config in _raw_revision_areas.items():
-    if isinstance(config, dict):
-        REVISION_TO_AREAS[rev] = config.get("areas", [])
-        REVISION_VECTOR_WEIGHTS[rev] = config.get("vector_weight", DEFAULT_VECTOR_WEIGHT)
-    else:
-        # 旧形式（リスト直接指定）への後方互換性
-        REVISION_TO_AREAS[rev] = config
-        REVISION_VECTOR_WEIGHTS[rev] = DEFAULT_VECTOR_WEIGHT
-```
-
-#### 2.2 詳細シート分割（`_write_detail_sheet`メソッド、行615-672）
-
-**現状**: 複数エリアの結果を統合して1シートに出力
-
-**変更後**: エリアごとに別シートを作成
+#### 2.2 evaluate_all_revisions の大幅変更
+- 改定番号（番号列）でグループ化
+- 各グループ内の正解IDリストと変更内容辞書を構築
+- evaluate_revisionに渡す
 
 ```python
-def _write_detail_sheets(
-    self,
-    writer: pd.ExcelWriter,
-    revision: str,
-    data: Dict[str, Any],
-    formats: Dict[str, Any],
-) -> None:
-    """複数エリアの場合、エリアごとに詳細シートを作成"""
-    areas = data.get("areas", [])
+def evaluate_all_revisions(self) -> Dict[str, Dict[str, Any]]:
+    input_df = self.load_input_data()
 
-    if len(areas) <= 1:
-        # 単一エリアの場合は従来通り
-        self._write_single_detail_sheet(writer, revision, data, formats)
-    else:
-        # 複数エリアの場合はエリアごとにシートを作成
-        for area in areas:
-            area_short = area.replace("rev", "").replace(revision.replace("③", "03"), "")
-            sheet_name = f"{revision}_{area_short}"  # 例: ③_naibujimu
+    # 改定番号でグループ化
+    grouped = input_df.groupby("番号")
 
-            area_data = {
-                "revision_content": data["revision_content"],
-                "correct_ids": self._filter_correct_ids_by_area(data["correct_ids"], area),
-                "llm_query": data.get("llm_query", ""),
-                "keywords": data.get("keywords", []),
-                "areas": [area],
-                "by_area": {area: data.get("by_area", {}).get(area, {})},
-            }
-            self._write_single_detail_sheet(writer, sheet_name, area_data, formats)
+    for revision, group in grouped:
+        revision_content = group.iloc[0]["改定内容"]
+        correct_ids = group["正解ID"].tolist()
+
+        # 正解IDと変更内容の辞書を構築
+        change_details_map = {
+            row["正解ID"]: row["変更内容"]
+            for _, row in group.iterrows()
+        }
+
+        results = self.evaluate_revision(
+            revision, revision_content, correct_ids, change_details_map
+        )
 ```
 
-#### 2.3 検索時のvector_weight適用（`_create_orchestrator`メソッド）
+#### 2.3 evaluate_revision の変更
+- `correct_ids_with_types` → `change_details_map: Dict[str, str]` に変更
+- 未発見シナリオの変更内容取得: `change_details_map.get(scenario_id, "")`
 
-**現状** (行169):
-```python
-vector_weight=VECTOR_WEIGHT,
-```
+#### 2.4 _parse_correct_ids_with_types の削除
+- 行ごと形式では不要（1行1ID）
 
-**変更後**:
-`search_revision_multi_stage`メソッドでrevision引数からvector_weightを取得し、orchestratorに渡す
-
-```python
-def _create_orchestrator(
-    self,
-    provider: str,
-    area: str,
-    reference_queries: List[str],
-    vector_weight: float,  # 引数追加
-) -> Optional[MultiStageOrchestrator]:
-    ...
-    return MultiStageOrchestrator(
-        ...
-        vector_weight=vector_weight,  # 改定番号別の値を使用
-        ...
-    )
-
-def search_revision_multi_stage(
-    self, revision: str, query: str, correct_ids: List[str], provider: str
-) -> Tuple[Dict[str, List[Dict]], str, List[str], List[str]]:
-    ...
-    vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
-    ...
-    orchestrator = self._create_orchestrator(provider, area, reference_queries, vector_weight)
-```
-
----
-
-## 検証方法
-
-1. **設定確認**:
-   ```bash
-   cd C:\VSCode\rag\rag-gemini
-   python -c "from config import load_settings; s=load_settings('evaluation'); print(s['revision_areas'])"
-   ```
-
-2. **評価スクリプト実行**:
-   ```bash
-   python scripts/evaluate_revisions.py
-   ```
-
-3. **出力Excel確認**:
-   - サマリーシート: ③が4行に分かれていること
-   - 詳細シート: ③が4シート（③_naibujimu, ③_smile, ③_souzoku, ③_torikaku）に分かれていること
-   - ベクトル重み列: ①②③④は0.9、⑤⑥は0.3が表示されること
+#### 2.5 Excel出力
+- 「変更種別」→「変更内容」にリネーム
+- 列幅の調整
 
 ---
 
 ## 実装順序
 
-1. `config/settings.yaml` を更新（新形式に変更）
-2. `evaluate_revisions.py` の設定読み込み部分を更新
-3. `_create_orchestrator`にvector_weight引数追加
-4. `search_revision_multi_stage`でrevision別vector_weightを渡す
-5. `_write_detail_sheet`を`_write_detail_sheets`に改名・分割対応
-6. 動作確認
+1. **入力ファイルの更新**（xlsxスキル使用）
+   - 行ごと形式に変換（全70件程度）
+   - 変更内容を入力
+
+2. **evaluate_revisions.py の更新**
+   - load_input_data: 変更内容列対応
+   - evaluate_all_revisions: グループ化処理に変更
+   - evaluate_revision: change_details_map引数追加
+   - _parse_correct_ids_with_types: 削除
+   - unfound_scenarios: 変更内容取得方法変更
+   - Excel出力: ヘッダー変更
+
+3. **動作確認**
+   ```bash
+   python scripts/evaluate_revisions.py
+   ```
+
+---
+
+## 検証方法
+
+1. **入力ファイル確認**:
+   - 行数が正しいこと（全正解ID数 = 70件程度）
+   - 各行に正解ID、変更内容が正しく入力されていること
+
+2. **スクリプト実行**:
+   ```bash
+   python scripts/evaluate_revisions.py
+   ```
+
+3. **出力Excel確認**:
+   - 詳細シートの未発見シナリオに「変更内容」列が表示されること
+   - 変更内容が正しく表示されること
+   - サマリーシートは変更なし（未発見数・未発見IDのみ）
