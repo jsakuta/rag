@@ -66,13 +66,26 @@ logger = setup_logger(__name__)
 
 # 設定読み込み
 _settings = load_settings("evaluation")
-REVISION_TO_AREAS = _settings["revision_areas"]
 AREA_TO_BOT = _settings["area_to_bot"]
 THRESHOLD_BY_PROVIDER = _settings["thresholds"]
-VECTOR_WEIGHT = _settings["vector_weight"]
+DEFAULT_VECTOR_WEIGHT = _settings["vector_weight"]
 MAX_RESULTS = _settings["max_results"]
 FILTER_MODE = _settings.get("filter_mode", "threshold")
 TOP_K = _settings.get("top_k", 50)
+
+# 新しい形式に対応（areas/vector_weightを含む辞書）
+_raw_revision_areas = _settings["revision_areas"]
+REVISION_TO_AREAS = {}
+REVISION_VECTOR_WEIGHTS = {}
+
+for rev, config in _raw_revision_areas.items():
+    if isinstance(config, dict):
+        REVISION_TO_AREAS[rev] = config.get("areas", [])
+        REVISION_VECTOR_WEIGHTS[rev] = config.get("vector_weight", DEFAULT_VECTOR_WEIGHT)
+    else:
+        # 旧形式（リスト直接指定）への後方互換性
+        REVISION_TO_AREAS[rev] = config
+        REVISION_VECTOR_WEIGHTS[rev] = DEFAULT_VECTOR_WEIGHT
 
 # パス定数
 INPUT_FILE = PROJECT_ROOT / "input" / "multi_stage_input.xlsx"
@@ -134,6 +147,7 @@ class RevisionEvaluator:
         provider: str,
         area: str,
         reference_queries: List[str],
+        vector_weight: float,
     ) -> Optional[MultiStageOrchestrator]:
         db_path = VECTOR_DB_BASE / area / provider
         chroma_file = db_path / "chroma.sqlite3"
@@ -166,7 +180,7 @@ class RevisionEvaluator:
                 keyword_engine=keyword_engine,
                 query_enhancer=query_enhancer,
                 text_combiner=self.text_combiner,
-                vector_weight=VECTOR_WEIGHT,
+                vector_weight=vector_weight,
                 threshold=THRESHOLD_BY_PROVIDER[provider],
                 max_results=MAX_RESULTS,
                 filter_mode=FILTER_MODE,
@@ -232,6 +246,9 @@ class RevisionEvaluator:
             logger.warning(f"改定 {revision} に対応するDBがありません")
             return {}, "", [], []
 
+        # 改定番号別のベクトル重みを取得
+        vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
+
         results_by_area = {}
         searched_areas = []
         llm_query = ""
@@ -243,7 +260,7 @@ class RevisionEvaluator:
                 logger.warning(f"  {area}: 参照クエリが空です")
                 continue
 
-            orchestrator = self._create_orchestrator(provider, area, reference_queries)
+            orchestrator = self._create_orchestrator(provider, area, reference_queries, vector_weight)
             if orchestrator is None:
                 continue
 
@@ -343,6 +360,9 @@ class RevisionEvaluator:
     def evaluate_revision(
         self, revision: str, revision_content: str, correct_ids: List[str]
     ) -> Dict[str, Any]:
+        # 改定番号別のベクトル重みを取得
+        vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
+
         evaluation_result = {
             "revision": revision,
             "revision_content": revision_content,
@@ -351,6 +371,7 @@ class RevisionEvaluator:
             "by_area": {},
             "llm_query": "",
             "keywords": [],
+            "vector_weight": vector_weight,
         }
 
         # Azure検索
@@ -463,7 +484,7 @@ class RevisionEvaluator:
             self._write_summary_sheet(writer, results, formats)
 
             for revision, data in results.items():
-                self._write_detail_sheet(writer, revision, data, formats)
+                self._write_detail_sheets(writer, revision, data, formats)
 
         logger.info(f"\n結果を保存しました: {output_file}")
         return output_file
@@ -612,14 +633,51 @@ class RevisionEvaluator:
             worksheet.write(row_num, 10, row_data["VertexAI_正解発見率"], percent_fmt)
             worksheet.write(row_num, 11, row_data["VertexAI_必要確認件数"], cell_fmt)
 
-    def _write_detail_sheet(
+    def _write_detail_sheets(
         self,
         writer: pd.ExcelWriter,
         revision: str,
         data: Dict[str, Any],
         formats: Dict[str, Any],
     ) -> None:
-        worksheet = writer.book.add_worksheet(revision)
+        """複数エリアの場合、エリアごとに詳細シートを作成"""
+        areas = data.get("areas", [])
+
+        if len(areas) <= 1:
+            # 単一エリアの場合は従来通り
+            self._write_single_detail_sheet(writer, revision, data, formats)
+        else:
+            # 複数エリアの場合はエリアごとにシートを作成
+            for area in areas:
+                # エリア名から短縮名を抽出（例: rev03naibujimu → naibujimu）
+                area_short = area
+                for prefix in ["rev01", "rev02", "rev03", "rev04", "rev05", "rev06"]:
+                    if area.startswith(prefix):
+                        area_short = area[len(prefix):]
+                        break
+
+                sheet_name = f"{revision}_{area_short}"
+
+                # エリア固有のデータを構築
+                area_data = {
+                    "revision_content": data["revision_content"],
+                    "correct_ids": self._filter_correct_ids_by_area(data["correct_ids"], area),
+                    "llm_query": data.get("llm_query", ""),
+                    "keywords": data.get("keywords", []),
+                    "areas": [area],
+                    "by_area": {area: data.get("by_area", {}).get(area, {})},
+                    "vector_weight": data.get("vector_weight", DEFAULT_VECTOR_WEIGHT),
+                }
+                self._write_single_detail_sheet(writer, sheet_name, area_data, formats)
+
+    def _write_single_detail_sheet(
+        self,
+        writer: pd.ExcelWriter,
+        sheet_name: str,
+        data: Dict[str, Any],
+        formats: Dict[str, Any],
+    ) -> None:
+        worksheet = writer.book.add_worksheet(sheet_name)
 
         common_headers = ["改定内容", "正解ID一覧", "LLM強化クエリ", "抽出キーワード", "ベクトル重み"]
         result_headers = ["シナリオID", "類似度", "カテゴリ", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "ソース"]
@@ -654,7 +712,7 @@ class RevisionEvaluator:
                 worksheet.write(row_num, 1, ", ".join(data["correct_ids"]), formats["cell"])
                 worksheet.write(row_num, 2, data.get("llm_query", ""), formats["cell"])
                 worksheet.write(row_num, 3, ", ".join(data.get("keywords", [])), formats["cell"])
-                worksheet.write(row_num, 4, VECTOR_WEIGHT, formats["cell"])
+                worksheet.write(row_num, 4, data.get("vector_weight", DEFAULT_VECTOR_WEIGHT), formats["cell"])
             else:
                 for i in range(len(common_headers)):
                     worksheet.write(row_num, i, "", formats["cell"])
@@ -709,7 +767,14 @@ def main() -> None:
     print_section("評価設定")
     print_status(f"LLM分析: {'[green]有効[/green]' if enable_llm else '[yellow]無効[/yellow]'}", "info")
     print_status(f"最大検索結果数: {MAX_RESULTS}", "info")
-    print_status(f"ベクトル重み: {VECTOR_WEIGHT}", "info")
+    print_status(f"デフォルトベクトル重み: {DEFAULT_VECTOR_WEIGHT}", "info")
+
+    # 改定番号別ベクトル重み表示
+    custom_weights = [(rev, w) for rev, w in REVISION_VECTOR_WEIGHTS.items() if w != DEFAULT_VECTOR_WEIGHT]
+    if custom_weights:
+        weight_str = ", ".join([f"{rev}={w}" for rev, w in custom_weights])
+        print_status(f"カスタム重み: {weight_str}", "info")
+
     print_status(f"フィルタモード: {FILTER_MODE}", "info")
     if FILTER_MODE == "top_k":
         print_status(f"TOP-K: {TOP_K}件", "info")

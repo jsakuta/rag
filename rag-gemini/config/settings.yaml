@@ -135,23 +135,39 @@ evaluation:
 
   # -------------------------------------------
   # 改定番号とDBエリアの対応
+  # areas: 検索対象のベクトルDBエリア
+  # vector_weight: ベクトル検索の重み（0.0-1.0）
+  #   0.9: ベクトル重視（意味的類似性）
+  #   0.3: キーワード重視（用語置換など）
   # -------------------------------------------
   revision_areas:
     "①":
-      - rev01smile
+      areas:
+        - rev01smile
+      vector_weight: 0.9
     "②":
-      - rev02souzoku
+      areas:
+        - rev02souzoku
+      vector_weight: 0.9
     "③":
-      - rev03naibujimu
-      - rev03smile
-      - rev03souzoku
-      - rev03torikaku
+      areas:
+        - rev03naibujimu
+        - rev03smile
+        - rev03souzoku
+        - rev03torikaku
+      vector_weight: 0.9
     "④":
-      - rev04naibujimu
+      areas:
+        - rev04naibujimu
+      vector_weight: 0.9
     "⑤":
-      - rev05smile
+      areas:
+        - rev05smile
+      vector_weight: 0.1
     "⑥":
-      - rev06smile
+      areas:
+        - rev06smile
+      vector_weight: 0.1
 
   # -------------------------------------------
   # ボット名マッピング
