@@ -163,11 +163,11 @@ evaluation:
     "⑤":
       areas:
         - rev05smile
-      vector_weight: 0.1
+      vector_weight: 0.0
     "⑥":
       areas:
         - rev06smile
-      vector_weight: 0.1
+      vector_weight: 0.0
 
   # -------------------------------------------
   # ボット名マッピング

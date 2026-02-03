@@ -468,19 +468,23 @@ class RevisionEvaluator:
                 if vertex_results:
                     vertex_results = self._run_llm_analysis(vertex_results, revision_content)
 
-            # 検索結果から発見済みシナリオIDを収集
-            found_ids = set()
+            # 検索結果から発見済みシナリオIDを収集（Azure/VertexAI別）
+            found_ids_azure = set()
+            found_ids_vertex = set()
             for result in azure_results:
                 if result.get("正解フラグ") == "TRUE":
-                    found_ids.add(result["シナリオID"])
+                    found_ids_azure.add(result["シナリオID"])
             for result in vertex_results:
                 if result.get("正解フラグ") == "TRUE":
-                    found_ids.add(result["シナリオID"])
+                    found_ids_vertex.add(result["シナリオID"])
 
-            # 未発見シナリオを特定（エリアに該当する正解IDのみ）
+            # 未発見シナリオを特定（片方でも未発見なら未発見として抽出）
             unfound_scenarios = []
             for scenario_id in area_correct_ids:
-                if scenario_id not in found_ids:
+                azure_found = scenario_id in found_ids_azure
+                vertex_found = scenario_id in found_ids_vertex
+                # 片方でも未発見なら未発見として記録
+                if not azure_found or not vertex_found:
                     # ベクトルDBから内容を取得
                     content = self._fetch_scenario_content(scenario_id, area)
                     unfound_scenarios.append({
@@ -647,6 +651,11 @@ class RevisionEvaluator:
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
+        # オートフィルター設定（テーブル化）
+        total_rows = len(summary_data) + 1  # ヘッダー行 + データ行
+        total_cols = len(column_widths) - 1
+        worksheet.autofilter(1, 0, total_rows, total_cols)
+
     def _create_empty_summary_row(
         self, revision: str, revision_content: str, correct_ids: List[str]
     ) -> Dict[str, Any]:
@@ -706,7 +715,6 @@ class RevisionEvaluator:
     ) -> None:
         cell_fmt = formats["cell"]
         percent_fmt = formats["percent"]
-        unfound_fmt = formats["unfound_cell"]
 
         for row_num, row_data in enumerate(summary_data, start=2):
             worksheet.write(row_num, 0, row_data["改定番号"], cell_fmt)
@@ -721,8 +729,8 @@ class RevisionEvaluator:
             worksheet.write(row_num, 9, row_data["VertexAI_正解発見数"], cell_fmt)
             worksheet.write(row_num, 10, row_data["VertexAI_正解発見率"], percent_fmt)
             worksheet.write(row_num, 11, row_data["VertexAI_必要確認件数"], cell_fmt)
-            worksheet.write(row_num, 12, row_data.get("未発見数", 0), unfound_fmt)
-            worksheet.write(row_num, 13, row_data.get("未発見ID", ""), unfound_fmt)
+            worksheet.write(row_num, 12, row_data.get("未発見数", 0), cell_fmt)
+            worksheet.write(row_num, 13, row_data.get("未発見ID", ""), cell_fmt)
 
     def _write_detail_sheets(
         self,
@@ -770,7 +778,7 @@ class RevisionEvaluator:
     ) -> None:
         worksheet = writer.book.add_worksheet(sheet_name)
 
-        common_headers = ["改定内容", "正解ID一覧", "LLM強化クエリ", "抽出キーワード", "ベクトル重み"]
+        common_headers = ["検出フラグ", "改定内容", "正解ID一覧", "LLM強化クエリ", "抽出キーワード", "ベクトル重み"]
         result_headers = ["シナリオID", "類似度", "カテゴリ", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "ソース"]
         unfound_headers = ["未発見ID", "変更内容", "カテゴリ", "質問", "回答"]
 
@@ -804,14 +812,21 @@ class RevisionEvaluator:
         ):
             col = 0
 
+            # 検出フラグ: AzureかVertexAIのどちらかで正解フラグがTRUEならTRUE
+            azure_true = azure_row.get("正解フラグ") == "TRUE"
+            vertex_true = vertex_row.get("正解フラグ") == "TRUE"
+            or_found = "TRUE" if (azure_true or vertex_true) else ""
+            or_fmt = formats["correct"] if or_found == "TRUE" else formats["cell"]
+            worksheet.write(row_num, 0, or_found, or_fmt)
+
             if row_num == 1:
-                worksheet.write(row_num, 0, data["revision_content"], formats["cell"])
-                worksheet.write(row_num, 1, ", ".join(data["correct_ids"]), formats["cell"])
-                worksheet.write(row_num, 2, data.get("llm_query", ""), formats["cell"])
-                worksheet.write(row_num, 3, ", ".join(data.get("keywords", [])), formats["cell"])
-                worksheet.write(row_num, 4, data.get("vector_weight", DEFAULT_VECTOR_WEIGHT), formats["cell"])
+                worksheet.write(row_num, 1, data["revision_content"], formats["cell"])
+                worksheet.write(row_num, 2, ", ".join(data["correct_ids"]), formats["cell"])
+                worksheet.write(row_num, 3, data.get("llm_query", ""), formats["cell"])
+                worksheet.write(row_num, 4, ", ".join(data.get("keywords", [])), formats["cell"])
+                worksheet.write(row_num, 5, data.get("vector_weight", DEFAULT_VECTOR_WEIGHT), formats["cell"])
             else:
-                for i in range(len(common_headers)):
+                for i in range(1, len(common_headers)):
                     worksheet.write(row_num, i, "", formats["cell"])
 
             col = len(common_headers)
@@ -822,12 +837,16 @@ class RevisionEvaluator:
             self._write_unfound_row(worksheet, row_num, col, unfound_row, formats)
 
         # 列幅設定（common + azure + vertex + unfound）
-        column_widths = [60, 30, 50, 25, 12] + [18, 10, 18, 12, 50, 50, 15, 40, 15] * 2 + [18, 12, 18, 50, 50]
+        column_widths = [10, 60, 30, 50, 25, 12] + [18, 10, 18, 12, 50, 50, 15, 40, 15] * 2 + [18, 12, 18, 50, 50]
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
         for row_num in range(max_rows + 1):
             worksheet.set_row(row_num, 60)
+
+        # オートフィルター設定（テーブル化）
+        total_cols = len(column_widths) - 1
+        worksheet.autofilter(0, 0, max_rows, total_cols)
 
     def _write_result_row(
         self, worksheet, row_num: int, start_col: int, row_data: Dict, formats: Dict[str, Any]
@@ -844,7 +863,7 @@ class RevisionEvaluator:
         keys = ["シナリオID", "変更内容", "カテゴリ", "質問", "回答"]
         for i, key in enumerate(keys):
             value = row_data.get(key, "")
-            worksheet.write(row_num, start_col + i, value if value != "" else "", formats["unfound_cell"])
+            worksheet.write(row_num, start_col + i, value if value != "" else "", formats["cell"])
 
 
 def main() -> None:
