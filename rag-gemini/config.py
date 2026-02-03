@@ -69,6 +69,10 @@ class SearchConfig:
     DEFAULT_MODEL_NAME: str = "intfloat/multilingual-e5-base"
     DEFAULT_VECTOR_WEIGHT: float = _batch_settings.get("vector_weight", 0.9)  # バッチ処理用
 
+    # 検索タイプ設定（類似検索 / キーワード必須）
+    DEFAULT_SEARCH_TYPE: str = _common_settings.get("search_type", "hybrid")
+    VALID_SEARCH_TYPES: Tuple[str, ...] = ("hybrid", "keyword_filter")
+
     # 検索方式設定（LLM拡張検索対応）
     DEFAULT_SEARCH_MODE: str = _common_settings.get("search_mode", "original")
     DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = _common_settings.get("enable_query_enhancement", False)
@@ -151,6 +155,9 @@ class SearchConfig:
     input_config: Dict[str, Any] = field(default_factory=dict)  # 新規: 入力設定
     output_config: Dict[str, Any] = field(default_factory=dict) # 新規: 出力設定
     
+    # 検索タイプ設定
+    search_type: str = DEFAULT_SEARCH_TYPE
+
     # 検索方式設定
     search_mode: str = DEFAULT_SEARCH_MODE
     enable_query_enhancement: bool = DEFAULT_ENABLE_QUERY_ENHANCEMENT
@@ -220,6 +227,10 @@ class SearchConfig:
         # Input Validation: 検索設定
         if self.VECTOR_SEARCH_MULTIPLIER < 1:
             raise ValueError(f"VECTOR_SEARCH_MULTIPLIER must be at least 1, got: {self.VECTOR_SEARCH_MULTIPLIER}")
+
+        # 検索タイプの検証
+        if self.search_type not in self.VALID_SEARCH_TYPES:
+            raise ValueError(f"search_type must be one of {self.VALID_SEARCH_TYPES}")
 
         # 検索方式の検証
         if self.search_mode not in self.VALID_SEARCH_MODES:

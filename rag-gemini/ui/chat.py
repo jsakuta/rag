@@ -58,8 +58,10 @@ def initialize_session_state():
         ui_top_k = _ui_settings.get("top_k", 3)
         ui_vector_weight = _ui_settings.get("vector_weight", 0.9)
         ui_search_mode = _ui_settings.get("search_mode", "original")
+        ui_search_type = _ui_settings.get("search_type", "hybrid")
 
         st.session_state.config = SearchConfig(
+            search_type=ui_search_type,  # UIで切り替え可能（類似検索/キーワード必須）
             search_mode=ui_search_mode,  # UIで切り替え可能
             top_k=ui_top_k,
             llm_provider=os.getenv("DEFAULT_LLM_PROVIDER"),
@@ -158,6 +160,7 @@ def _needs_processor_reinit() -> bool:
     config = st.session_state.config
     return (
         st.session_state.get("last_business_area") != st.session_state.business_area
+        or st.session_state.get("last_search_type") != config.search_type
         or st.session_state.get("last_search_mode") != config.search_mode
         or st.session_state.get("last_judgment_support") != config.multi_stage_enable_judgment_support
         or st.session_state.get("last_search_source") != config.search_source
@@ -216,6 +219,7 @@ def _initialize_processor():
     st.session_state.processor.searcher.prepare_search(reference_data)
     st.session_state.processor.searcher._select_db_for_business(business_area)
     st.session_state.last_business_area = business_area
+    st.session_state.last_search_type = st.session_state.config.search_type
     st.session_state.last_search_mode = st.session_state.config.search_mode
     st.session_state.last_judgment_support = st.session_state.config.multi_stage_enable_judgment_support
     st.session_state.last_search_source = st.session_state.config.search_source
@@ -232,13 +236,18 @@ def process_query(query: str):
 
         # ログ: 処理開始
         judgment_enabled = st.session_state.config.multi_stage_enable_judgment_support
+        search_type_labels = {"hybrid": "類似検索", "keyword_filter": "キーワード必須"}
+        search_type_label = search_type_labels.get(st.session_state.config.search_type, st.session_state.config.search_type)
         logger.info(f"=== 質問 {query_number} の処理開始 ===")
         query_display = f"{query[:80]}..." if len(query) > 80 else query
         logger.info(f"クエリ: {query_display}")
+        logger.info(f"検索タイプ: {search_type_label}")
         source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
         search_source_label = source_labels.get(st.session_state.config.search_source, st.session_state.config.search_source)
-        logger.info(f"検索モード: {st.session_state.config.search_mode} (LLM判断支援: {'有効' if judgment_enabled else '無効'})")
-        logger.info(f"検索対象: {search_source_label}")
+        if st.session_state.config.search_type == "hybrid":
+            logger.info(f"検索モード: {st.session_state.config.search_mode} (LLM判断支援: {'有効' if judgment_enabled else '無効'})")
+            logger.info(f"検索対象: {search_source_label}")
+            logger.info(f"検索バランス: ベクトル重み={st.session_state.config.vector_weight:.1f}")
 
         results = processor.searcher.search(str(query_number), query, "")
 
@@ -372,40 +381,79 @@ def run_streamlit_ui():
     with st.sidebar:
         st.title("設定")
         with st.expander("パラメータ調整", expanded=True):
-            # 検索モード選択
-            search_modes = ["original", "llm_enhanced", "multi_stage"]
-            mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索", "multi_stage": "多段階OR検索"}
-            current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0
-            selected_mode = st.selectbox(
-                "検索モード",
-                search_modes,
-                format_func=lambda x: mode_labels[x],
-                index=current_mode_index
+            # 検索タイプ選択（類似検索 / キーワード必須）
+            search_type_labels = {
+                "hybrid": "類似検索（意味で探す）",
+                "keyword_filter": "キーワード必須（ワードを含むもの）"
+            }
+            current_search_type = st.session_state.config.search_type if hasattr(st.session_state.config, 'search_type') else "hybrid"
+            selected_search_type = st.radio(
+                "検索タイプ",
+                options=["hybrid", "keyword_filter"],
+                format_func=lambda x: search_type_labels[x],
+                index=0 if current_search_type == "hybrid" else 1,
+                key="search_type_radio"
             )
-            st.session_state.config.search_mode = selected_mode
+            st.session_state.config.search_type = selected_search_type
 
-            # 検索対象選択
-            search_sources = ["all", "scenario", "history_data"]
-            source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
-            current_source_index = search_sources.index(st.session_state.config.search_source) if st.session_state.config.search_source in search_sources else 0
-            selected_source = st.selectbox(
-                "検索対象",
-                search_sources,
-                format_func=lambda x: source_labels[x],
-                index=current_source_index
-            )
-            st.session_state.config.search_source = selected_source
+            # 類似検索（hybrid）選択時のみ検索バランススライダーを表示
+            if selected_search_type == "hybrid":
+                # ワード重視 ↔ 意味重視のスライダー
+                st.session_state.config.vector_weight = st.slider(
+                    "検索バランス",
+                    0.0, 1.0,
+                    st.session_state.config.vector_weight, 0.1,
+                    help="左：ワード重視 / 右：意味重視"
+                )
+                # keyword_weight を自動計算
+                st.session_state.config.keyword_weight = 1.0 - st.session_state.config.vector_weight
 
-            # 多段階検索パラメータ（multi_stage時のみ表示）
-            if selected_mode == "multi_stage":
-                st.session_state.config.multi_stage_threshold = st.slider(
-                    "しきい値", 0.0, 1.0,
-                    st.session_state.config.multi_stage_threshold, 0.05
+                # スライダーの両端ラベルを表示
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.caption("← ワード重視")
+                with col2:
+                    st.caption("意味重視 →")
+
+            # 検索モード選択（類似検索時のみ有効）
+            if selected_search_type == "hybrid":
+                search_modes = ["original", "llm_enhanced", "multi_stage"]
+                mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索", "multi_stage": "多段階OR検索"}
+                current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0
+                selected_mode = st.selectbox(
+                    "検索モード",
+                    search_modes,
+                    format_func=lambda x: mode_labels[x],
+                    index=current_mode_index
                 )
-                st.session_state.config.multi_stage_enable_judgment_support = st.checkbox(
-                    "LLM判断支援",
-                    value=st.session_state.config.multi_stage_enable_judgment_support
+                st.session_state.config.search_mode = selected_mode
+
+                # 検索対象選択
+                search_sources = ["all", "scenario", "history_data"]
+                source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
+                current_source_index = search_sources.index(st.session_state.config.search_source) if st.session_state.config.search_source in search_sources else 0
+                selected_source = st.selectbox(
+                    "検索対象",
+                    search_sources,
+                    format_func=lambda x: source_labels[x],
+                    index=current_source_index
                 )
+                st.session_state.config.search_source = selected_source
+
+                # 多段階検索パラメータ（multi_stage時のみ表示）
+                if selected_mode == "multi_stage":
+                    st.session_state.config.multi_stage_threshold = st.slider(
+                        "しきい値", 0.0, 1.0,
+                        st.session_state.config.multi_stage_threshold, 0.05
+                    )
+                    st.session_state.config.multi_stage_enable_judgment_support = st.checkbox(
+                        "LLM判断支援",
+                        value=st.session_state.config.multi_stage_enable_judgment_support
+                    )
+            else:
+                # キーワード必須検索の場合は固定値
+                selected_mode = "original"
+                st.session_state.config.search_mode = "original"
 
             # 業務分野選択（動的に取得）
             business_areas = get_available_business_areas()
@@ -419,7 +467,6 @@ def run_streamlit_ui():
                 business_areas,
                 index=business_areas.index(current_area)
             )
-            st.session_state.config.vector_weight = st.slider("ベクトルの重み", 0.0, 1.0, st.session_state.config.vector_weight, 0.1)
 
             # 多段階検索ではtop_kは使用しない（しきい値ベースのフィルタリング）
             if selected_mode != "multi_stage":

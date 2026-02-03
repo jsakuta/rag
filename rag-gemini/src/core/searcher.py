@@ -352,7 +352,13 @@ class Searcher:
         Returns:
             list: 検索結果のリスト
         """
-        # Step 1: 動的DB選択
+        # キーワード必須検索の場合は専用メソッドを使用
+        if self.config.search_type == "keyword_filter":
+            return self._execute_keyword_filter_search(
+                input_number, query_text, original_answer
+            )
+
+        # Step 1: 動的DB選択（ハイブリッド検索の場合のみ）
         self._select_db_if_needed(input_file)
 
         # 多段階検索モードの場合は専用メソッドを使用
@@ -679,6 +685,113 @@ class Searcher:
         # 各結果のInput_Numberを確認（デバッグレベル）
         for j, result in enumerate(results):
             logger.debug(f"    最終結果{j+1}: Input_Number='{result.get('Input_Number', 'MISSING')}'")
+
+        return results
+
+    def _execute_keyword_filter_search(
+        self, input_number: str, query_text: str, original_answer: str
+    ) -> list:
+        """キーワード必須検索を実行（入力ワードを含む結果のみ返す）
+
+        Args:
+            input_number: 入力番号
+            query_text: 検索クエリテキスト
+            original_answer: 元の回答
+
+        Returns:
+            list: 検索結果のリスト（キーワードを含むもののみ）
+        """
+        logger.info(f"Row (No.{input_number}):")
+        logger.info(f"  Search type: keyword_filter (キーワード必須検索)")
+        logger.info(f"  Original query: {query_text[:100]}...")
+
+        # Step 1: キーワード抽出
+        keywords = self._extract_keywords(query_text)
+        if not keywords:
+            logger.warning("  キーワードが抽出できませんでした")
+            return []
+        logger.info(f"  Extracted keywords: {keywords}")
+
+        # Step 2: キーワードキャッシュを使用してフィルタリング
+        query_keywords_set = set(keywords)
+        matched_results = []
+
+        for idx, ref_keywords in self._reference_keywords_cache.items():
+            # キーワードの共通部分をカウント
+            match_count = len(query_keywords_set.intersection(ref_keywords))
+            if match_count > 0:
+                matched_results.append((idx, match_count))
+
+        if not matched_results:
+            logger.info("  キーワードに一致する結果がありませんでした")
+            return []
+
+        # Step 3: マッチ数の降順でソート、同数の場合は元の順序（idx昇順）
+        matched_results.sort(key=lambda x: (-x[1], x[0]))
+        logger.info(f"  Keyword filter matched: {len(matched_results)} results")
+
+        # Step 4: 結果をフォーマット
+        results = []
+        for idx, match_count in matched_results:
+            if idx >= len(self.reference_texts):
+                logger.warning(f"  Index {idx} out of range, skipping")
+                continue
+
+            # メタデータを取得
+            metadata = self.reference_metadatas[idx] if idx < len(self.reference_metadatas) else {}
+            combined_text = self.reference_texts[idx]
+            parsed_text = self.parse_enhanced_combined_text(combined_text)
+
+            # 階層構造 + 質問を表示
+            if metadata.get('source') == 'scenario':
+                hierarchy = metadata.get('hierarchy', '')
+                query = parsed_text['query']
+                if hierarchy and query:
+                    search_result_query = f"{hierarchy} > {query}"
+                elif hierarchy:
+                    search_result_query = hierarchy
+                else:
+                    search_result_query = query
+                search_result_answer = parsed_text['answer']
+            else:
+                search_result_query = parsed_text['query']
+                search_result_answer = parsed_text['answer']
+
+            # シナリオIDを生成（シート名_行番号）
+            sheet_name = metadata.get('sheet_name', '')
+            row_index = metadata.get('row_index', '')
+            scenario_id = f"{sheet_name}_{row_index}" if sheet_name and row_index != '' else ''
+
+            # マッチ数を類似度スコアとして使用（正規化: マッチ数 / クエリキーワード数）
+            similarity_score = match_count / len(query_keywords_set) if query_keywords_set else 0.0
+
+            result_data = {
+                'Input_Number': '',
+                'Original_Query': '',
+                'Original_Answer': '',
+                'Search_Query': '',
+                'Search_Result_Q': search_result_query,
+                'Search_Result_A': search_result_answer,
+                'Similarity': similarity_score,
+                'Match_Count': match_count,  # デバッグ用
+                'Scenario_ID': scenario_id,
+                'Sheet_Name': sheet_name,
+                'Row_Index': row_index,
+                'Vector_Weight': 0.0,  # キーワードフィルタではベクトルを使用しない
+                'Top_K': self.config.top_k
+            }
+            results.append(result_data)
+
+        # Step 5: top_k件に制限
+        results = results[:self.config.top_k]
+        logger.info(f"  Final results: {len(results)} items (limited to top_k={self.config.top_k})")
+
+        # 1位のみに質問情報を設定
+        if results:
+            results[0]['Input_Number'] = input_number
+            results[0]['Original_Query'] = query_text
+            results[0]['Original_Answer'] = original_answer
+            results[0]['Search_Query'] = f"[キーワード必須] {', '.join(keywords)}"
 
         return results
 
