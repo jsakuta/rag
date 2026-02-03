@@ -73,24 +73,28 @@ MAX_RESULTS = _settings["max_results"]
 FILTER_MODE = _settings.get("filter_mode", "threshold")
 TOP_K = _settings.get("top_k", 50)
 
-# 新しい形式に対応（areas/vector_weightを含む辞書）
+# 新しい形式に対応（areas/vector_weight/search_typeを含む辞書）
 _raw_revision_areas = _settings["revision_areas"]
 REVISION_TO_AREAS = {}
 REVISION_VECTOR_WEIGHTS = {}
+REVISION_SEARCH_TYPES = {}
 
 for rev, config in _raw_revision_areas.items():
     if isinstance(config, dict):
         REVISION_TO_AREAS[rev] = config.get("areas", [])
         REVISION_VECTOR_WEIGHTS[rev] = config.get("vector_weight", DEFAULT_VECTOR_WEIGHT)
+        REVISION_SEARCH_TYPES[rev] = config.get("search_type", "hybrid")
     else:
         # 旧形式（リスト直接指定）への後方互換性
         REVISION_TO_AREAS[rev] = config
         REVISION_VECTOR_WEIGHTS[rev] = DEFAULT_VECTOR_WEIGHT
+        REVISION_SEARCH_TYPES[rev] = "hybrid"
 
 # パス定数
 INPUT_FILE = PROJECT_ROOT / "input" / "multi_stage_input.xlsx"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 VECTOR_DB_BASE = PROJECT_ROOT / "reference" / "vector_db"
+SCENARIO_DIR = PROJECT_ROOT / "reference" / "scenario"
 
 
 class RevisionEvaluator:
@@ -248,6 +252,126 @@ class RevisionEvaluator:
             logger.error(f"参照クエリ取得エラー ({area}/{provider}): {e}")
             return []
 
+    def _load_scenario_excel(self, area: str) -> pd.DataFrame:
+        """シナリオExcelを読み込み"""
+        pattern = f"{area}_シナリオデータ_*.xlsx"
+        files = list(SCENARIO_DIR.glob(pattern))
+        if not files:
+            logger.warning(f"シナリオファイルが見つかりません: {pattern}")
+            return pd.DataFrame()
+        # 最新ファイルを使用
+        latest_file = max(files, key=lambda f: f.stat().st_mtime)
+        logger.info(f"シナリオExcel読み込み: {latest_file.name}")
+        return pd.read_excel(latest_file)
+
+    def _execute_keyword_filter_search(
+        self, revision: str, query: str, correct_ids: List[str]
+    ) -> Tuple[Dict[str, List[Dict]], str, List[str], List[str]]:
+        """キーワード必須検索（Excel直接）"""
+        areas = REVISION_TO_AREAS.get(revision, [])
+        if not areas:
+            logger.warning(f"改定 {revision} に対応するエリアがありません")
+            return {}, "", [], []
+
+        # キーワード抽出
+        keyword_engine = KeywordSearchEngine(
+            stop_words=self.config.STOP_WORDS,
+            position_weight=self.config.POSITION_WEIGHT,
+        )
+        keywords = keyword_engine.extract_keywords(query)
+        logger.info(f"  抽出キーワード: {keywords}")
+
+        results_by_area = {}
+        searched_areas = []
+
+        for area in areas:
+            # シナリオExcel読み込み
+            df = self._load_scenario_excel(area)
+            if df.empty:
+                logger.warning(f"  {area}: シナリオExcelが空です")
+                continue
+
+            # 各行に対してキーワードマッチング
+            matched = []
+            for idx, row in df.iterrows():
+                # 全レベルを結合してテキストを作成
+                # Lv1〜Lv4: カテゴリ, Lv5: 質問, Lv6〜: 回答
+                text_parts = []
+                for col in df.columns:
+                    if col.startswith("Lv") and pd.notna(row.get(col)):
+                        text_parts.append(str(row[col]))
+                # 明示的な質問/回答列がある場合
+                for col in ["質問", "回答"]:
+                    if col in df.columns and pd.notna(row.get(col)):
+                        text_parts.append(str(row[col]))
+                text = " ".join(text_parts)
+                text_lower = text.lower()  # 大文字小文字を無視してマッチング
+
+                # キーワードマッチ数をカウント（大文字小文字を無視）
+                match_count = sum(1 for kw in keywords if kw.lower() in text_lower)
+                if match_count > 0:
+                    matched.append({
+                        "row_index": idx,
+                        "row": row,
+                        "match_count": match_count,
+                    })
+
+            # マッチ数順でソート（降順）
+            matched.sort(key=lambda x: -x["match_count"])
+
+            # 結果をフォーマット
+            area_results = []
+            bot_name = self._extract_bot_name_from_area(area)
+            for m in matched[:MAX_RESULTS]:  # TOP_K件に制限
+                row = m["row"]
+                # Excel行番号 = row_index + 2（ヘッダー行1 + 0-based index）
+                excel_row = m["row_index"] + 2
+                scenario_id = f"{bot_name}_{excel_row}"
+
+                # カテゴリ（Lv1〜Lv4を結合）
+                category_parts = []
+                for col in ["Lv1", "Lv2", "Lv3", "Lv4"]:
+                    if col in df.columns and pd.notna(row.get(col)):
+                        category_parts.append(str(row[col]))
+                category = " > ".join(category_parts)
+
+                # 質問（明示的な列があればそれを使用、なければLv5）
+                if "質問" in df.columns and pd.notna(row.get("質問")):
+                    question = str(row["質問"])
+                elif "Lv5" in df.columns and pd.notna(row.get("Lv5")):
+                    question = str(row["Lv5"])
+                else:
+                    question = ""
+
+                # 回答（明示的な列があればそれを使用、なければLv6以降を結合）
+                if "回答" in df.columns and pd.notna(row.get("回答")):
+                    answer = str(row["回答"])
+                else:
+                    answer_parts = []
+                    for col in ["Lv6", "Lv7", "Lv8", "Lv9", "Lv10"]:
+                        if col in df.columns and pd.notna(row.get(col)):
+                            answer_parts.append(str(row[col]))
+                    answer = "\n".join(answer_parts)
+
+                # マッチ率を類似度として使用（0-1のスケール）
+                similarity = m["match_count"] / len(keywords) if keywords else 0
+
+                area_results.append({
+                    "シナリオID": scenario_id,
+                    "類似度": round(similarity, 4),
+                    "カテゴリ": category,
+                    "正解フラグ": "TRUE" if scenario_id in correct_ids else "FALSE",
+                    "質問": question,
+                    "回答": answer,
+                    "ソース": area,
+                })
+
+            results_by_area[area] = area_results
+            searched_areas.append(area)
+            logger.info(f"  {area}: {len(area_results)}件取得（キーワード検索）")
+
+        return results_by_area, "", keywords, searched_areas
+
     def _convert_result_to_dict(
         self, result: Dict[str, Any], correct_ids: List[str], area: str
     ) -> Dict[str, Any]:
@@ -281,6 +405,18 @@ class RevisionEvaluator:
         if not areas:
             logger.warning(f"改定 {revision} に対応するDBがありません")
             return {}, "", [], []
+
+        # 検索タイプを取得
+        search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
+
+        # キーワード必須検索の場合はExcel直接検索（プロバイダー非依存）
+        if search_type == "keyword_filter":
+            # 最初のプロバイダー呼び出し時のみ実行
+            if provider == "azure_openai":
+                return self._execute_keyword_filter_search(revision, query, correct_ids)
+            else:
+                # VertexAI呼び出し時は空の結果を返す（Azure側の結果を使用）
+                return {}, "", [], []
 
         # 改定番号別のベクトル重みを取得
         vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
@@ -400,8 +536,9 @@ class RevisionEvaluator:
         correct_ids: List[str],
         change_details_map: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        # 改定番号別のベクトル重みを取得
+        # 改定番号別のベクトル重みと検索タイプを取得
         vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
+        search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
 
         # change_details_mapがない場合は空の辞書で初期化
         if change_details_map is None:
@@ -417,8 +554,68 @@ class RevisionEvaluator:
             "llm_query": "",
             "keywords": [],
             "vector_weight": vector_weight,
+            "search_type": search_type,
         }
 
+        # キーワード必須検索の場合
+        if search_type == "keyword_filter":
+            # Excel直接検索（プロバイダー非依存）
+            keyword_results_by_area, _, keywords, searched_areas = (
+                self._execute_keyword_filter_search(revision, revision_content, correct_ids)
+            )
+            evaluation_result["keywords"] = keywords
+
+            total_results = sum(len(r) for r in keyword_results_by_area.values())
+            results_correct = sum(
+                1
+                for area_results in keyword_results_by_area.values()
+                for r in area_results
+                if r.get("正解フラグ") == "TRUE"
+            )
+            print_search_result(
+                "keyword", total_results, searched_areas, results_correct, len(correct_ids)
+            )
+
+            evaluation_result["areas"] = searched_areas
+
+            for area in searched_areas:
+                area_correct_ids = self._filter_correct_ids_by_area(correct_ids, area)
+                keyword_results = keyword_results_by_area.get(area, [])
+
+                if self.enable_llm_analysis and keyword_results:
+                    keyword_results = self._run_llm_analysis(keyword_results, revision_content)
+
+                # 検索結果から発見済みシナリオIDを収集
+                found_ids = set()
+                for result in keyword_results:
+                    if result.get("正解フラグ") == "TRUE":
+                        found_ids.add(result["シナリオID"])
+
+                # 未発見シナリオを特定
+                unfound_scenarios = []
+                for scenario_id in area_correct_ids:
+                    if scenario_id not in found_ids:
+                        # シナリオExcelから内容を取得（ベクトルDBを使わない）
+                        content = self._fetch_scenario_content(scenario_id, area)
+                        unfound_scenarios.append({
+                            "シナリオID": scenario_id,
+                            "変更内容": change_details_map.get(scenario_id, ""),
+                            "質問": content.get("質問", "") if content else "",
+                            "回答": content.get("回答", "") if content else "",
+                            "カテゴリ": content.get("カテゴリ", "") if content else "",
+                        })
+
+                # キーワード必須検索の場合、Azure/VertexAI両方に同じ結果を設定
+                evaluation_result["by_area"][area] = {
+                    "azure_results": keyword_results,
+                    "vertex_results": keyword_results,  # 同じ結果を両方に表示
+                    "correct_ids": area_correct_ids,
+                    "unfound_scenarios": unfound_scenarios,
+                }
+
+            return evaluation_result
+
+        # 類似検索（hybrid）の場合 - 従来通り
         # Azure検索
         azure_results_by_area, llm_query, keywords, azure_areas = (
             self.search_revision_multi_stage(
@@ -766,6 +963,7 @@ class RevisionEvaluator:
                     "areas": [area],
                     "by_area": {area: data.get("by_area", {}).get(area, {})},
                     "vector_weight": data.get("vector_weight", DEFAULT_VECTOR_WEIGHT),
+                    "search_type": data.get("search_type", "hybrid"),
                 }
                 self._write_single_detail_sheet(writer, sheet_name, area_data, formats)
 
@@ -778,7 +976,7 @@ class RevisionEvaluator:
     ) -> None:
         worksheet = writer.book.add_worksheet(sheet_name)
 
-        common_headers = ["検出フラグ", "改定内容", "正解ID一覧", "LLM強化クエリ", "抽出キーワード", "ベクトル重み"]
+        common_headers = ["検出フラグ", "改定内容", "正解ID一覧", "LLM強化クエリ", "抽出キーワード", "検索タイプ", "ベクトル重み"]
         result_headers = ["シナリオID", "類似度", "カテゴリ", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "ソース"]
         unfound_headers = ["未発見ID", "変更内容", "カテゴリ", "質問", "回答"]
 
@@ -824,7 +1022,15 @@ class RevisionEvaluator:
                 worksheet.write(row_num, 2, ", ".join(data["correct_ids"]), formats["cell"])
                 worksheet.write(row_num, 3, data.get("llm_query", ""), formats["cell"])
                 worksheet.write(row_num, 4, ", ".join(data.get("keywords", [])), formats["cell"])
-                worksheet.write(row_num, 5, data.get("vector_weight", DEFAULT_VECTOR_WEIGHT), formats["cell"])
+                # 検索タイプ表示（キーワード必須 or 類似検索）
+                search_type = data.get("search_type", "hybrid")
+                search_type_label = "キーワード必須" if search_type == "keyword_filter" else "類似検索"
+                worksheet.write(row_num, 5, search_type_label, formats["cell"])
+                # ベクトル重み（キーワード必須の場合は「-」）
+                if search_type == "keyword_filter":
+                    worksheet.write(row_num, 6, "-", formats["cell"])
+                else:
+                    worksheet.write(row_num, 6, data.get("vector_weight", DEFAULT_VECTOR_WEIGHT), formats["cell"])
             else:
                 for i in range(1, len(common_headers)):
                     worksheet.write(row_num, i, "", formats["cell"])
@@ -837,7 +1043,7 @@ class RevisionEvaluator:
             self._write_unfound_row(worksheet, row_num, col, unfound_row, formats)
 
         # 列幅設定（common + azure + vertex + unfound）
-        column_widths = [10, 60, 30, 50, 25, 12] + [18, 10, 18, 12, 50, 50, 15, 40, 15] * 2 + [18, 12, 18, 50, 50]
+        column_widths = [10, 60, 30, 50, 25, 15, 12] + [18, 10, 18, 12, 50, 50, 15, 40, 15] * 2 + [18, 12, 18, 50, 50]
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
@@ -901,6 +1107,14 @@ def main() -> None:
     if custom_weights:
         weight_str = ", ".join([f"{rev}={w}" for rev, w in custom_weights])
         print_status(f"カスタム重み: {weight_str}", "info")
+
+    # 改定番号別検索タイプ表示
+    keyword_filter_revisions = [rev for rev, st in REVISION_SEARCH_TYPES.items() if st == "keyword_filter"]
+    if keyword_filter_revisions:
+        print_status(f"キーワード必須検索: {', '.join(keyword_filter_revisions)}", "info")
+    hybrid_revisions = [rev for rev, st in REVISION_SEARCH_TYPES.items() if st == "hybrid"]
+    if hybrid_revisions:
+        print_status(f"類似検索(hybrid): {', '.join(hybrid_revisions)}", "info")
 
     print_status(f"フィルタモード: {FILTER_MODE}", "info")
     if FILTER_MODE == "top_k":

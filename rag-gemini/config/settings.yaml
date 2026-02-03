@@ -146,7 +146,10 @@ evaluation:
   # -------------------------------------------
   # 改定番号とDBエリアの対応
   # areas: 検索対象のベクトルDBエリア
-  # vector_weight: ベクトル検索の重み（0.0-1.0）
+  # search_type: 検索タイプ
+  #   hybrid: 類似検索（意味で探す）- ベクトルDB使用
+  #   keyword_filter: キーワード必須（Excel直接検索）- ベクトルDB不使用
+  # vector_weight: ベクトル検索の重み（0.0-1.0）※ hybrid 時のみ有効
   #   0.9: ベクトル重視（意味的類似性）
   #   0.3: キーワード重視（用語置換など）
   # -------------------------------------------
@@ -154,10 +157,12 @@ evaluation:
     "①":
       areas:
         - rev01smile
+      search_type: hybrid
       vector_weight: 0.9
     "②":
       areas:
         - rev02souzoku
+      search_type: hybrid
       vector_weight: 0.9
     "③":
       areas:
@@ -165,19 +170,21 @@ evaluation:
         - rev03smile
         - rev03souzoku
         - rev03torikaku
+      search_type: hybrid
       vector_weight: 0.9
     "④":
       areas:
         - rev04naibujimu
+      search_type: hybrid
       vector_weight: 0.9
     "⑤":
       areas:
         - rev05smile
-      vector_weight: 0.0
+      search_type: keyword_filter
     "⑥":
       areas:
         - rev06smile
-      vector_weight: 0.0
+      search_type: keyword_filter
 
   # -------------------------------------------
   # ボット名マッピング

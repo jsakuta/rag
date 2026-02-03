@@ -288,6 +288,10 @@ def print_search_result(
             color = "#2196F3"
             icon = "◆"
             name = "Azure"
+        elif provider.lower() in ("keyword", "keyword_filter"):
+            color = "#FF9800"
+            icon = "◈"
+            name = "Keyword"
         else:
             color = "#4CAF50"
             icon = "◇"
