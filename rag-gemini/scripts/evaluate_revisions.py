@@ -67,11 +67,13 @@ logger = setup_logger(__name__)
 # 設定読み込み
 _settings = load_settings("evaluation")
 AREA_TO_BOT = _settings["area_to_bot"]
+AREA_TO_CATEGORY = _settings.get("area_to_category", {})
 THRESHOLD_BY_PROVIDER = _settings["thresholds"]
 DEFAULT_VECTOR_WEIGHT = _settings["vector_weight"]
 MAX_RESULTS = _settings["max_results"]
 FILTER_MODE = _settings.get("filter_mode", "threshold")
 TOP_K = _settings.get("top_k", 50)
+REVISION_SOURCE_FILES = _settings.get("revision_source_files", {})
 
 # 新しい形式に対応（areas/vector_weight/search_typeを含む辞書）
 _raw_revision_areas = _settings["revision_areas"]
@@ -176,6 +178,22 @@ class RevisionEvaluator:
             if keyword in area_lower:
                 return bot_name
         return "unknown-bot"
+
+    def _extract_category_from_area(self, area: str) -> str:
+        """エリア名から日本語カテゴリ名を抽出"""
+        area_lower = area.lower()
+        for keyword, category_name in AREA_TO_CATEGORY.items():
+            if keyword in area_lower:
+                return category_name
+        return area  # マッピングがない場合はエリア名をそのまま返す
+
+    def _get_source_file(self, revision: str, bot_name: str, lv1: str) -> str:
+        """改定番号・ボット名・Lv1カテゴリからソースファイル名を取得"""
+        if not revision or not bot_name or not lv1:
+            return ""
+        rev_config = REVISION_SOURCE_FILES.get(revision, {})
+        bot_config = rev_config.get(bot_name, {})
+        return bot_config.get(lv1, "")
 
     def _filter_correct_ids_by_area(self, correct_ids: List[str], area: str) -> List[str]:
         bot_name = self._extract_bot_name_from_area(area)
@@ -322,18 +340,14 @@ class RevisionEvaluator:
             # 結果をフォーマット
             area_results = []
             bot_name = self._extract_bot_name_from_area(area)
+            # カテゴリ: エリア名から日本語カテゴリ名を抽出
+            category = self._extract_category_from_area(area)
+
             for m in matched[:MAX_RESULTS]:  # TOP_K件に制限
                 row = m["row"]
                 # Excel行番号 = row_index + 2（ヘッダー行1 + 0-based index）
                 excel_row = m["row_index"] + 2
                 scenario_id = f"{bot_name}_{excel_row}"
-
-                # カテゴリ（Lv1〜Lv4を結合）
-                category_parts = []
-                for col in ["Lv1", "Lv2", "Lv3", "Lv4"]:
-                    if col in df.columns and pd.notna(row.get(col)):
-                        category_parts.append(str(row[col]))
-                category = " > ".join(category_parts)
 
                 # 質問（明示的な列があればそれを使用、なければLv5）
                 if "質問" in df.columns and pd.notna(row.get("質問")):
@@ -356,16 +370,27 @@ class RevisionEvaluator:
                 # マッチ率を類似度として使用（0-1のスケール）
                 similarity = m["match_count"] / len(keywords) if keywords else 0
 
+                # Lv1カテゴリからソースファイルを特定
+                lv1 = str(row.get("Lv1", "")) if pd.notna(row.get("Lv1")) else ""
+                source_file = self._get_source_file(revision, bot_name, lv1)
+
                 area_results.append({
+                    "順位": 0,  # 呼び出し元で設定
                     "シナリオID": scenario_id,
                     "類似度": round(similarity, 4),
-                    "カテゴリ": category,
+                    "マッチ種別": "Keyword",  # キーワード検索
                     "正解フラグ": "TRUE" if scenario_id in correct_ids else "FALSE",
                     "質問": question,
                     "回答": answer,
-                    "ソース": area,
+                    "関連性判定": "",
+                    "判定根拠": "",
+                    "カテゴリ": category,
+                    "ソースファイル": source_file,
                 })
 
+            # 順位を設定
+            for i, result in enumerate(area_results):
+                result["順位"] = i + 1
             results_by_area[area] = area_results
             searched_areas.append(area)
             logger.info(f"  {area}: {len(area_results)}件取得（キーワード検索）")
@@ -373,29 +398,43 @@ class RevisionEvaluator:
         return results_by_area, "", keywords, searched_areas
 
     def _convert_result_to_dict(
-        self, result: Dict[str, Any], correct_ids: List[str], area: str
+        self, result: Dict[str, Any], correct_ids: List[str], area: str, revision: str = ""
     ) -> Dict[str, Any]:
         sheet_name = result.get(SearchResultKeys.SHEET_NAME, "")
         row_index = result.get(SearchResultKeys.ROW_INDEX, "")
 
         scenario_id = result.get(SearchResultKeys.SCENARIO_ID, "")
+        bot_name = self._extract_bot_name_from_area(area)
         if sheet_name and row_index != "":
             try:
                 # シナリオID = row_index + 2 (Excel行番号)
                 excel_row = int(row_index) + 2
-                bot_name = self._extract_bot_name_from_area(area)
                 scenario_id = f"{bot_name}_{excel_row}"
             except (ValueError, TypeError):
                 pass
 
+        # カテゴリ: エリア名から日本語カテゴリ名を抽出
+        category = self._extract_category_from_area(area)
+
+        # 質問テキストからLv1カテゴリを抽出してソースファイルを特定
+        # 質問テキストは「分類 > サブカテゴリ > 質問」形式
+        question = result.get(SearchResultKeys.SEARCH_RESULT_Q, "")
+        # 質問テキストの最初の部分（ > の前）がLv1
+        lv1 = question.split(" > ")[0] if " > " in question else ""
+        source_file = self._get_source_file(revision, bot_name, lv1)
+
         return {
+            "順位": 0,  # 呼び出し元で設定
             "シナリオID": scenario_id,
             "類似度": round(result.get(SearchResultKeys.SIMILARITY, 0), 4),
-            "カテゴリ": result.get(SearchResultKeys.SEARCH_CATEGORY, ""),
+            "マッチ種別": result.get(SearchResultKeys.SEARCH_CATEGORY, ""),
             "正解フラグ": "TRUE" if scenario_id in correct_ids else "FALSE",
             "質問": result.get(SearchResultKeys.SEARCH_RESULT_Q, ""),
             "回答": result.get(SearchResultKeys.SEARCH_RESULT_A, ""),
-            "ソース": area,
+            "関連性判定": "",
+            "判定根拠": "",
+            "カテゴリ": category,
+            "ソースファイル": source_file,
         }
 
     def search_revision_multi_stage(
@@ -449,9 +488,13 @@ class RevisionEvaluator:
                 if not llm_query and results:
                     llm_query = results[0].get(SearchResultKeys.SEARCH_QUERY, query)
 
-                results_by_area[area] = [
-                    self._convert_result_to_dict(r, correct_ids, area) for r in results
+                converted_results = [
+                    self._convert_result_to_dict(r, correct_ids, area, revision) for r in results
                 ]
+                # 順位を設定
+                for i, result in enumerate(converted_results):
+                    result["順位"] = i + 1
+                results_by_area[area] = converted_results
                 searched_areas.append(area)
                 logger.info(f"  {area}: {len(results)}件取得")
             except Exception as e:
@@ -593,16 +636,21 @@ class RevisionEvaluator:
 
                 # 未発見シナリオを特定
                 unfound_scenarios = []
+                bot_name = self._extract_bot_name_from_area(area)
                 for scenario_id in area_correct_ids:
                     if scenario_id not in found_ids:
                         # シナリオExcelから内容を取得（ベクトルDBを使わない）
                         content = self._fetch_scenario_content(scenario_id, area)
+                        # カテゴリ（Lv1）からソースファイルを特定
+                        lv1 = content.get("カテゴリ", "").split(" > ")[0] if content else ""
+                        source_file = self._get_source_file(revision, bot_name, lv1)
                         unfound_scenarios.append({
                             "シナリオID": scenario_id,
                             "変更内容": change_details_map.get(scenario_id, ""),
+                            "カテゴリ": content.get("カテゴリ", "") if content else "",
+                            "ソースファイル": source_file,
                             "質問": content.get("質問", "") if content else "",
                             "回答": content.get("回答", "") if content else "",
-                            "カテゴリ": content.get("カテゴリ", "") if content else "",
                         })
 
                 # キーワード必須検索の場合、Azure/VertexAI両方に同じ結果を設定
@@ -677,6 +725,7 @@ class RevisionEvaluator:
 
             # 未発見シナリオを特定（片方でも未発見なら未発見として抽出）
             unfound_scenarios = []
+            bot_name = self._extract_bot_name_from_area(area)
             for scenario_id in area_correct_ids:
                 azure_found = scenario_id in found_ids_azure
                 vertex_found = scenario_id in found_ids_vertex
@@ -684,12 +733,16 @@ class RevisionEvaluator:
                 if not azure_found or not vertex_found:
                     # ベクトルDBから内容を取得
                     content = self._fetch_scenario_content(scenario_id, area)
+                    # カテゴリ（Lv1）からソースファイルを特定
+                    lv1 = content.get("カテゴリ", "").split(" > ")[0] if content else ""
+                    source_file = self._get_source_file(revision, bot_name, lv1)
                     unfound_scenarios.append({
                         "シナリオID": scenario_id,
                         "変更内容": change_details_map.get(scenario_id, ""),
+                        "カテゴリ": content.get("カテゴリ", "") if content else "",
+                        "ソースファイル": source_file,
                         "質問": content.get("質問", "") if content else "",
                         "回答": content.get("回答", "") if content else "",
-                        "カテゴリ": content.get("カテゴリ", "") if content else "",
                     })
 
             evaluation_result["by_area"][area] = {
@@ -770,6 +823,7 @@ class RevisionEvaluator:
             "vertex_header": workbook.add_format({**header_style, "bg_color": "#E2EFDA", "text_wrap": True}),
             "unfound_header": workbook.add_format({**header_style, "bg_color": "#FDE9D9", "text_wrap": True}),
             "cell": workbook.add_format({**base_style, "valign": "top", "text_wrap": True}),
+            "cell_nowrap": workbook.add_format({**base_style, "valign": "top", "text_wrap": False}),
             "correct": workbook.add_format({
                 **base_style, "bg_color": "#C6EFCE", "font_color": "#006100", "valign": "top"
             }),
@@ -815,15 +869,10 @@ class RevisionEvaluator:
                 unfound_count = len(unfound_scenarios)
                 unfound_ids = ", ".join([s["シナリオID"] for s in unfound_scenarios])
 
-                content_preview = (
-                    revision_content[:50] + "..."
-                    if len(revision_content) > 50
-                    else revision_content
-                )
                 summary_data.append({
                     "改定番号": revision,
                     "エリア": area,
-                    "改定内容": content_preview,
+                    "改定内容": revision_content,
                     "正解数": len(area_correct_ids),
                     "Azure_候補数": azure_metrics["候補数"],
                     "Azure_正解発見数": azure_metrics["正解発見数"],
@@ -844,7 +893,7 @@ class RevisionEvaluator:
         self._write_summary_headers(worksheet, formats)
         self._write_summary_data(worksheet, summary_data, formats)
 
-        column_widths = [10, 20, 50, 8, 8, 12, 12, 18, 8, 12, 12, 18, 10, 40]
+        column_widths = [10, 12, 15, 8, 8, 12, 12, 18, 8, 12, 12, 18, 10, 40]
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
@@ -856,15 +905,10 @@ class RevisionEvaluator:
     def _create_empty_summary_row(
         self, revision: str, revision_content: str, correct_ids: List[str]
     ) -> Dict[str, Any]:
-        content_preview = (
-            revision_content[:50] + "..."
-            if len(revision_content) > 50
-            else revision_content
-        )
         return {
             "改定番号": revision,
             "エリア": "-",
-            "改定内容": content_preview,
+            "改定内容": revision_content,
             "正解数": len(correct_ids),
             "Azure_候補数": 0,
             "Azure_正解発見数": 0,
@@ -911,12 +955,13 @@ class RevisionEvaluator:
         self, worksheet, summary_data: List[Dict], formats: Dict[str, Any]
     ) -> None:
         cell_fmt = formats["cell"]
+        cell_nowrap_fmt = formats["cell_nowrap"]
         percent_fmt = formats["percent"]
 
         for row_num, row_data in enumerate(summary_data, start=2):
             worksheet.write(row_num, 0, row_data["改定番号"], cell_fmt)
-            worksheet.write(row_num, 1, row_data["エリア"], cell_fmt)
-            worksheet.write(row_num, 2, row_data["改定内容"], cell_fmt)
+            worksheet.write(row_num, 1, row_data["エリア"], cell_nowrap_fmt)
+            worksheet.write(row_num, 2, row_data["改定内容"], cell_nowrap_fmt)
             worksheet.write(row_num, 3, row_data["正解数"], cell_fmt)
             worksheet.write(row_num, 4, row_data["Azure_候補数"], cell_fmt)
             worksheet.write(row_num, 5, row_data["Azure_正解発見数"], cell_fmt)
@@ -977,8 +1022,8 @@ class RevisionEvaluator:
         worksheet = writer.book.add_worksheet(sheet_name)
 
         common_headers = ["検出フラグ", "改定内容", "正解ID一覧", "LLM強化クエリ", "抽出キーワード", "検索タイプ", "ベクトル重み"]
-        result_headers = ["シナリオID", "類似度", "カテゴリ", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "ソース"]
-        unfound_headers = ["未発見ID", "変更内容", "カテゴリ", "質問", "回答"]
+        result_headers = ["順位", "シナリオID", "類似度", "マッチ種別", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "カテゴリ", "ソースファイル"]
+        unfound_headers = ["未発見ID", "変更内容", "カテゴリ", "ソースファイル", "質問", "回答"]
 
         col = 0
         for header in common_headers:
@@ -1017,8 +1062,11 @@ class RevisionEvaluator:
             or_fmt = formats["correct"] if or_found == "TRUE" else formats["cell"]
             worksheet.write(row_num, 0, or_found, or_fmt)
 
+            # 改定内容は全行に出力
+            worksheet.write(row_num, 1, data["revision_content"], formats["cell"])
+
             if row_num == 1:
-                worksheet.write(row_num, 1, data["revision_content"], formats["cell"])
+                # 正解ID一覧、LLM強化クエリ等は1行目のみ
                 worksheet.write(row_num, 2, ", ".join(data["correct_ids"]), formats["cell"])
                 worksheet.write(row_num, 3, data.get("llm_query", ""), formats["cell"])
                 worksheet.write(row_num, 4, ", ".join(data.get("keywords", [])), formats["cell"])
@@ -1032,7 +1080,8 @@ class RevisionEvaluator:
                 else:
                     worksheet.write(row_num, 6, data.get("vector_weight", DEFAULT_VECTOR_WEIGHT), formats["cell"])
             else:
-                for i in range(1, len(common_headers)):
+                # 2行目以降は正解ID一覧、LLM強化クエリ等は空
+                for i in range(2, len(common_headers)):
                     worksheet.write(row_num, i, "", formats["cell"])
 
             col = len(common_headers)
@@ -1043,7 +1092,8 @@ class RevisionEvaluator:
             self._write_unfound_row(worksheet, row_num, col, unfound_row, formats)
 
         # 列幅設定（common + azure + vertex + unfound）
-        column_widths = [10, 60, 30, 50, 25, 15, 12] + [18, 10, 18, 12, 50, 50, 15, 40, 15] * 2 + [18, 12, 18, 50, 50]
+        # 順位(6), シナリオID(18), 類似度(10), マッチ種別(15), 正解フラグ(12), 質問(50), 回答(50), 関連性判定(15), 判定根拠(40), カテゴリ(30), ソースファイル(40)
+        column_widths = [10, 60, 30, 50, 25, 15, 12] + [6, 18, 10, 15, 12, 50, 50, 15, 40, 30, 40] * 2 + [18, 12, 18, 40, 50, 50]
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
@@ -1057,7 +1107,7 @@ class RevisionEvaluator:
     def _write_result_row(
         self, worksheet, row_num: int, start_col: int, row_data: Dict, formats: Dict[str, Any]
     ) -> None:
-        keys = ["シナリオID", "類似度", "カテゴリ", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "ソース"]
+        keys = ["順位", "シナリオID", "類似度", "マッチ種別", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "カテゴリ", "ソースファイル"]
         for i, key in enumerate(keys):
             value = row_data.get(key, "")
             fmt = formats["correct"] if key == "正解フラグ" and value == "TRUE" else formats["cell"]
@@ -1066,7 +1116,7 @@ class RevisionEvaluator:
     def _write_unfound_row(
         self, worksheet, row_num: int, start_col: int, row_data: Dict, formats: Dict[str, Any]
     ) -> None:
-        keys = ["シナリオID", "変更内容", "カテゴリ", "質問", "回答"]
+        keys = ["シナリオID", "変更内容", "カテゴリ", "ソースファイル", "質問", "回答"]
         for i, key in enumerate(keys):
             value = row_data.get(key, "")
             worksheet.write(row_num, start_col + i, value if value != "" else "", formats["cell"])
