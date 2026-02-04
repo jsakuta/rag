@@ -1014,4 +1014,8 @@ class Searcher:
         add_with_category(llm_results, llm_only_ids, 'LLM_Enhanced_Only', llm_query)
 
         merged_results.sort(key=lambda x: x['Similarity'], reverse=True)
+
+        # 上位K件に絞る
+        merged_results = merged_results[:self.config.top_k]
+
         return merged_results

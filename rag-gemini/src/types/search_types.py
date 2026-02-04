@@ -254,6 +254,8 @@ class SearchResultKeys:
     VECTOR_WEIGHT = 'Vector_Weight'
     TOP_K = 'Top_K'
     SEARCH_CATEGORY = 'Search_Category'
+    HIERARCHY = 'Hierarchy'
+    LV1_CATEGORY = 'Lv1_Category'  # Lv1カテゴリ（「預金関連」「諸届」など）
 
 
 class MetadataKeys:
@@ -262,6 +264,7 @@ class MetadataKeys:
     HIERARCHY = 'hierarchy'
     SHEET_NAME = 'sheet_name'
     ROW_INDEX = 'row_index'
+    DATE = 'date'  # Lv1カテゴリ（「預金関連」「諸届」など）
 
 
 class SourceValues:

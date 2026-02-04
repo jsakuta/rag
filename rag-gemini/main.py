@@ -133,7 +133,7 @@ def main():
     # インタラクティブモード（UIモード）- DB更新は検索時にオンデマンド実行
     if args.command == "interactive":
         logger.info("Starting in interactive mode (DB updates on-demand)")
-        config.vector_weight = config.DEFAULT_UI_VECTOR_WEIGHT
+        config.vector_weight = config.DEFAULT_VECTOR_WEIGHT
         process = None
         try:
             # Subprocess Security: sys.executableの検証

@@ -244,6 +244,8 @@ class MultiStageOrchestrator:
             SearchResultKeys.ROW_INDEX: row_index,
             SearchResultKeys.VECTOR_WEIGHT: self.vector_weight,
             SearchResultKeys.TOP_K: self.max_results,
+            SearchResultKeys.HIERARCHY: metadata.get(MetadataKeys.HIERARCHY, ''),
+            SearchResultKeys.LV1_CATEGORY: metadata.get(MetadataKeys.DATE, ''),
         }
 
     def _merge_results(
@@ -327,6 +329,11 @@ class MultiStageOrchestrator:
 
         # スコアでソート
         merged_results.sort(key=lambda x: x[SearchResultKeys.SIMILARITY], reverse=True)
+
+        # TOP-Kモードの場合は上位K件に絞る
+        if self.filter_mode == "top_k":
+            merged_results = merged_results[:self.top_k]
+
         return merged_results
 
     def _create_categorized_result(

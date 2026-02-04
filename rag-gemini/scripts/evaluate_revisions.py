@@ -384,7 +384,6 @@ class RevisionEvaluator:
                     "回答": answer,
                     "関連性判定": "",
                     "判定根拠": "",
-                    "カテゴリ": category,
                     "ソースファイル": source_file,
                 })
 
@@ -413,14 +412,9 @@ class RevisionEvaluator:
             except (ValueError, TypeError):
                 pass
 
-        # カテゴリ: エリア名から日本語カテゴリ名を抽出
-        category = self._extract_category_from_area(area)
-
-        # 質問テキストからLv1カテゴリを抽出してソースファイルを特定
-        # 質問テキストは「分類 > サブカテゴリ > 質問」形式
-        question = result.get(SearchResultKeys.SEARCH_RESULT_Q, "")
-        # 質問テキストの最初の部分（ > の前）がLv1
-        lv1 = question.split(" > ")[0] if " > " in question else ""
+        # Lv1カテゴリからソースファイルを特定
+        # Lv1カテゴリはメタデータの'date'フィールドに格納されている（例: 「預金関連」「諸届」）
+        lv1 = result.get(SearchResultKeys.LV1_CATEGORY, "")
         source_file = self._get_source_file(revision, bot_name, lv1)
 
         return {
@@ -433,7 +427,6 @@ class RevisionEvaluator:
             "回答": result.get(SearchResultKeys.SEARCH_RESULT_A, ""),
             "関連性判定": "",
             "判定根拠": "",
-            "カテゴリ": category,
             "ソースファイル": source_file,
         }
 
@@ -831,6 +824,18 @@ class RevisionEvaluator:
                 **base_style, "bg_color": "#FDE9D9", "valign": "top", "text_wrap": True
             }),
             "percent": workbook.add_format({**base_style, "num_format": "0.0%", "valign": "top"}),
+            "good_percent": workbook.add_format({
+                **base_style, "num_format": "0.0%", "valign": "top", "font_color": "#0000FF"
+            }),
+            "good_cell": workbook.add_format({
+                **base_style, "valign": "top", "font_color": "#0000FF"
+            }),
+            "bad_percent": workbook.add_format({
+                **base_style, "num_format": "0.0%", "valign": "top", "font_color": "#FF0000"
+            }),
+            "bad_cell": workbook.add_format({
+                **base_style, "valign": "top", "font_color": "#FF0000"
+            }),
         }
 
     def _write_summary_sheet(
@@ -957,6 +962,10 @@ class RevisionEvaluator:
         cell_fmt = formats["cell"]
         cell_nowrap_fmt = formats["cell_nowrap"]
         percent_fmt = formats["percent"]
+        good_percent_fmt = formats["good_percent"]
+        bad_percent_fmt = formats["bad_percent"]
+        good_cell_fmt = formats["good_cell"]
+        bad_cell_fmt = formats["bad_cell"]
 
         for row_num, row_data in enumerate(summary_data, start=2):
             worksheet.write(row_num, 0, row_data["改定番号"], cell_fmt)
@@ -965,12 +974,43 @@ class RevisionEvaluator:
             worksheet.write(row_num, 3, row_data["正解数"], cell_fmt)
             worksheet.write(row_num, 4, row_data["Azure_候補数"], cell_fmt)
             worksheet.write(row_num, 5, row_data["Azure_正解発見数"], cell_fmt)
-            worksheet.write(row_num, 6, row_data["Azure_正解発見率"], percent_fmt)
-            worksheet.write(row_num, 7, row_data["Azure_必要確認件数"], cell_fmt)
+
+            # 正解発見率の色分け（高い方が青、低い方が赤）
+            azure_rate = row_data["Azure_正解発見率"]
+            vertex_rate = row_data["VertexAI_正解発見率"]
+            if azure_rate > vertex_rate:
+                azure_rate_fmt = good_percent_fmt
+                vertex_rate_fmt = bad_percent_fmt
+            elif azure_rate < vertex_rate:
+                azure_rate_fmt = bad_percent_fmt
+                vertex_rate_fmt = good_percent_fmt
+            else:
+                azure_rate_fmt = percent_fmt
+                vertex_rate_fmt = percent_fmt
+            worksheet.write(row_num, 6, azure_rate, azure_rate_fmt)
+
+            # 必要確認件数の色分け（低い方が青、高い方が赤）
+            azure_check = row_data["Azure_必要確認件数"]
+            vertex_check = row_data["VertexAI_必要確認件数"]
+            # "-" の場合は比較対象外
+            if azure_check == "-" or vertex_check == "-":
+                azure_check_fmt = cell_fmt
+                vertex_check_fmt = cell_fmt
+            elif azure_check < vertex_check:
+                azure_check_fmt = good_cell_fmt
+                vertex_check_fmt = bad_cell_fmt
+            elif azure_check > vertex_check:
+                azure_check_fmt = bad_cell_fmt
+                vertex_check_fmt = good_cell_fmt
+            else:
+                azure_check_fmt = cell_fmt
+                vertex_check_fmt = cell_fmt
+            worksheet.write(row_num, 7, azure_check, azure_check_fmt)
+
             worksheet.write(row_num, 8, row_data["VertexAI_候補数"], cell_fmt)
             worksheet.write(row_num, 9, row_data["VertexAI_正解発見数"], cell_fmt)
-            worksheet.write(row_num, 10, row_data["VertexAI_正解発見率"], percent_fmt)
-            worksheet.write(row_num, 11, row_data["VertexAI_必要確認件数"], cell_fmt)
+            worksheet.write(row_num, 10, vertex_rate, vertex_rate_fmt)
+            worksheet.write(row_num, 11, vertex_check, vertex_check_fmt)
             worksheet.write(row_num, 12, row_data.get("未発見数", 0), cell_fmt)
             worksheet.write(row_num, 13, row_data.get("未発見ID", ""), cell_fmt)
 
@@ -1022,8 +1062,8 @@ class RevisionEvaluator:
         worksheet = writer.book.add_worksheet(sheet_name)
 
         common_headers = ["検出フラグ", "改定内容", "正解ID一覧", "LLM強化クエリ", "抽出キーワード", "検索タイプ", "ベクトル重み"]
-        result_headers = ["順位", "シナリオID", "類似度", "マッチ種別", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "カテゴリ", "ソースファイル"]
-        unfound_headers = ["未発見ID", "変更内容", "カテゴリ", "ソースファイル", "質問", "回答"]
+        result_headers = ["順位", "シナリオID", "類似度", "マッチ種別", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "ソースファイル"]
+        unfound_headers = ["未発見ID", "変更内容", "ソースファイル", "質問", "回答"]
 
         col = 0
         for header in common_headers:
@@ -1092,8 +1132,8 @@ class RevisionEvaluator:
             self._write_unfound_row(worksheet, row_num, col, unfound_row, formats)
 
         # 列幅設定（common + azure + vertex + unfound）
-        # 順位(6), シナリオID(18), 類似度(10), マッチ種別(15), 正解フラグ(12), 質問(50), 回答(50), 関連性判定(15), 判定根拠(40), カテゴリ(30), ソースファイル(40)
-        column_widths = [10, 60, 30, 50, 25, 15, 12] + [6, 18, 10, 15, 12, 50, 50, 15, 40, 30, 40] * 2 + [18, 12, 18, 40, 50, 50]
+        # 順位(6), シナリオID(18), 類似度(10), マッチ種別(15), 正解フラグ(12), 質問(50), 回答(50), 関連性判定(15), 判定根拠(40), ソースファイル(40)
+        column_widths = [10, 60, 30, 50, 25, 15, 12] + [6, 18, 10, 15, 12, 50, 50, 15, 40, 40] * 2 + [18, 12, 40, 50, 50]
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
@@ -1107,7 +1147,7 @@ class RevisionEvaluator:
     def _write_result_row(
         self, worksheet, row_num: int, start_col: int, row_data: Dict, formats: Dict[str, Any]
     ) -> None:
-        keys = ["順位", "シナリオID", "類似度", "マッチ種別", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "カテゴリ", "ソースファイル"]
+        keys = ["順位", "シナリオID", "類似度", "マッチ種別", "正解フラグ", "質問", "回答", "関連性判定", "判定根拠", "ソースファイル"]
         for i, key in enumerate(keys):
             value = row_data.get(key, "")
             fmt = formats["correct"] if key == "正解フラグ" and value == "TRUE" else formats["cell"]
@@ -1116,7 +1156,7 @@ class RevisionEvaluator:
     def _write_unfound_row(
         self, worksheet, row_num: int, start_col: int, row_data: Dict, formats: Dict[str, Any]
     ) -> None:
-        keys = ["シナリオID", "変更内容", "カテゴリ", "ソースファイル", "質問", "回答"]
+        keys = ["シナリオID", "変更内容", "ソースファイル", "質問", "回答"]
         for i, key in enumerate(keys):
             value = row_data.get(key, "")
             worksheet.write(row_num, start_col + i, value if value != "" else "", formats["cell"])
