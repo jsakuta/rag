@@ -297,23 +297,25 @@ def replace_category_full(base_df: pd.DataFrame, replacement_df: pd.DataFrame, l
 
 def replace_category_partial(base_df: pd.DataFrame, replacement_df: pd.DataFrame, lv1: str, lv2: str) -> pd.DataFrame:
     """Lv1+Lv2で部分置換"""
-    # 該当部分を特定
     mask = (base_df["Lv1"] == lv1) & (base_df["Lv2"] == lv2)
 
     if not mask.any():
         print(f"  警告: カテゴリ '{lv1}/{lv2}' がベースに存在しません")
         return base_df
 
-    # 該当部分の開始・終了インデックス
     indices = base_df[mask].index.tolist()
-    start_idx = indices[0]
-    end_idx = indices[-1] + 1
-
-    # 置換
-    before = base_df.iloc[:start_idx]
-    after = base_df.iloc[end_idx:]
+    before = base_df.iloc[:indices[0]]
+    after = base_df.iloc[indices[-1] + 1:]
 
     return pd.concat([before, replacement_df, after], ignore_index=True)
+
+
+def get_replacement_path(config: RevisionConfig, repl: CategoryReplacement) -> Path:
+    """置換ファイルのパスを取得"""
+    base = REVISION_BASE_DIR / config.folder_name / "修正前"
+    if repl.subfolder:
+        return base / repl.subfolder / repl.filename
+    return base / repl.filename
 
 
 def process_revision(config: RevisionConfig, dry_run: bool = False) -> dict:
@@ -339,10 +341,7 @@ def process_revision(config: RevisionConfig, dry_run: bool = False) -> dict:
     # 全体置換モード
     if config.full_replace:
         repl = config.replacements[0]
-        if repl.subfolder:
-            repl_path = REVISION_BASE_DIR / config.folder_name / "修正前" / repl.subfolder / repl.filename
-        else:
-            repl_path = REVISION_BASE_DIR / config.folder_name / "修正前" / repl.filename
+        repl_path = get_replacement_path(config, repl)
 
         if not repl_path.exists():
             result["message"] = f"修正前ファイルが見つかりません: {repl_path}"
@@ -352,35 +351,29 @@ def process_revision(config: RevisionConfig, dry_run: bool = False) -> dict:
         result_df = load_excel(repl_path)
         print(f"    行数: {len(result_df)}")
 
-        # 選択肢の全体像行を追加
         if config.add_sentakushi:
             sentakushi_row = base_df[base_df["Lv1"].str.contains("選択肢の全体像", na=False)]
             if not sentakushi_row.empty:
                 result_df = pd.concat([result_df, sentakushi_row], ignore_index=True)
-                print(f"    「選択肢の全体像」行を追加")
+                print("    「選択肢の全体像」行を追加")
     else:
         result_df = base_df.copy()
 
-        # 各カテゴリ置換を適用
         for repl in config.replacements:
-            if repl.subfolder:
-                repl_path = REVISION_BASE_DIR / config.folder_name / "修正前" / repl.subfolder / repl.filename
-            else:
-                repl_path = REVISION_BASE_DIR / config.folder_name / "修正前" / repl.filename
+            repl_path = get_replacement_path(config, repl)
 
             if not repl_path.exists():
                 result["message"] = f"修正前ファイルが見つかりません: {repl_path}"
                 return result
 
             repl_df = load_excel(repl_path)
-            print(f"  置換: {repl.lv1}" + (f"/{repl.lv2}" if repl.lv2 else ""))
+            category_label = f"{repl.lv1}/{repl.lv2}" if repl.lv2 else repl.lv1
+            print(f"  置換: {category_label}")
             print(f"    ファイル: {repl.filename} ({len(repl_df)}行)")
 
             if repl.lv2:
-                # 部分置換
                 result_df = replace_category_partial(result_df, repl_df, repl.lv1, repl.lv2)
             else:
-                # 全体置換
                 result_df = replace_category_full(result_df, repl_df, repl.lv1)
 
     # 空行を削除

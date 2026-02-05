@@ -15,12 +15,11 @@
     --dry-run: 実際のファイル作成を行わず、処理内容を表示
 """
 
-import os
-import re
-import sys
 import argparse
+import re
 from datetime import datetime
 from pathlib import Path
+from typing import List, Dict
 
 import pandas as pd
 
@@ -50,14 +49,13 @@ OUTPUT_DIR = PROJECT_ROOT / "reference" / "scenario"
 FILE_PATTERN = re.compile(r"^([①-⑨])変更前シナリオ_([a-z]+)-bot\.xlsx$")
 
 
-def find_source_files():
+def find_source_files() -> List[Dict]:
     """ソースファイルを検索"""
-    files = []
-
     if not SOURCE_DIR.exists():
         print(f"エラー: ソースディレクトリが存在しません: {SOURCE_DIR}")
-        return files
+        return []
 
+    files = []
     for folder in SOURCE_DIR.iterdir():
         if not folder.is_dir():
             continue
@@ -68,29 +66,21 @@ def find_source_files():
 
             match = FILE_PATTERN.match(file_path.name)
             if match:
-                revision_mark = match.group(1)  # ①, ②, etc.
-                bot_name = match.group(2)  # smile, souzoku, etc.
-                revision_id = REVISION_MAP.get(revision_mark, "00")
-
+                revision_mark = match.group(1)
                 files.append({
                     "path": file_path,
                     "revision_mark": revision_mark,
-                    "revision_id": revision_id,
-                    "bot_name": bot_name,
+                    "revision_id": REVISION_MAP.get(revision_mark, "00"),
+                    "bot_name": match.group(2),
                 })
 
     return files
 
 
 def remove_unnecessary_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """不要な列を削除（文字数列、シナリオパス列）"""
-    # 保持する列: Lv1~Lv10 のみ（シナリオパスは削除）
-    keep_columns = []
-    for col in df.columns:
-        if col.startswith("Lv"):
-            keep_columns.append(col)
-
-    return df[keep_columns]
+    """不要な列を削除（文字数列、シナリオパス列）。Lv1~Lv10のみ保持。"""
+    lv_columns = [col for col in df.columns if col.startswith("Lv")]
+    return df[lv_columns]
 
 
 def generate_output_filename(revision_id: str, bot_name: str) -> str:
@@ -100,7 +90,7 @@ def generate_output_filename(revision_id: str, bot_name: str) -> str:
     return f"rev{revision_id}{bot_name}_シナリオデータ_{today}.xlsx"
 
 
-def process_files(dry_run: bool = False):
+def process_files(dry_run: bool = False) -> None:
     """ファイルを処理"""
     files = find_source_files()
 
@@ -110,7 +100,6 @@ def process_files(dry_run: bool = False):
 
     print(f"検出されたファイル: {len(files)}件\n")
 
-    # 出力ディレクトリの作成
     if not dry_run:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -124,31 +113,27 @@ def process_files(dry_run: bool = False):
         print(f"  ボット: {info['bot_name']}")
         print(f"  出力先: {output_path.name}")
 
+        df = pd.read_excel(source_path)
+        df_cleaned = remove_unnecessary_columns(df)
+
         if dry_run:
-            # ドライラン: 列情報を表示
-            df = pd.read_excel(source_path)
             print(f"  元の列数: {len(df.columns)}")
-            df_cleaned = remove_unnecessary_columns(df)
             print(f"  処理後の列数: {len(df_cleaned.columns)}")
             print(f"  保持する列: {list(df_cleaned.columns)}")
         else:
-            # 実際の処理
-            df = pd.read_excel(source_path)
-            df_cleaned = remove_unnecessary_columns(df)
             df_cleaned.to_excel(output_path, index=False)
             print(f"  保存完了: {len(df_cleaned)}行")
 
         print()
 
     print("=" * 50)
+    mode_msg = "ドライラン完了" if dry_run else "処理完了"
+    print(f"{mode_msg}: {len(files)}件のファイル")
     if dry_run:
-        print(f"ドライラン完了: {len(files)}件のファイルが処理対象です")
         print("実際に処理するには --dry-run オプションを外して実行してください")
-    else:
-        print(f"処理完了: {len(files)}件のファイルを reference/scenario/ に配置しました")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="変更前シナリオの前処理（文字数列削除・リネーム・配置）"
     )
@@ -159,12 +144,13 @@ def main():
     )
     args = parser.parse_args()
 
+    mode = "ドライラン" if args.dry_run else "実行"
     print("=" * 50)
     print("変更前シナリオ 前処理スクリプト")
     print("=" * 50)
     print(f"ソース: {SOURCE_DIR}")
     print(f"出力先: {OUTPUT_DIR}")
-    print(f"モード: {'ドライラン' if args.dry_run else '実行'}")
+    print(f"モード: {mode}")
     print("=" * 50)
     print()
 

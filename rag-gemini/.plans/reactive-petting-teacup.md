@@ -1,123 +1,157 @@
-# 多段階OR検索の件数制限修正計画
+# UI版 事務改定評価モード バグ修正 + UI刷新計画
 
-## 概要
-多段階OR検索で原文検索+LLMクエリ検索のOR結合後、最終的に上位N件に絞る機能を追加。
+## 発見された問題
 
-### 現状の問題
-- 原文検索でtop_k件、LLMクエリ検索でtop_k件を取得
-- OR結合（重複除去）後、そのまま全件返している
-- **期待**: OR結合後に上位top_k件に絞るべき
+### 問題1: UNKNOWN-BOT / 正解バッジ表示されない
+**根本原因**: rev系シナリオファイルのシート名が全て「Sheet1」
+- 検索結果の`Sheet_Name` = "Sheet1"
+- `CATEGORY_TO_AREA`辞書のキー = "スマイルタブレット", "内部事務" など
+- **マッチしないため `unknown-bot` が返される**
+- シナリオID = `unknown-bot_123` → 正解ID（`smile-bot_129`）とマッチしない
 
-### UI版の問題
-- 多段階検索時は閾値（threshold）は使用しない（top_kモードのみ）
-- 閾値スライダーが不要、代わりに候補数を指定するUIが必要
+**解決策**: エリア名（rev01smile）からボット名を抽出する方式に変更
+- 参考実装: `evaluate_revisions.py` の `_extract_bot_name_from_area()`
+
+### 問題2: 20件制限
+**原因**: chat.pyでハードコード `[:20]`
+**解決策**: UI設定の`top_k`を使用して全件表示
+
+### 問題3: UI整理
+**現状**: 業務分野と事務改定評価が混在
+**要望**:
+- **業務分野検索**: 通常モード（正解なし、実践的）
+- **事務改定評価**: 評価モード（正解あり、精度確認）
 
 ## 対象ファイル
 
 | ファイル | 変更内容 |
 |---------|---------|
-| `src/core/search/multi_stage_orchestrator.py` | OR結合後にtop_k件に絞る |
-| `ui/chat.py` | 多段階検索時のUI調整 |
+| `ui/chat.py` | シナリオID構築修正、表示件数修正、UI刷新 |
 
 ## 実装ステップ
 
-### Step 1: MultiStageOrchestrator修正
-**ファイル**: `src/core/search/multi_stage_orchestrator.py`
+### Step 1: シナリオID構築ロジック修正
 
-`_merge_results`メソッドの最後で、OR結合・ソート後にtop_k件に絞る:
+**問題**: `build_scenario_id()`が`Sheet_Name`からボット名を取得しようとしている
 
-```python
-def _merge_results(...) -> List[MultiStageSearchResultDict]:
-    # ... 既存のOR結合処理 ...
-
-    # スコアでソート
-    merged_results.sort(key=lambda x: x[SearchResultKeys.SIMILARITY], reverse=True)
-
-    # 【追加】TOP-Kモードの場合は上位K件に絞る
-    if self.filter_mode == "top_k":
-        merged_results = merged_results[:self.top_k]
-
-    return merged_results
-```
-
-**変更箇所**: Line 330-332付近
-
-### Step 2: UI版の多段階検索時のUI調整
-**ファイル**: `ui/chat.py`
-
-#### 2-1: サイドバーの条件分岐修正
-多段階検索（multi_stage）選択時:
-- 閾値スライダーを非表示
-- 候補数入力を表示
+**修正方針**:
+1. 両プロバイダー検索時は、検索対象エリア名からボット名を抽出
+2. `check_if_correct()`関数にエリア名を渡す
 
 ```python
-# 多段階検索パラメータ（multi_stage時のみ表示）
-if selected_mode == "multi_stage":
-    # 候補数入力（top_k）
-    st.session_state.config.top_k = st.number_input(
-        "候補数", min_value=10, max_value=200,
-        value=st.session_state.config.top_k, step=10
-    )
-    # LLM判断支援チェックボックスは維持
-    st.session_state.config.multi_stage_enable_judgment_support = st.checkbox(
-        "LLM判断支援",
-        value=st.session_state.config.multi_stage_enable_judgment_support
-    )
+def extract_bot_name_from_area(area: str) -> str:
+    """エリア名（rev01smile）からボット名を抽出"""
+    area_lower = area.lower()
+    for keyword, bot_name in AREA_TO_BOT.items():
+        if keyword in area_lower:
+            return bot_name
+    return "unknown-bot"
+
+def build_scenario_id_from_area(result: Dict, area: str) -> str:
+    """エリア名を使用してシナリオIDを構築"""
+    row_index = result.get("Row_Index", "")
+    if row_index == "":
+        return ""
+    try:
+        excel_row = int(row_index) + 2
+        bot_name = extract_bot_name_from_area(area)
+        return f"{bot_name}_{excel_row}"
+    except (ValueError, TypeError):
+        return ""
 ```
 
-**変更箇所**: Line 760-769付近（現在のmulti_stageパラメータ部分）
+### Step 2: 表示件数制限の撤廃
 
-#### 2-2: 両プロバイダー検索時の候補数パラメータ適用
-**ファイル**: `ui/chat.py` `_search_with_provider`関数
+**変更箇所**: chat.py Line 873, 889付近
 
-オーケストレーター作成時に`top_k`パラメータを使用:
 ```python
-orchestrator = MultiStageOrchestrator(
-    ...
-    filter_mode="top_k",  # 常にtop_kモード
-    top_k=st.session_state.config.top_k,  # UI設定の候補数を使用
-)
+# 変更前
+for idx, response in enumerate(azure_results[:20], 1):
+
+# 変更後（スクロール可能なコンテナ内で全件表示）
+with st.container(height=600):  # 固定高さでスクロール可能
+    for idx, response in enumerate(azure_results, 1):
 ```
 
-**変更箇所**: Line 455-466付近
+### Step 3: UI刷新 - 2モード分離
 
-## サイドバーUI設計（変更後）
+**新UI設計（タブベース）**:
 
 ```
-┌─ 設定 ─────────────────────┐
-│ 検索タイプ: ○類似検索 ○キーワード必須 │
-│ 検索バランス: [====|====]      │  ← hybrid時のみ
-│ 検索モード: [▼ multi_stage]   │
-│ 検索対象: [▼ シナリオ+FAQ]    │  ← hybrid時のみ
-│ 候補数: [100]                 │  ← multi_stage時のみ
-│ ☑ LLM判断支援                │  ← multi_stage時のみ
-│ 業務分野: [▼ 預金]           │
-│ ──────────────────────────── │
-│ 事務改定評価                   │
-│ 改定番号: [▼ なし]            │
-└─────────────────────────────┘
+┌─[通常検索]─┬─[事務改定評価]─┐
+│                              │
+│  【通常検索タブ】              │
+│  ・業務分野選択               │
+│  ・検索モード選択             │
+│  ・候補数設定                │
+│                              │
+│  【事務改定評価タブ】          │
+│  ・改定番号選択（①②③...）   │
+│  ・正解ID: N件設定            │
+│  ・Azure/VertexAI タブ切替    │
+│  ・正解バッジ表示             │
+└──────────────────────────────┘
+```
+
+**サイドバー構成**:
+```
+┌─ モード選択 ─────────────────┐
+│ ○ 通常検索                   │
+│ ● 事務改定評価               │
+├──────────────────────────────┤
+│ 【通常検索時】               │
+│  検索タイプ: ○hybrid ○keyword │
+│  検索モード: [▼ original]    │
+│  業務分野: [▼ 預金]         │
+│  候補数: [3]                │
+├──────────────────────────────┤
+│ 【事務改定評価時】           │
+│  改定番号: [▼ ①]           │
+│  → 正解ID: 5件              │
+│  → 検索タイプ: 類似検索     │
+│  候補数: [100]              │
+└──────────────────────────────┘
+```
+
+### Step 4: 検索結果へのエリア情報追加
+
+`_search_with_provider()`で結果にエリア情報を追加:
+
+```python
+for r in results:
+    all_results.append({
+        ...
+        "_area": area,  # エリア情報を追加
+    })
+```
+
+タブ表示時にエリア情報を使用してシナリオID構築:
+```python
+scenario_id = build_scenario_id_from_area(response, response.get("_area", ""))
 ```
 
 ## 検証方法
 
-1. **バッチ版の動作確認**
-   ```bash
-   python scripts/evaluate_revisions.py
-   ```
-   - top_k=100設定時、各エリアの結果が最大100件になることを確認
+1. **シナリオID構築テスト**
+   - 改定①選択 → 検索実行
+   - シナリオIDが `smile-bot_XXX` 形式で表示されることを確認
+   - `unknown-bot` が表示されないことを確認
 
-2. **UI版の動作確認**
-   ```bash
-   python main.py interactive
-   ```
-   - 検索モード「多段階OR検索」選択時:
-     - 閾値スライダーが非表示
-     - 候補数入力が表示される
-   - 候補数を50に設定 → 検索結果が最大50件
+2. **正解バッジテスト**
+   - 改定①選択 → 該当クエリ検索
+   - 正解IDとマッチする結果に緑バッジ「✓正解」表示
 
-## 影響範囲
+3. **全件表示テスト**
+   - 候補数100を設定 → 検索実行
+   - 100件全てがスクロールで確認可能
 
-- `MultiStageOrchestrator`: 全ての利用箇所で動作が変わる
-  - `scripts/evaluate_revisions.py`: バッチ評価
-  - `ui/chat.py`: UI検索（両プロバイダーモード）
-  - `src/core/search_engine.py`: 通常検索（multi_stageモード時）
+4. **UI切り替えテスト**
+   - 通常検索モード ↔ 事務改定評価モード切り替え
+   - 各モードで適切なUI要素が表示されること
+
+## 既存コード再利用
+
+| 機能 | 参照元 | 行番号 |
+|------|--------|--------|
+| エリア名→ボット名抽出 | evaluate_revisions.py | 175-180 |
+| 正解フラグ判定 | evaluate_revisions.py | 425 |

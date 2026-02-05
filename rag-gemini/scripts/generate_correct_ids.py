@@ -11,6 +11,8 @@
 
 import re
 from pathlib import Path
+from typing import List, Dict
+
 import pandas as pd
 
 # プロジェクトルートからの相対パス
@@ -157,46 +159,51 @@ _merge_cache = {}
 _individual_cache = {}
 
 
-def main():
-    """メイン処理"""
-    # メンテナンス管理台帳を読み込み
+def load_ledger() -> pd.DataFrame:
+    """メンテナンス管理台帳を読み込み"""
     ledger_path = DATA_DIR / "シナリオボットメンテナンス管理台帳.xlsx"
-    ledger = pd.read_excel(ledger_path, sheet_name='メンテナンス管理台帳', header=3)
-    ledger.columns = ['idx', 'No', 'ステータス', '受付日', '区分', 'ボット名', '大分類', '変更内容',
-                      '修正種別', 'WF通番', '事務改定実施日', '担当部署', '起案者', '対象シナリオファイル',
-                      '作業中シナリオファイル', '提出予定日', '更新予定日時', '精査担当', '更新担当']
+    ledger = pd.read_excel(ledger_path, sheet_name="メンテナンス管理台帳", header=3)
+    ledger.columns = [
+        "idx", "No", "ステータス", "受付日", "区分", "ボット名", "大分類", "変更内容",
+        "修正種別", "WF通番", "事務改定実施日", "担当部署", "起案者", "対象シナリオファイル",
+        "作業中シナリオファイル", "提出予定日", "更新予定日時", "精査担当", "更新担当"
+    ]
+    return ledger
 
-    results = []
 
-    # 事務改定内容フォルダのmdファイルを処理
+def main() -> None:
+    """メイン処理"""
     revision_dir = DATA_DIR / "事務改定内容"
-
     if not revision_dir.exists():
         print(f"エラー: {revision_dir} が存在しません")
         return
 
+    ledger = load_ledger()
+    results = []
+
     for md_file in sorted(revision_dir.glob("*.md")):
         prefix = md_file.stem[0]
-
         print(f"処理中: {md_file.name}")
 
         if prefix not in REVISIONS:
             print(f"  警告: {prefix} の定義がありません")
             continue
 
-        revision_content = md_file.read_text(encoding='utf-8').strip()
+        revision_content = md_file.read_text(encoding="utf-8").strip()
         correct_ids = generate_correct_ids(ledger, prefix)
 
         if not correct_ids:
-            print(f"  警告: 正解IDが見つかりません")
+            print("  警告: 正解IDが見つかりません")
             continue
 
-        print(f"  正解ID ({len(correct_ids)}件): {correct_ids[:5]}{'...' if len(correct_ids) > 5 else ''}")
+        preview = correct_ids[:5]
+        suffix = "..." if len(correct_ids) > 5 else ""
+        print(f"  正解ID ({len(correct_ids)}件): {preview}{suffix}")
 
         results.append({
-            '番号': prefix,
-            '改定内容': revision_content,
-            '正解ID': ', '.join(correct_ids)
+            "番号": prefix,
+            "改定内容": revision_content,
+            "正解ID": ", ".join(correct_ids)
         })
 
     if not results:
@@ -205,8 +212,7 @@ def main():
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / "multi_stage_input.xlsx"
-    df = pd.DataFrame(results)
-    df.to_excel(output_path, index=False)
+    pd.DataFrame(results).to_excel(output_path, index=False)
     print(f"\n出力完了: {output_path}")
     print(f"件数: {len(results)}件")
 
@@ -216,30 +222,22 @@ def main():
         print(f"    正解ID: {row['正解ID']}")
 
 
-def generate_correct_ids(ledger: pd.DataFrame, prefix: str) -> list[str]:
+def generate_correct_ids(ledger: pd.DataFrame, prefix: str) -> List[str]:
     """正解IDを生成"""
     correct_ids = []
 
     for rev_def in REVISIONS[prefix]:
-        row_idx = rev_def['row']
-        merge_file = rev_def['merge']
-
-        row = ledger.iloc[row_idx]
-        bot_name = row['ボット名']
-        content = str(row['変更内容'])
-
-        cat_rows = parse_row_numbers(content)
+        row = ledger.iloc[rev_def["row"]]
+        cat_rows = parse_row_numbers(str(row["変更内容"]))
         if not cat_rows:
             continue
 
-        bot = BOT_MAP.get(bot_name, bot_name)
-
-        # テキストマッチングで正解IDを取得
+        bot = BOT_MAP.get(row["ボット名"], row["ボット名"])
         merge_rows = find_rows_by_text_matching(
-            rev_def['individual_folder'],
-            rev_def.get('individual_subfolder', ''),
-            rev_def['individual_pattern'],
-            merge_file,
+            rev_def["individual_folder"],
+            rev_def.get("individual_subfolder", ""),
+            rev_def["individual_pattern"],
+            rev_def["merge"],
             cat_rows
         )
 
@@ -256,8 +254,8 @@ def find_rows_by_text_matching(
     individual_subfolder: str,
     individual_pattern: str,
     merge_file: str,
-    target_rows: list[int]
-) -> list[int]:
+    target_rows: List[int]
+) -> List[int]:
     """テキストマッチングでマージ版の行番号を特定"""
 
     # 個別シナリオファイルを読み込み
@@ -341,27 +339,24 @@ def find_rows_by_text_matching(
     return matched_rows
 
 
-def parse_row_numbers(text: str) -> list[int]:
+def parse_row_numbers(text: str) -> List[int]:
     """変更内容テキストから行番号を抽出"""
     if pd.isna(text):
         return []
 
-    text = text.translate(str.maketrans(
-        '０１２３４５６７８９、～：',
-        '0123456789,-:'
-    ))
+    # 全角を半角に変換
+    text = text.translate(str.maketrans("０１２３４５６７８９、～：", "0123456789,-:"))
 
     numbers = []
-    for match in re.finditer(r'行番号[:\s]*([0-9,\-~\s]+)', text):
-        nums_str = match.group(1)
-        for part in re.split(r'[,\s]+', nums_str):
+    for match in re.finditer(r"行番号[:\s]*([0-9,\-~\s]+)", text):
+        for part in re.split(r"[,\s]+", match.group(1)):
             part = part.strip()
             if not part:
                 continue
-            if '-' in part or '~' in part:
-                m = re.match(r'(\d+)\s*[-~]\s*(\d+)', part)
-                if m:
-                    numbers.extend(range(int(m.group(1)), int(m.group(2)) + 1))
+
+            range_match = re.match(r"(\d+)\s*[-~]\s*(\d+)", part)
+            if range_match:
+                numbers.extend(range(int(range_match.group(1)), int(range_match.group(2)) + 1))
             elif part.isdigit():
                 numbers.append(int(part))
 

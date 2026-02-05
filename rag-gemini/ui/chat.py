@@ -98,8 +98,24 @@ def extract_bot_name_from_category(category: str) -> str:
     return "unknown-bot"
 
 
+def extract_bot_name_from_area(area: str) -> str:
+    """エリア名（rev01smile等）からボット名を抽出
+
+    Args:
+        area: エリア名（例: rev01smile, rev02souzoku）
+
+    Returns:
+        ボット名（例: smile-bot, souzoku-bot）
+    """
+    area_lower = area.lower()
+    for keyword, bot_name in AREA_TO_BOT.items():
+        if keyword in area_lower:
+            return bot_name
+    return "unknown-bot"
+
+
 def build_scenario_id(result: Dict) -> str:
-    """検索結果からシナリオIDを構築
+    """検索結果からシナリオIDを構築（通常検索用）
 
     Args:
         result: 検索結果辞書（Sheet_Name, Row_Index等を含む）
@@ -122,17 +138,46 @@ def build_scenario_id(result: Dict) -> str:
         return ""
 
 
-def check_if_correct(result: Dict, correct_ids: List[str]) -> Tuple[str, bool]:
+def build_scenario_id_from_area(result: Dict, area: str) -> str:
+    """エリア名を使用してシナリオIDを構築（事務改定評価モード用）
+
+    Args:
+        result: 検索結果辞書
+        area: エリア名（例: rev01smile）
+
+    Returns:
+        シナリオID（例: smile-bot_129）
+    """
+    row_index = result.get("Row_Index", "")
+    if row_index == "":
+        return ""
+
+    try:
+        excel_row = int(row_index) + 2
+        bot_name = extract_bot_name_from_area(area)
+        return f"{bot_name}_{excel_row}"
+    except (ValueError, TypeError):
+        return ""
+
+
+def check_if_correct(result: Dict, correct_ids: List[str], area: Optional[str] = None) -> Tuple[str, bool]:
     """検索結果が正解IDとマッチするか判定
 
     Args:
         result: 検索結果辞書
         correct_ids: 正解IDリスト
+        area: エリア名（事務改定評価モード用、指定時はエリア名からボット名を抽出）
 
     Returns:
         (シナリオID, 正解かどうか)
     """
-    scenario_id = build_scenario_id(result)
+    if area:
+        # 事務改定評価モード: エリア名からボット名を抽出
+        scenario_id = build_scenario_id_from_area(result, area)
+    else:
+        # 通常モード: Sheet_Nameからボット名を抽出
+        scenario_id = build_scenario_id(result)
+
     is_correct = scenario_id in correct_ids if scenario_id else False
     return scenario_id, is_correct
 
@@ -187,7 +232,7 @@ def initialize_session_state():
         ui_search_type = _ui_settings.get("search_type", "hybrid")
 
         st.session_state.config = SearchConfig(
-            search_type=ui_search_type,  # UIで切り替え可能（類似検索/キーワード必須）
+            search_type=ui_search_type,  # UIで切り替え可能（意味検索/キーワード検索）
             search_mode=ui_search_mode,  # UIで切り替え可能
             top_k=ui_top_k,
             llm_provider=os.getenv("DEFAULT_LLM_PROVIDER"),
@@ -199,17 +244,95 @@ def initialize_session_state():
     if "business_area" not in st.session_state:
         st.session_state.business_area = "預金"
 
-def format_message(message, is_user=False):
+def format_message(message: str, is_user: bool = False) -> str:
+    """チャットメッセージをHTML形式にフォーマット"""
     escaped_message = html.escape(str(message))
-    style = f"""
-        <div style="display: flex; justify-content: {'flex-end' if is_user else 'flex-start'}; margin: 5px 0;">
-            <div style="background-color: {'#e6f3ff' if is_user else '#f5f5f5'}; padding: 10px 15px;
-                border-radius: 15px; max-width: 80%; {'margin-left: auto;' if is_user else ''}">
+    align = 'flex-end' if is_user else 'flex-start'
+    bg_color = '#e6f3ff' if is_user else '#f5f5f5'
+    margin = 'margin-left: auto;' if is_user else ''
+    return f"""
+        <div style="display: flex; justify-content: {align}; margin: 5px 0;">
+            <div style="background-color: {bg_color}; padding: 10px 15px;
+                border-radius: 15px; max-width: 80%; {margin}">
                 {escaped_message}
             </div>
         </div>
     """
-    return style
+
+
+def _create_badge(text: str, bg_color: str, text_color: str, bold: bool = True) -> str:
+    """共通バッジHTML生成"""
+    weight = 'font-weight: bold;' if bold else ''
+    return f" <span style='background-color: {bg_color}; color: {text_color}; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; {weight} margin-left: 8px;'>{text}</span>"
+
+
+def _create_category_badge(category: Optional[str]) -> str:
+    """カテゴリバッジを生成"""
+    if not category:
+        return ""
+    # カテゴリ別スタイル定義（正解カードの緑と被らない色）
+    styles = {
+        'Both': ('#e1bee7', '#6a1b9a', '両方'),          # 紫
+        'Original_Only': ('#FFF2CC', '#856404', '原文のみ'),  # 黄色
+        'LLM_Enhanced_Only': ('#DEEBF7', '#1565c0', 'LLMのみ')  # 青
+    }
+    bg_color, text_color, label = styles.get(category, ('#f0f0f0', '#333', category))
+    return _create_badge(label, bg_color, text_color)
+
+
+def _create_correct_badge(is_correct: bool) -> str:
+    """正解バッジを生成（カードが緑なのでバッジはゴールド系）"""
+    if not is_correct:
+        return ""
+    return _create_badge('★正解', '#fff3cd', '#856404')
+
+
+def _create_scenario_id_badge(scenario_id: Optional[str]) -> str:
+    """シナリオIDバッジを生成"""
+    if not scenario_id:
+        return ""
+    return _create_badge(html.escape(str(scenario_id)), '#e3f2fd', '#1565c0')
+
+
+def _create_relevance_badge(relevance_judgment: Optional[str]) -> str:
+    """関連性判定バッジを生成"""
+    if not relevance_judgment:
+        return ""
+    # 関連性判定別スタイル定義（正解カードの緑と被らない色）
+    styles = {
+        '関連あり': ('#bbdefb', '#1565c0'),     # 青
+        '要確認': ('#fff9c4', '#f57f17'),       # 黄色
+        '関連なし': ('#ffcdd2', '#c62828'),     # 赤
+        '判断支援無効': ('#e0e0e0', '#616161'), # グレー
+        'エラー': ('#ffcdd2', '#c62828')        # 赤
+    }
+    judgment_key = relevance_judgment.split()[0] if relevance_judgment else ""
+    bg_color, text_color = styles.get(judgment_key, ('#e0e0e0', '#333'))
+    return _create_badge(html.escape(str(relevance_judgment)), bg_color, text_color)
+
+
+def _is_valid_llm_judgment(relevance_judgment: Optional[str]) -> bool:
+    """LLM判定結果が有効かどうかを判定"""
+    if not relevance_judgment:
+        return False
+    judgment_str = str(relevance_judgment).strip()
+    return judgment_str != '' and judgment_str not in ['判断支援無効', 'None']
+
+
+def _create_llm_analysis_section(
+    relevance_judgment: Optional[str],
+    judgment_reason: Optional[str],
+    modification_suggestion: Optional[str]
+) -> str:
+    """LLM分析セクションのHTMLを生成"""
+    if not _is_valid_llm_judgment(relevance_judgment):
+        return ""
+
+    reason_text = html.escape(str(judgment_reason)) if judgment_reason else "-"
+    suggestion_raw = html.escape(str(modification_suggestion)) if modification_suggestion else ""
+    suggestion_text = "なし" if not suggestion_raw or suggestion_raw.strip() in ['-', 'なし', ''] else suggestion_raw
+
+    return f"""<div style="background-color: #f0f7ff; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">LLM分析</div><div>関連性: {html.escape(str(relevance_judgment))}</div><div>根拠: {reason_text}</div><div>修正案: {suggestion_text}</div></div>"""
 
 def format_response_card(number, similarity, query, answer, category=None,
                          relevance_judgment=None, judgment_reason=None, modification_suggestion=None,
@@ -218,77 +341,22 @@ def format_response_card(number, similarity, query, answer, category=None,
     query = html.escape(str(query))
     answer = html.escape(str(answer))
 
-    # カテゴリバッジの色設定
-    category_colors = {
-        'Both': '#E2EFDA',
-        'Original_Only': '#FFF2CC',
-        'LLM_Enhanced_Only': '#DEEBF7'
-    }
-    category_labels = {
-        'Both': '両方',
-        'Original_Only': '原文のみ',
-        'LLM_Enhanced_Only': 'LLMのみ'
-    }
-    category_badge = ""
-    if category:
-        bg_color = category_colors.get(category, '#f0f0f0')
-        label = category_labels.get(category, category)
-        category_badge = f" <span style='background-color: {bg_color}; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;'>{label}</span>"
+    # バッジスタイル定義
+    category_badge = _create_category_badge(category)
+    correct_badge = _create_correct_badge(is_correct)
+    scenario_id_badge = _create_scenario_id_badge(scenario_id)
+    relevance_badge = _create_relevance_badge(relevance_judgment)
 
-    # 正解バッジ
-    correct_badge = ""
-    if is_correct:
-        correct_badge = " <span style='background-color: #c8e6c9; color: #2e7d32; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; margin-left: 8px;'>✓正解</span>"
+    # 正解カードの背景色（薄緑）
+    card_bg_color = "#e8f5e9" if is_correct else "white"
+    card_border_color = "#81c784" if is_correct else "#e0e0e0"
 
-    # シナリオIDバッジ
-    scenario_id_badge = ""
-    if scenario_id:
-        escaped_id = html.escape(str(scenario_id))
-        scenario_id_badge = f" <span style='background-color: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;'>{escaped_id}</span>"
+    # 基本カード（LLM分析なし）
+    base_card = f"""<div class="response-card" style="border: 2px solid {card_border_color}; border-radius: 10px; padding: 15px; margin: 10px 0; background-color: {card_bg_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><div style="color: #666; margin-bottom: 10px; font-size: 0.95em; padding-bottom: 8px; border-bottom: 1px solid #eee;">候補 {number} (類似度: <strong>{similarity:.4f}</strong>){correct_badge}{scenario_id_badge}{category_badge}{relevance_badge}</div><div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">類似質問内容:</div><div style="white-space: pre-wrap;">{query}</div></div><div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">回答:</div><div style="white-space: pre-wrap;">{answer}</div></div>"""
 
-    # 関連性判定バッジの色設定
-    relevance_colors = {
-        '関連あり': '#c8e6c9',
-        '要確認': '#fff9c4',
-        '関連なし': '#ffcdd2',
-        '判断支援無効': '#e0e0e0',
-        'エラー': '#ffcdd2'
-    }
-    relevance_badge = ""
-    if relevance_judgment:
-        # 関連性判定の最初の単語を取得（「関連あり」「要確認」「関連なし」など）
-        judgment_key = relevance_judgment.split()[0] if relevance_judgment else ""
-        bg_color = relevance_colors.get(judgment_key, '#e0e0e0')
-        escaped_judgment = html.escape(str(relevance_judgment))
-        relevance_badge = f" <span style='background-color: {bg_color}; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;'>{escaped_judgment}</span>"
-
-    # LLM分析セクション（関連性判定がある場合のみ表示）
-    llm_analysis_section = ""
-    show_llm_analysis = relevance_judgment and relevance_judgment not in ['判断支援無効', '']
-    if show_llm_analysis:
-        reason_text = html.escape(str(judgment_reason)) if judgment_reason else "-"
-        suggestion_raw = html.escape(str(modification_suggestion)) if modification_suggestion else ""
-        suggestion_text = "なし" if not suggestion_raw or suggestion_raw.strip() in ['-', 'なし'] else suggestion_raw
-
-        llm_analysis_section = f"""<div style="background-color: #f0f7ff; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">LLM分析</div><div>関連性: {html.escape(str(relevance_judgment))}</div><div>根拠: {reason_text}</div><div>修正案: {suggestion_text}</div></div>"""
-
-    return f"""
-        <div class="response-card" style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 15px;
-            margin: 10px 0; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="color: #666; margin-bottom: 10px; font-size: 0.95em; padding-bottom: 8px;
-                border-bottom: 1px solid #eee;">候補 {number} (類似度: {similarity:.4f}){correct_badge}{scenario_id_badge}{category_badge}{relevance_badge}
-            </div>
-            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin: 8px 0;">
-                <div style="font-weight: 600; margin-bottom: 5px;">類似質問内容:</div>
-                <div style="white-space: pre-wrap;">{query}</div>
-            </div>
-            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin: 8px 0;">
-                <div style="font-weight: 600; margin-bottom: 5px;">回答:</div>
-                <div style="white-space: pre-wrap;">{answer}</div>
-            </div>
-            {llm_analysis_section}
-        </div>
-    """
+    # LLM分析セクション（有効な値がある場合のみ追加）
+    llm_section = _create_llm_analysis_section(relevance_judgment, judgment_reason, modification_suggestion)
+    return base_card + llm_section + "</div>"
 
 def _needs_processor_reinit() -> bool:
     """Processorの再初期化が必要かどうかを判定"""
@@ -373,7 +441,7 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
         logger.warning(f"改定 {revision} に対応するエリアがありません")
         return [], [], ""
 
-    # キーワード必須検索の場合はVertexAIをスキップ
+    # キーワード検索の場合はVertexAIをスキップ
     if search_type == "keyword_filter":
         # Azureのみで検索（VertexAIは空の結果）
         azure_results = _search_with_provider(query, revision, "azure_openai", areas, vector_weight)
@@ -475,7 +543,7 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
                 filter_metadata=None,
             )
 
-            # 結果を変換
+            # 結果を変換（エリア情報を追加）
             for r in results:
                 all_results.append({
                     "Similarity": r.get("Similarity", 0),
@@ -485,6 +553,7 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
                     "Sheet_Name": r.get("Sheet_Name", ""),
                     "Row_Index": r.get("Row_Index", ""),
                     "Search_Query": r.get("Search_Query", ""),
+                    "_area": area,  # エリア情報を追加（シナリオID構築用）
                 })
 
         except Exception as e:
@@ -558,7 +627,7 @@ def process_query(query: str):
 
             # ログ: 処理開始
             judgment_enabled = st.session_state.config.multi_stage_enable_judgment_support
-            search_type_labels = {"hybrid": "類似検索", "keyword_filter": "キーワード必須"}
+            search_type_labels = {"hybrid": "意味検索", "keyword_filter": "キーワード検索"}
             search_type_label = search_type_labels.get(st.session_state.config.search_type, st.session_state.config.search_type)
             logger.info(f"検索タイプ: {search_type_label}")
             source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
@@ -684,6 +753,61 @@ def save_chat_history():
         logger.error(f"Error saving chat history: {str(e)}", exc_info=True)
         st.sidebar.error("チャット履歴の保存中にエラーが発生しました。")
 
+
+def _render_provider_results(results: List[Dict], correct_ids: List[str], is_vertex: bool = False) -> None:
+    """プロバイダー検索結果を表示"""
+    if not results:
+        if is_vertex:
+            search_type = REVISION_SEARCH_TYPES.get(st.session_state.selected_revision, "hybrid")
+            if search_type == "keyword_filter":
+                st.info("キーワード検索のためスキップ（Azureタブの結果をご確認ください）")
+            else:
+                st.info("該当する結果がありません")
+        else:
+            st.info("該当する結果がありません")
+        return
+
+    # 正解件数をカウント
+    correct_count = sum(
+        1 for r in results
+        if check_if_correct(r, correct_ids, r.get("_area"))[1]
+    )
+    st.caption(f"検索結果: {len(results)}件（正解: {correct_count}件）")
+
+    # スクロール可能なコンテナで全件表示
+    with st.container(height=600):
+        for idx, response in enumerate(results, 1):
+            area = response.get("_area", "")
+            scenario_id, is_correct = check_if_correct(response, correct_ids, area)
+            card_html = format_response_card(
+                idx, response["Similarity"],
+                response["Search_Result_Q"], response["Search_Result_A"],
+                category=response.get("Search_Category"),
+                scenario_id=scenario_id, is_correct=is_correct
+            )
+            st.markdown(card_html, unsafe_allow_html=True)
+
+
+def _render_vector_weight_slider(default_value: float, key: str = None) -> None:
+    """検索バランススライダーを表示し、configを更新"""
+    vector_weight = st.slider(
+        "検索バランス",
+        0.0, 1.0,
+        default_value, 0.1,
+        key=key,
+        help="左：ワード重視 / 右：意味重視"
+    )
+    st.session_state.config.vector_weight = vector_weight
+    st.session_state.config.keyword_weight = 1.0 - vector_weight
+
+    # スライダーの両端ラベルを表示
+    col1, col2 = st.columns(2)
+    with col1:
+        st.caption("← ワード重視")
+    with col2:
+        st.caption("意味重視 →")
+
+
 def run_streamlit_ui():
     st.set_page_config(page_title="類似回答検索ボット【預金】", layout="wide", initial_sidebar_state="expanded")
     st.markdown("""
@@ -699,91 +823,184 @@ def run_streamlit_ui():
 
     with st.sidebar:
         st.title("設定")
-        with st.expander("パラメータ調整", expanded=True):
-            # 検索タイプ選択（類似検索 / キーワード必須）
-            search_type_labels = {
-                "hybrid": "類似検索（意味で探す）",
-                "keyword_filter": "キーワード必須（ワードを含むもの）"
-            }
-            current_search_type = st.session_state.config.search_type if hasattr(st.session_state.config, 'search_type') else "hybrid"
-            selected_search_type = st.radio(
-                "検索タイプ",
-                options=["hybrid", "keyword_filter"],
-                format_func=lambda x: search_type_labels[x],
-                index=0 if current_search_type == "hybrid" else 1,
-                key="search_type_radio"
-            )
-            st.session_state.config.search_type = selected_search_type
 
-            # 類似検索（hybrid）選択時のみ検索バランススライダーを表示
-            if selected_search_type == "hybrid":
-                # ワード重視 ↔ 意味重視のスライダー
-                st.session_state.config.vector_weight = st.slider(
-                    "検索バランス",
-                    0.0, 1.0,
-                    st.session_state.config.vector_weight, 0.1,
-                    help="左：ワード重視 / 右：意味重視"
-                )
-                # keyword_weight を自動計算
-                st.session_state.config.keyword_weight = 1.0 - st.session_state.config.vector_weight
+        # モード選択（通常検索 / 事務改定評価）
+        mode_options = ["通常検索", "事務改定評価"]
+        current_mode_idx = 1 if st.session_state.dual_provider_mode else 0
+        selected_mode_label = st.radio(
+            "モード",
+            mode_options,
+            index=current_mode_idx,
+            key="mode_radio",
+            horizontal=True
+        )
 
-                # スライダーの両端ラベルを表示
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.caption("← ワード重視")
-                with col2:
-                    st.caption("意味重視 →")
+        is_evaluation_mode = (selected_mode_label == "事務改定評価")
 
-            # 検索モード選択（類似検索時のみ有効）
-            if selected_search_type == "hybrid":
-                search_modes = ["original", "llm_enhanced", "multi_stage"]
-                mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索", "multi_stage": "多段階OR検索"}
-                current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0
-                selected_mode = st.selectbox(
-                    "検索モード",
-                    search_modes,
-                    format_func=lambda x: mode_labels[x],
-                    index=current_mode_index
-                )
-                st.session_state.config.search_mode = selected_mode
+        if is_evaluation_mode:
+            # ==========================================
+            # 事務改定評価モード
+            # ==========================================
+            st.markdown("---")
+            st.subheader("📊 事務改定評価設定")
 
-                # 検索対象選択
-                search_sources = ["all", "scenario", "history_data"]
-                source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
-                current_source_index = search_sources.index(st.session_state.config.search_source) if st.session_state.config.search_source in search_sources else 0
-                selected_source = st.selectbox(
-                    "検索対象",
-                    search_sources,
-                    format_func=lambda x: source_labels[x],
-                    index=current_source_index
-                )
-                st.session_state.config.search_source = selected_source
+            # 正解IDデータを読み込み
+            revision_data = load_revision_correct_ids()
+            revision_options = list(revision_data.keys())
 
-                # 多段階検索パラメータ（multi_stage時のみ表示）
-                if selected_mode == "multi_stage":
-                    # 候補数入力（top_k）- 多段階検索は閾値ではなくtop_kで制御
-                    # デフォルト値が10未満の場合は100に設定
-                    current_top_k = max(10, st.session_state.config.top_k) if st.session_state.config.top_k < 10 else st.session_state.config.top_k
-                    st.session_state.config.top_k = st.number_input(
-                        "候補数", min_value=10, max_value=200,
-                        value=current_top_k, step=10
-                    )
-                    st.session_state.config.multi_stage_enable_judgment_support = st.checkbox(
-                        "LLM判断支援",
-                        value=st.session_state.config.multi_stage_enable_judgment_support
-                    )
-                else:
-                    # 通常検索モード（original, llm_enhanced）の候補数
-                    st.session_state.config.top_k = st.number_input(
-                        "表示する候補数", min_value=1, max_value=10,
-                        value=st.session_state.config.top_k, step=1
-                    )
+            if not revision_options:
+                st.warning("正解IDデータが見つかりません")
+                st.session_state.dual_provider_mode = False
+                st.session_state.selected_revision = None
+                st.session_state.correct_ids = []
             else:
-                # キーワード必須検索の場合は固定値
-                selected_mode = "original"
-                st.session_state.config.search_mode = "original"
+                current_revision_idx = 0
+                if st.session_state.selected_revision in revision_options:
+                    current_revision_idx = revision_options.index(st.session_state.selected_revision)
+
+                selected_revision = st.selectbox(
+                    "改定番号",
+                    revision_options,
+                    index=current_revision_idx,
+                    key="revision_select",
+                    help="改定番号を選択すると、Azure/VertexAI両方で検索し、正解IDとマッチした結果にバッジを表示します"
+                )
+
+                st.session_state.selected_revision = selected_revision
+                st.session_state.dual_provider_mode = True
+
+                # 正解IDを設定
+                if selected_revision in revision_data:
+                    content, correct_ids = revision_data[selected_revision]
+                    st.session_state.correct_ids = correct_ids
+
+                    # 正解ID件数を表示
+                    st.success(f"✅ 正解ID: {len(correct_ids)}件")
+
+                    # 対象エリア表示
+                    areas = REVISION_TO_AREAS.get(selected_revision, [])
+                    if areas:
+                        st.caption(f"📁 対象エリア: {', '.join(areas)}")
+
+                # 検索タイプ選択（キーワード検索 / 意味検索）
+                st.markdown("---")
+                st.subheader("🔧 検索設定")
+
+                # 改定番号のデフォルト検索タイプを取得
+                default_search_type = REVISION_SEARCH_TYPES.get(selected_revision, "hybrid")
+
+                eval_search_type_labels = {
+                    "keyword_filter": "キーワード検索",
+                    "hybrid": "意味検索"
+                }
+                eval_selected_search_type = st.radio(
+                    "検索タイプ",
+                    options=["hybrid", "keyword_filter"],
+                    format_func=lambda x: eval_search_type_labels[x],
+                    index=0 if default_search_type == "hybrid" else 1,
+                    key="eval_search_type_radio",
+                    horizontal=True
+                )
+                st.session_state.config.search_type = eval_selected_search_type
+
+                # 意味検索の場合のみベクトル重みスライダーを表示
+                if eval_selected_search_type == "hybrid":
+                    default_vector_weight = REVISION_VECTOR_WEIGHTS.get(selected_revision, DEFAULT_VECTOR_WEIGHT)
+                    _render_vector_weight_slider(default_vector_weight, key="eval_vector_weight")
+
+                # 候補数設定（評価モード用）
+                st.markdown("---")
+                eval_top_k = st.number_input(
+                    "候補数",
+                    min_value=10,
+                    max_value=200,
+                    value=max(10, st.session_state.config.top_k),
+                    step=10,
+                    key="eval_top_k",
+                    help="検索結果の最大件数（評価用に多めに設定）"
+                )
+                st.session_state.config.top_k = eval_top_k
+
+        else:
+            # ==========================================
+            # 通常検索モード
+            # ==========================================
+            st.session_state.dual_provider_mode = False
+            st.session_state.selected_revision = None
+            st.session_state.correct_ids = []
+
+            st.markdown("---")
+            with st.expander("🔧 検索パラメータ", expanded=True):
+                # 検索タイプ選択（意味検索 / キーワード検索）
+                search_type_labels = {
+                    "hybrid": "意味検索（意味で探す）",
+                    "keyword_filter": "キーワード検索（ワードを含むもの）"
+                }
+                current_search_type = st.session_state.config.search_type if hasattr(st.session_state.config, 'search_type') else "hybrid"
+                selected_search_type = st.radio(
+                    "検索タイプ",
+                    options=["hybrid", "keyword_filter"],
+                    format_func=lambda x: search_type_labels[x],
+                    index=0 if current_search_type == "hybrid" else 1,
+                    key="search_type_radio"
+                )
+                st.session_state.config.search_type = selected_search_type
+
+                # 意味検索（hybrid）選択時のみ検索バランススライダーと追加オプションを表示
+                if selected_search_type == "hybrid":
+                    _render_vector_weight_slider(st.session_state.config.vector_weight)
+
+                    # 検索モード選択
+                    search_modes = ["original", "llm_enhanced", "multi_stage"]
+                    mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索", "multi_stage": "多段階OR検索"}
+                    current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0
+                    selected_mode = st.selectbox(
+                        "検索モード",
+                        search_modes,
+                        format_func=lambda x: mode_labels[x],
+                        index=current_mode_index
+                    )
+                    st.session_state.config.search_mode = selected_mode
+
+                    # 検索対象選択
+                    search_sources = ["all", "scenario", "history_data"]
+                    source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
+                    current_source_index = search_sources.index(st.session_state.config.search_source) if st.session_state.config.search_source in search_sources else 0
+                    selected_source = st.selectbox(
+                        "検索対象",
+                        search_sources,
+                        format_func=lambda x: source_labels[x],
+                        index=current_source_index
+                    )
+                    st.session_state.config.search_source = selected_source
+
+                    # 多段階検索パラメータ（multi_stage時のみ表示）
+                    if selected_mode == "multi_stage":
+                        # 候補数入力（top_k）- 多段階検索は閾値ではなくtop_kで制御
+                        # デフォルト値が10未満の場合は10に補正
+                        st.session_state.config.top_k = st.number_input(
+                            "候補数", min_value=10, max_value=200,
+                            value=max(10, st.session_state.config.top_k), step=10
+                        )
+                        st.session_state.config.multi_stage_enable_judgment_support = st.checkbox(
+                            "LLM判断支援",
+                            value=st.session_state.config.multi_stage_enable_judgment_support
+                        )
+                    else:
+                        # 通常検索モード（original, llm_enhanced）の候補数
+                        # multi_stageから切り替え時に値がmax_valueを超えている場合は補正
+                        st.session_state.config.top_k = st.number_input(
+                            "表示する候補数", min_value=1, max_value=10,
+                            value=min(10, st.session_state.config.top_k), step=1
+                        )
+                else:
+                    # キーワード検索の場合は固定値
+                    selected_mode = "original"
+                    st.session_state.config.search_mode = "original"
 
             # 業務分野選択（動的に取得）
+            st.markdown("---")
+            st.subheader("📁 業務分野")
             business_areas = get_available_business_areas()
             # 現在選択中の業務分野がリストにない場合は先頭を選択
             current_area = st.session_state.business_area
@@ -793,53 +1010,13 @@ def run_streamlit_ui():
             st.session_state.business_area = st.selectbox(
                 "業務分野",
                 business_areas,
-                index=business_areas.index(current_area)
+                index=business_areas.index(current_area),
+                label_visibility="collapsed"
             )
 
-        # 改定番号選択（事務改定評価モード）
+        # 共通: チャット履歴保存ボタン
         st.markdown("---")
-        st.subheader("事務改定評価")
-
-        # 正解IDデータを読み込み
-        revision_data = load_revision_correct_ids()
-        revision_options = ["なし"] + list(revision_data.keys())
-
-        current_revision_idx = 0
-        if st.session_state.selected_revision in revision_options:
-            current_revision_idx = revision_options.index(st.session_state.selected_revision)
-
-        selected_revision = st.selectbox(
-            "改定番号",
-            revision_options,
-            index=current_revision_idx,
-            key="revision_select",
-            help="改定番号を選択すると、Azure/VertexAI両方で検索し、正解IDとマッチした結果にバッジを表示します"
-        )
-
-        # 改定番号選択時の処理
-        if selected_revision != "なし":
-            st.session_state.selected_revision = selected_revision
-            st.session_state.dual_provider_mode = True
-
-            # 正解IDを設定
-            if selected_revision in revision_data:
-                content, correct_ids = revision_data[selected_revision]
-                st.session_state.correct_ids = correct_ids
-
-                # 改定番号に応じた検索タイプを自動設定
-                revision_search_type = REVISION_SEARCH_TYPES.get(selected_revision, "hybrid")
-                st.session_state.config.search_type = revision_search_type
-
-                # 情報表示
-                st.info(f"正解ID: {len(correct_ids)}件設定")
-                search_type_label = "キーワード必須" if revision_search_type == "keyword_filter" else "類似検索"
-                st.caption(f"検索タイプ: {search_type_label}")
-        else:
-            st.session_state.selected_revision = None
-            st.session_state.dual_provider_mode = False
-            st.session_state.correct_ids = []
-
-        if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
+        if st.button("💾 チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
             save_chat_history()
 
     # タイトル（改定番号選択時は改定番号も表示）
@@ -869,41 +1046,10 @@ def run_streamlit_ui():
                     tab_azure, tab_vertex = st.tabs(["Azure", "VertexAI"])
 
                     with tab_azure:
-                        if azure_results:
-                            for idx, response in enumerate(azure_results[:20], 1):  # 最大20件表示
-                                scenario_id, is_correct = check_if_correct(response, correct_ids)
-                                category = response.get("Search_Category")
-                                card_html = format_response_card(
-                                    idx, response["Similarity"],
-                                    response["Search_Result_Q"], response["Search_Result_A"],
-                                    category=category, scenario_id=scenario_id, is_correct=is_correct
-                                )
-                                st.markdown(card_html, unsafe_allow_html=True)
-                            if len(azure_results) > 20:
-                                st.info(f"他 {len(azure_results) - 20}件の結果があります")
-                        else:
-                            st.info("該当する結果がありません")
+                        _render_provider_results(azure_results, correct_ids)
 
                     with tab_vertex:
-                        if vertex_results:
-                            for idx, response in enumerate(vertex_results[:20], 1):  # 最大20件表示
-                                scenario_id, is_correct = check_if_correct(response, correct_ids)
-                                category = response.get("Search_Category")
-                                card_html = format_response_card(
-                                    idx, response["Similarity"],
-                                    response["Search_Result_Q"], response["Search_Result_A"],
-                                    category=category, scenario_id=scenario_id, is_correct=is_correct
-                                )
-                                st.markdown(card_html, unsafe_allow_html=True)
-                            if len(vertex_results) > 20:
-                                st.info(f"他 {len(vertex_results) - 20}件の結果があります")
-                        else:
-                            # キーワード必須検索の場合
-                            search_type = REVISION_SEARCH_TYPES.get(st.session_state.selected_revision, "hybrid")
-                            if search_type == "keyword_filter":
-                                st.info("キーワード必須検索のためスキップ（Azureタブの結果をご確認ください）")
-                            else:
-                                st.info("該当する結果がありません")
+                        _render_provider_results(vertex_results, correct_ids, is_vertex=True)
 
                 elif isinstance(msg["text"], list):
                     # 通常の単一プロバイダー検索結果

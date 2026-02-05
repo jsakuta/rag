@@ -19,7 +19,7 @@ import traceback
 from datetime import datetime
 from itertools import zip_longest
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -516,6 +516,54 @@ class RevisionEvaluator:
             "必要確認件数": last_correct_rank if last_correct_rank > 0 else "-",
         }
 
+    def _collect_found_ids(self, results: List[Dict]) -> Set[str]:
+        """検索結果から発見済みシナリオIDを収集"""
+        return {r["シナリオID"] for r in results if r.get("正解フラグ") == "TRUE"}
+
+    def _count_correct_in_results_by_area(
+        self, results_by_area: Dict[str, List[Dict]]
+    ) -> Tuple[int, int]:
+        """エリア別検索結果から総件数と正解数を集計"""
+        total = sum(len(r) for r in results_by_area.values())
+        correct = sum(
+            1
+            for area_results in results_by_area.values()
+            for r in area_results
+            if r.get("正解フラグ") == "TRUE"
+        )
+        return total, correct
+
+    def _build_unfound_scenarios(
+        self,
+        area_correct_ids: List[str],
+        found_ids: Set[str],
+        area: str,
+        revision: str,
+        change_details_map: Dict[str, str],
+    ) -> List[Dict]:
+        """未発見シナリオのリストを構築"""
+        unfound = []
+        bot_name = self._extract_bot_name_from_area(area)
+
+        for scenario_id in area_correct_ids:
+            if scenario_id in found_ids:
+                continue
+
+            content = self._fetch_scenario_content(scenario_id, area)
+            lv1 = content.get("カテゴリ", "").split(" > ")[0] if content else ""
+            source_file = self._get_source_file(revision, bot_name, lv1)
+
+            unfound.append({
+                "シナリオID": scenario_id,
+                "変更内容": change_details_map.get(scenario_id, ""),
+                "カテゴリ": content.get("カテゴリ", "") if content else "",
+                "ソースファイル": source_file,
+                "質問": content.get("質問", "") if content else "",
+                "回答": content.get("回答", "") if content else "",
+            })
+
+        return unfound
+
     def _evaluate_single_result(self, result: Dict, revision_content: str) -> None:
         try:
             evaluation = self.judgment_support.evaluate(
@@ -601,12 +649,8 @@ class RevisionEvaluator:
             )
             evaluation_result["keywords"] = keywords
 
-            total_results = sum(len(r) for r in keyword_results_by_area.values())
-            results_correct = sum(
-                1
-                for area_results in keyword_results_by_area.values()
-                for r in area_results
-                if r.get("正解フラグ") == "TRUE"
+            total_results, results_correct = self._count_correct_in_results_by_area(
+                keyword_results_by_area
             )
             print_search_result(
                 "keyword", total_results, searched_areas, results_correct, len(correct_ids)
@@ -621,35 +665,15 @@ class RevisionEvaluator:
                 if self.enable_llm_analysis and keyword_results:
                     keyword_results = self._run_llm_analysis(keyword_results, revision_content)
 
-                # 検索結果から発見済みシナリオIDを収集
-                found_ids = set()
-                for result in keyword_results:
-                    if result.get("正解フラグ") == "TRUE":
-                        found_ids.add(result["シナリオID"])
-
-                # 未発見シナリオを特定
-                unfound_scenarios = []
-                bot_name = self._extract_bot_name_from_area(area)
-                for scenario_id in area_correct_ids:
-                    if scenario_id not in found_ids:
-                        # シナリオExcelから内容を取得（ベクトルDBを使わない）
-                        content = self._fetch_scenario_content(scenario_id, area)
-                        # カテゴリ（Lv1）からソースファイルを特定
-                        lv1 = content.get("カテゴリ", "").split(" > ")[0] if content else ""
-                        source_file = self._get_source_file(revision, bot_name, lv1)
-                        unfound_scenarios.append({
-                            "シナリオID": scenario_id,
-                            "変更内容": change_details_map.get(scenario_id, ""),
-                            "カテゴリ": content.get("カテゴリ", "") if content else "",
-                            "ソースファイル": source_file,
-                            "質問": content.get("質問", "") if content else "",
-                            "回答": content.get("回答", "") if content else "",
-                        })
+                found_ids = self._collect_found_ids(keyword_results)
+                unfound_scenarios = self._build_unfound_scenarios(
+                    area_correct_ids, found_ids, area, revision, change_details_map
+                )
 
                 # キーワード必須検索の場合、Azure/VertexAI両方に同じ結果を設定
                 evaluation_result["by_area"][area] = {
                     "azure_results": keyword_results,
-                    "vertex_results": keyword_results,  # 同じ結果を両方に表示
+                    "vertex_results": keyword_results,
                     "correct_ids": area_correct_ids,
                     "unfound_scenarios": unfound_scenarios,
                 }
@@ -666,13 +690,7 @@ class RevisionEvaluator:
         evaluation_result["llm_query"] = llm_query
         evaluation_result["keywords"] = keywords
 
-        total_azure = sum(len(r) for r in azure_results_by_area.values())
-        azure_correct = sum(
-            1
-            for area_results in azure_results_by_area.values()
-            for r in area_results
-            if r.get("正解フラグ") == "TRUE"
-        )
+        total_azure, azure_correct = self._count_correct_in_results_by_area(azure_results_by_area)
         print_search_result(
             "azure", total_azure, azure_areas, azure_correct, len(correct_ids)
         )
@@ -681,13 +699,7 @@ class RevisionEvaluator:
         vertex_results_by_area, _, _, vertex_areas = self.search_revision_multi_stage(
             revision, revision_content, correct_ids, "vertex_ai"
         )
-        total_vertex = sum(len(r) for r in vertex_results_by_area.values())
-        vertex_correct = sum(
-            1
-            for area_results in vertex_results_by_area.values()
-            for r in area_results
-            if r.get("正解フラグ") == "TRUE"
-        )
+        total_vertex, vertex_correct = self._count_correct_in_results_by_area(vertex_results_by_area)
         print_search_result(
             "vertex", total_vertex, vertex_areas, vertex_correct, len(correct_ids)
         )
@@ -706,37 +718,14 @@ class RevisionEvaluator:
                 if vertex_results:
                     vertex_results = self._run_llm_analysis(vertex_results, revision_content)
 
-            # 検索結果から発見済みシナリオIDを収集（Azure/VertexAI別）
-            found_ids_azure = set()
-            found_ids_vertex = set()
-            for result in azure_results:
-                if result.get("正解フラグ") == "TRUE":
-                    found_ids_azure.add(result["シナリオID"])
-            for result in vertex_results:
-                if result.get("正解フラグ") == "TRUE":
-                    found_ids_vertex.add(result["シナリオID"])
+            # 片方でも未発見なら未発見として抽出
+            found_ids_azure = self._collect_found_ids(azure_results)
+            found_ids_vertex = self._collect_found_ids(vertex_results)
+            found_ids_both = found_ids_azure & found_ids_vertex
 
-            # 未発見シナリオを特定（片方でも未発見なら未発見として抽出）
-            unfound_scenarios = []
-            bot_name = self._extract_bot_name_from_area(area)
-            for scenario_id in area_correct_ids:
-                azure_found = scenario_id in found_ids_azure
-                vertex_found = scenario_id in found_ids_vertex
-                # 片方でも未発見なら未発見として記録
-                if not azure_found or not vertex_found:
-                    # ベクトルDBから内容を取得
-                    content = self._fetch_scenario_content(scenario_id, area)
-                    # カテゴリ（Lv1）からソースファイルを特定
-                    lv1 = content.get("カテゴリ", "").split(" > ")[0] if content else ""
-                    source_file = self._get_source_file(revision, bot_name, lv1)
-                    unfound_scenarios.append({
-                        "シナリオID": scenario_id,
-                        "変更内容": change_details_map.get(scenario_id, ""),
-                        "カテゴリ": content.get("カテゴリ", "") if content else "",
-                        "ソースファイル": source_file,
-                        "質問": content.get("質問", "") if content else "",
-                        "回答": content.get("回答", "") if content else "",
-                    })
+            unfound_scenarios = self._build_unfound_scenarios(
+                area_correct_ids, found_ids_both, area, revision, change_details_map
+            )
 
             evaluation_result["by_area"][area] = {
                 "azure_results": azure_results,
@@ -956,16 +945,36 @@ class RevisionEvaluator:
                 fmt = unfound_fmt
             worksheet.write(1, col, header, fmt)
 
+    def _get_comparison_format(
+        self,
+        value1: Any,
+        value2: Any,
+        formats: Dict[str, Any],
+        higher_is_better: bool = True,
+    ) -> Tuple[Any, Any]:
+        """2つの値を比較して適切なフォーマットを返す"""
+        # "-" や None は比較対象外
+        if value1 == "-" or value2 == "-" or value1 is None or value2 is None:
+            base_fmt = formats["percent"] if isinstance(value1, float) else formats["cell"]
+            return base_fmt, base_fmt
+
+        good_fmt = formats["good_percent"] if isinstance(value1, float) else formats["good_cell"]
+        bad_fmt = formats["bad_percent"] if isinstance(value1, float) else formats["bad_cell"]
+        neutral_fmt = formats["percent"] if isinstance(value1, float) else formats["cell"]
+
+        if value1 == value2:
+            return neutral_fmt, neutral_fmt
+
+        if higher_is_better:
+            return (good_fmt, bad_fmt) if value1 > value2 else (bad_fmt, good_fmt)
+        else:
+            return (good_fmt, bad_fmt) if value1 < value2 else (bad_fmt, good_fmt)
+
     def _write_summary_data(
         self, worksheet, summary_data: List[Dict], formats: Dict[str, Any]
     ) -> None:
         cell_fmt = formats["cell"]
         cell_nowrap_fmt = formats["cell_nowrap"]
-        percent_fmt = formats["percent"]
-        good_percent_fmt = formats["good_percent"]
-        bad_percent_fmt = formats["bad_percent"]
-        good_cell_fmt = formats["good_cell"]
-        bad_cell_fmt = formats["bad_cell"]
 
         for row_num, row_data in enumerate(summary_data, start=2):
             worksheet.write(row_num, 0, row_data["改定番号"], cell_fmt)
@@ -975,36 +984,20 @@ class RevisionEvaluator:
             worksheet.write(row_num, 4, row_data["Azure_候補数"], cell_fmt)
             worksheet.write(row_num, 5, row_data["Azure_正解発見数"], cell_fmt)
 
-            # 正解発見率の色分け（高い方が青、低い方が赤）
+            # 正解発見率の色分け（高い方が良い）
             azure_rate = row_data["Azure_正解発見率"]
             vertex_rate = row_data["VertexAI_正解発見率"]
-            if azure_rate > vertex_rate:
-                azure_rate_fmt = good_percent_fmt
-                vertex_rate_fmt = bad_percent_fmt
-            elif azure_rate < vertex_rate:
-                azure_rate_fmt = bad_percent_fmt
-                vertex_rate_fmt = good_percent_fmt
-            else:
-                azure_rate_fmt = percent_fmt
-                vertex_rate_fmt = percent_fmt
+            azure_rate_fmt, vertex_rate_fmt = self._get_comparison_format(
+                azure_rate, vertex_rate, formats, higher_is_better=True
+            )
             worksheet.write(row_num, 6, azure_rate, azure_rate_fmt)
 
-            # 必要確認件数の色分け（低い方が青、高い方が赤）
+            # 必要確認件数の色分け（低い方が良い）
             azure_check = row_data["Azure_必要確認件数"]
             vertex_check = row_data["VertexAI_必要確認件数"]
-            # "-" の場合は比較対象外
-            if azure_check == "-" or vertex_check == "-":
-                azure_check_fmt = cell_fmt
-                vertex_check_fmt = cell_fmt
-            elif azure_check < vertex_check:
-                azure_check_fmt = good_cell_fmt
-                vertex_check_fmt = bad_cell_fmt
-            elif azure_check > vertex_check:
-                azure_check_fmt = bad_cell_fmt
-                vertex_check_fmt = good_cell_fmt
-            else:
-                azure_check_fmt = cell_fmt
-                vertex_check_fmt = cell_fmt
+            azure_check_fmt, vertex_check_fmt = self._get_comparison_format(
+                azure_check, vertex_check, formats, higher_is_better=False
+            )
             worksheet.write(row_num, 7, azure_check, azure_check_fmt)
 
             worksheet.write(row_num, 8, row_data["VertexAI_候補数"], cell_fmt)
