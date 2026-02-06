@@ -618,7 +618,7 @@ class DynamicDBManager:
             collection_name = self._get_collection_name(business_area)
 
             # 参照データの準備（業務分野に対応するファイルのみ読み込み）
-            reference_data = self._prepare_reference_data_for_vectorization(latest_scenario)
+            reference_data = self._prepare_reference_data_for_vectorization(latest_scenario, latest_faq)
 
             # ベクトル化モデルの初期化（プロバイダー設定に応じて自動切替）
             from src.utils.auth import create_embedding_model
@@ -827,38 +827,147 @@ class DynamicDBManager:
 
         return sorted(list(business_areas))
     
-    def _prepare_reference_data_for_vectorization(self, latest_scenario: Optional[str] = None) -> dict:
+    def _prepare_reference_data_for_vectorization(
+        self,
+        latest_scenario: Optional[str] = None,
+        latest_faq: Optional[str] = None
+    ) -> dict:
         """動的DB管理システム用の参照データ準備（業務分野フィルタリング対応）
 
         Args:
-            latest_scenario: 読み込むシナリオファイル名（指定時はそのファイルのみ読み込み）
+            latest_scenario: 読み込むシナリオファイル名
+            latest_faq: 読み込むFAQファイル名
 
         Returns:
             dict: 参照データ（combined_texts, metadatas）
         """
-        logger.info(f"動的DB管理システム用の参照データ準備開始 (シナリオ: {latest_scenario})")
+        logger.info(f"参照データ準備開始 (シナリオ: {latest_scenario}, FAQ: {latest_faq})")
 
-        if latest_scenario:
-            # 指定されたシナリオファイルのみを読み込み（業務分野別DB構築用）
-            from src.handlers.input_handler import HierarchicalExcelInputHandler
-
-            scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
-            if not os.path.exists(scenario_path):
-                raise DynamicDBError(f"シナリオファイルが見つかりません: {scenario_path}")
-
-            logger.info(f"Processing scenario file: {latest_scenario}")
-
-            # HierarchicalExcelInputHandlerで指定ファイルのみ読み込み
-            handler = HierarchicalExcelInputHandler(self.config, scenario_path)
-            reference_data = handler.load_reference_data()
-
-            logger.info(f"参照データ準備完了（シナリオ指定）: {len(reference_data['combined_texts'])}件")
-        else:
-            # 従来の動作: MultiFolderInputHandlerで全データ読み込み
+        # どちらも指定されていない場合は従来の動作
+        if not latest_scenario and not latest_faq:
             from src.handlers.input_handler import MultiFolderInputHandler
             input_handler = MultiFolderInputHandler(self.config)
             reference_data = input_handler.load_reference_data()
-
             logger.info(f"参照データ準備完了（全データ）: {len(reference_data['combined_texts'])}件")
+            return reference_data
 
-        return reference_data
+        all_queries = []
+        all_answers = []
+        all_metadatas = []
+
+        # シナリオデータの読み込み
+        if latest_scenario:
+            from src.handlers.input_handler import HierarchicalExcelInputHandler
+            scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
+            if os.path.exists(scenario_path):
+                handler = HierarchicalExcelInputHandler(self.config, scenario_path)
+                scenario_data = handler.load_reference_data()
+                all_queries.extend(scenario_data['queries'])
+                all_answers.extend(scenario_data['answers'])
+                all_metadatas.extend(scenario_data['metadatas'])
+                logger.info(f"シナリオデータ読み込み完了: {len(scenario_data['queries'])}件")
+            else:
+                logger.warning(f"シナリオファイルが見つかりません: {scenario_path}")
+
+        # FAQデータの読み込み
+        if latest_faq:
+            faq_path = os.path.join(self.reference_faq_path, latest_faq)
+            if os.path.exists(faq_path):
+                faq_data = self._load_faq_file(faq_path)
+                all_queries.extend(faq_data['queries'])
+                all_answers.extend(faq_data['answers'])
+                all_metadatas.extend(faq_data['metadatas'])
+                logger.info(f"FAQデータ読み込み完了: {len(faq_data['queries'])}件")
+            else:
+                logger.warning(f"FAQファイルが見つかりません: {faq_path}")
+
+        # combined_textsを生成
+        all_combined_texts = []
+        for query, answer, metadata in zip(all_queries, all_answers, all_metadatas):
+            hierarchy = metadata.get('hierarchy', '') if metadata else ''
+            text_parts = []
+            if hierarchy.strip():
+                text_parts.append(f"分類: {hierarchy}")
+            if query.strip():
+                text_parts.append(f"質問: {query}")
+            if answer.strip():
+                text_parts.append(f"回答: {answer}")
+            combined_text = " | ".join(text_parts) if text_parts else ""
+            all_combined_texts.append(combined_text)
+
+        logger.info(f"参照データ準備完了: {len(all_combined_texts)}件")
+
+        return {
+            'queries': all_queries,
+            'answers': all_answers,
+            'combined_texts': all_combined_texts,
+            'metadatas': all_metadatas
+        }
+
+    def _load_faq_file(self, faq_path: str) -> dict:
+        """特定のFAQファイルを読み込み
+
+        Args:
+            faq_path: FAQファイルのフルパス
+
+        Returns:
+            dict: FAQデータ（queries, answers, combined_texts, metadatas）
+        """
+        logger.info(f"FAQファイル読み込み: {faq_path}")
+        reference_df = pd.read_excel(faq_path)
+
+        # 列名の検索ロジック
+        possible_query_cols = ['分割後質問', '問合せ内容', '質問内容', '問い合わせ', '質問', 'query', 'Query']
+        possible_answer_cols = ['分割後回答', '回答', '既存回答', 'answer', 'Answer']
+        possible_supplement_cols = ['補足回答', '補足', 'supplement', 'Supplement']
+
+        query_col = next((c for c in possible_query_cols if c in reference_df.columns), None)
+        answer_col = next((c for c in possible_answer_cols if c in reference_df.columns), None)
+        supplement_col = next((c for c in possible_supplement_cols if c in reference_df.columns), None)
+
+        if query_col is None or answer_col is None:
+            raise DynamicDBError(f"FAQファイルに必須列が見つかりません: {list(reference_df.columns)}")
+
+        logger.info(f"FAQ列検出: Query='{query_col}', Answer='{answer_col}', Supplement='{supplement_col}'")
+
+        queries = []
+        answers = []
+        combined_texts = []
+        metadatas = []
+
+        for idx, row in reference_df.iterrows():
+            query_text = str(row[query_col]) if pd.notna(row[query_col]) else ""
+            answer_text = str(row[answer_col]) if pd.notna(row[answer_col]) else ""
+            supplement_text = str(row[supplement_col]) if supplement_col and pd.notna(row[supplement_col]) else ""
+
+            # 補足回答を回答にマージ
+            if supplement_text.strip():
+                if answer_text.strip():
+                    answer_text = f"{answer_text}\n{supplement_text}"
+                else:
+                    answer_text = supplement_text
+
+            # combined_text生成
+            text_parts = []
+            if query_text.strip():
+                text_parts.append(f"質問: {query_text}")
+            if answer_text.strip():
+                text_parts.append(f"回答: {answer_text}")
+            combined_texts.append(" | ".join(text_parts) if text_parts else "")
+
+            queries.append(query_text)
+            answers.append(answer_text)
+
+            metadatas.append({
+                'source': 'history_data',
+                'row_index': idx
+            })
+
+        logger.info(f"FAQファイル読み込み完了: {len(queries)}件")
+
+        return {
+            'queries': queries,
+            'answers': answers,
+            'combined_texts': combined_texts,
+            'metadatas': metadatas
+        }
