@@ -104,3 +104,8 @@ LPT[1-9].*
 # 例: pip install package=3.2.0 > file のようなミスで生成
 =[0-9]*
 =[0-9]*.*
+
+# === 自動生成ツールディレクトリ ===
+.plans/
+.review/
+.serena/

@@ -89,7 +89,8 @@
 │                    Data Storage                            │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐          │
 │  │ ChromaDB   │  │  Excel     │  │   Logs     │          │
-│  │(vector_db/)│  │(input/out) │  │  (logs/)   │          │
+│  │(data/      │  │(data/      │  │  (logs/)   │          │
+│  │ vector_db/)│  │ input/out) │  │            │          │
 │  └────────────┘  └────────────┘  └────────────┘          │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -291,20 +292,20 @@ class BaseEmbeddingModel(ABC):
 
 ```
 1. 変更前シナリオExcel配置
-   └─ reference/scenario/revXXボット_シナリオデータ_YYYYMMDD.xlsx
+   └─ data/source/scenarios/revXXボット_シナリオデータ_YYYYMMDD.xlsx
 2. DB再構築
    ↓ scripts/rebuild_before_scenario_db.py
    ├─ Azure OpenAI でベクトル化
-   │   └─ reference/vector_db/revXX/azure_openai/
+   │   └─ data/vector_db/revXX/azure_openai/
    └─ VertexAI でベクトル化
-       └─ reference/vector_db/revXX/vertex_ai/
+       └─ data/vector_db/revXX/vertex_ai/
 3. 評価実行
    ↓ scripts/evaluate_revisions.py
    ├─ 各改定内容をクエリとして検索
    ├─ 正解IDとの照合
    └─ Azure / VertexAI 横並び比較
 4. Excel出力
-   └─ output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
+   └─ data/output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
 ```
 
 ---

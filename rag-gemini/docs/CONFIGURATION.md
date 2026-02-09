@@ -283,11 +283,11 @@ keyword_weight=0.5
 
 ```env
 # デフォルト設定
-DB_BASE_DIR=reference/vector_db
-REFERENCE_SCENARIO_DIR=reference/scenario
-REFERENCE_FAQ_DIR=reference/faq_data
-INPUT_DIR=input
-OUTPUT_DIR=output
+DB_BASE_DIR=data/vector_db
+REFERENCE_SCENARIO_DIR=data/source/scenarios
+REFERENCE_FAQ_DIR=data/source/faq
+INPUT_DIR=data/input
+OUTPUT_DIR=data/output
 ```
 
 ### コレクション命名規則
@@ -306,7 +306,7 @@ OUTPUT_DIR=output
 
 ### タイムスタンプ管理
 
-**ファイル:** `reference/vector_db/update_timestamps.json`
+**ファイル:** `data/vector_db/update_timestamps.json`
 
 ```json
 {

@@ -124,11 +124,11 @@
         ↓
    prepare_before_scenario.py (文字数列削除・リネーム)
         ↓
-3. reference/scenario/revXXボット_シナリオデータ_YYYYMMDD.xlsx
+3. data/source/scenarios/revisions/revXXボット_シナリオデータ_YYYYMMDD.xlsx
         ↓
    rebuild_before_scenario_db.py → DynamicDBManager
         ↓
-4. reference/vector_db/revXX/ (ベクトルDB)
+4. data/vector_db/revisions/revXX_bot/ (ベクトルDB)
 ```
 
 ### 重要なスクリプト
@@ -164,7 +164,7 @@
 3. 変更箇所: `**カテゴリ内行X** (Excel行Y)` → Excel行Yを抽出
 
 ### 出力
-- ファイル: `input/multi_stage_input.xlsx`
+- ファイル: `data/input/multi_stage_input.xlsx`
 - 列: 番号, 改定内容, 正解ID
 
 ---
@@ -221,9 +221,7 @@ rag-gemini/
 │
 ├── prompt/                       # プロンプト
 │   ├── summarize_v1.0.txt        # クエリ拡張
-│   ├── judgment_support.txt      # 関連性判定
-│   ├── tag_prompt.txt            # タグ付け（未使用）
-│   └── impact_analysis_v1.0.txt  # 影響分析（未使用）
+│   └── judgment_support.txt      # 関連性判定
 │
 ├── scripts/                      # ユーティリティスクリプト
 │   ├── rebuild_before_scenario_db.py  # DB再構築
@@ -232,18 +230,28 @@ rag-gemini/
 │   ├── prepare_before_scenario.py     # データ前処理
 │   └── check_db_content.py            # DB内容確認
 │
-├── input/                        # 入力ファイル
-├── output/                       # 出力ファイル
-├── reference/                    # 参照データ
-│   ├── scenario/                 # シナリオExcel
-│   ├── faq_data/                 # FAQデータ
-│   └── vector_db/                # ベクトルDB
-│       ├── general/              # 総則
-│       ├── deposit/              # 預金
-│       ├── rev01smile/           # 事務改定①
-│       │   ├── azure_openai/
-│       │   └── vertex_ai/
-│       └── ...
+├── data/                         # データディレクトリ
+│   ├── vector_db/                # ベクトルDB (819MB)
+│   │   ├── chroma.sqlite3
+│   │   ├── metadata/
+│   │   └── collections/
+│   │       ├── general/, deposit/, smile/
+│   │       └── revisions/ (rev01_smile, rev02_souzoku, ...)
+│   ├── source/
+│   │   ├── scenarios/            # シナリオExcel
+│   │   │   ├── latest/
+│   │   │   └── revisions/
+│   │   └── faq/                  # FAQデータ
+│   │       └── latest/
+│   ├── input/                    # 入力ファイル
+│   └── output/                   # 出力ファイル
+│       ├── latest/
+│       └── archive/
+│
+├── tests/                        # テスト
+│   ├── unit/
+│   ├── integration/
+│   └── fixtures/
 │
 └── logs/                         # ログファイル
 ```
@@ -298,39 +306,11 @@ AZURE_OPENAI_API_VERSION=2024-12-01-preview
 
 ---
 
-## プロジェクト整理作業（2026-02-09）
+## 技術的な注意事項
 
-### 全Phase完了（2026-02-09）
-- **Phase 0-3**: セキュリティ対応、クリーンアップ、フォルダ構造整理
-- **Phase 4.1-4.5**: コードリファクタリング全完了
-  - SearchStrategyパターン導入（4戦略クラス）
-  - Searcher 1010行 → 676行 (33%削減)
-  - `enable_query_enhancement`廃止 → `search_mode`統一
-  - DynamicDBManagerタイムスタンプフラット化
-  - 遅延インポート導入、テスト15件全パス
-- **Phase 5**: ドキュメント整備（8ドキュメント）
-- **削減効果**: 23,788ファイル削除、835MB削減
-- **ディレクトリ統一**: `data/`配下に統一（819MB）
-
-### ディレクトリ構造
-- `data/vector_db/` - ベクトルDB（コレクション名: rev{XX}_{bot}形式）
-- `data/source/scenarios/` - シナリオデータ
-- `data/source/faq/` - FAQデータ
-- `data/input/` - 入力ファイル
-- `data/output/` - 出力ファイル
-
-### 次回作業
-- 統合テスト（本番環境でpreflight, batch, evaluate実行）
-- `refactor/project-cleanup` → `master` マージ
-
-### 引き継ぎ文書
-- `引き継ぎ_Phase4継続.md` - 全作業の詳細記録
-- `整理計画.md` - 全体計画
-- `~/.claude/projects/C--VSCode-rag/memory/MEMORY.md` - メモリ記録
-
-### 重要な変更
-- 検索モード: `search_mode` のみ（enable_query_enhancement廃止）
-- 検索実行: `SearchStrategy`パターン（`src/core/search/search_strategy.py`）
-- タイムスタンプ: フラット形式（旧3階層から自動移行）
-- テスト環境: `tests/`, `pytest.ini`, `requirements-dev.txt`
+- **検索モード**: `search_mode` パラメータで制御（`enable_query_enhancement`は廃止済み）
+- **検索実行**: `SearchStrategy`パターン（`src/core/search/search_strategy.py`）で4戦略クラスを切替
+- **タイムスタンプ**: フラット形式（旧3階層から自動移行対応済み）
+- **テスト**: `pytest` で実行（`tests/`, `pytest.ini`, `requirements-dev.txt`）
+- **コレクション命名**: `rev{XX}_{bot}` 形式（例: `rev01_smile`, `rev02_souzoku`）
 

@@ -91,7 +91,7 @@ ValueError: Collection 'deposit_DB' does not exist.
 1. DBの再構築:
 ```bash
 # 既存DBを削除（Streamlit停止後）
-rm -rf reference/vector_db/
+rm -rf data/vector_db/
 
 # データ処理を実行（自動的にDB再構築）
 python main.py
@@ -106,7 +106,7 @@ python scripts/rebuild_before_scenario_db.py
 
 **症状:**
 ```
-rm: cannot remove 'reference/vector_db/...': Device or resource busy
+rm: cannot remove 'data/vector_db/...': Device or resource busy
 ```
 
 **原因:**
@@ -143,7 +143,7 @@ pkill -f streamlit
 
 1. タイムスタンプファイルを削除:
 ```bash
-rm reference/vector_db/update_timestamps.json
+rm data/vector_db/update_timestamps.json
 ```
 
 2. データ処理を再実行:
@@ -382,7 +382,7 @@ OSError: [Errno 28] No space left on device
 1. 不要なDBを削除:
 ```bash
 # 旧バージョンのDBを削除
-rm -rf reference/vector_db/old_version/
+rm -rf data/vector_db/old_version/
 ```
 
 2. ログファイルをクリーンアップ:
@@ -390,7 +390,7 @@ rm -rf reference/vector_db/old_version/
 rm logs/*.log
 ```
 
-3. output/ ディレクトリの古いファイルを削除
+3. data/output/ ディレクトリの古いファイルを削除
 
 ---
 
@@ -440,7 +440,7 @@ Source distribution:
 pkill -f python
 
 # 2. DBディレクトリを削除
-rm -rf reference/vector_db/
+rm -rf data/vector_db/
 
 # 3. データ処理を再実行（自動的にDB再構築）
 python main.py
@@ -452,7 +452,7 @@ python main.py
 事務改定評価システムでは、プロバイダーごとに別々のDBディレクトリを使用しています。
 
 ```
-reference/vector_db/rev01smile/
+data/vector_db/rev01smile/
 ├── azure_openai/    # Azure OpenAI専用
 └── vertex_ai/       # VertexAI専用
 ```

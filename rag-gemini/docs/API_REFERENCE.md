@@ -343,7 +343,7 @@ class DynamicDBManager:
     def __init__(
         self,
         config: SearchConfig,
-        db_base_dir: str = "reference/vector_db"
+        db_base_dir: str = "data/vector_db"
     ):
         """
         Args:
@@ -806,7 +806,7 @@ config = SearchConfig(
 )
 
 # 2. 入力データ読み込み
-input_df = InputHandler.read_input_file("input/data.xlsx")
+input_df = InputHandler.read_input_file("data/input/data.xlsx")
 
 # 3. 処理実行
 processor = DataProcessor(config)
@@ -815,7 +815,7 @@ result_df = processor.process_batch(input_df)
 # 4. 結果保存
 OutputHandler.save_results(
     results=result_df,
-    output_path="output/results.xlsx",
+    output_path="data/output/results.xlsx",
     config=config
 )
 ```

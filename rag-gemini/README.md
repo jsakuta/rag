@@ -165,10 +165,10 @@ cp .env.example .env
 ### 3. データ配置と実行
 
 ```bash
-mkdir -p reference/scenario reference/faq_data input
-cp scenario_data.xlsx reference/scenario/
-cp faq_history.xlsx reference/faq_data/
-cp input_data.xlsx input/
+mkdir -p data/source/scenarios data/source/faq data/input
+cp scenario_data.xlsx data/source/scenarios/
+cp faq_history.xlsx data/source/faq/
+cp input_data.xlsx data/input/
 
 # バッチモード
 python main.py
@@ -240,13 +240,13 @@ AZURE_OPENAI_API_VERSION=2024-12-01-preview
 
 ```bash
 # 参照データを配置
-mkdir -p reference/scenario reference/faq_data
-cp scenario_data.xlsx reference/scenario/
-cp faq_history.xlsx reference/faq_data/
+mkdir -p data/source/scenarios data/source/faq
+cp scenario_data.xlsx data/source/scenarios/
+cp faq_history.xlsx data/source/faq/
 
 # 入力データを配置
-mkdir -p input
-cp input_data.xlsx input/
+mkdir -p data/input
+cp input_data.xlsx data/input/
 ```
 
 ### Docker デプロイ
@@ -261,9 +261,7 @@ docker build -t rag-gemini:latest .
 
 ```bash
 docker run --rm \
-  -v $(pwd)/input:/app/input \
-  -v $(pwd)/reference:/app/reference \
-  -v $(pwd)/output:/app/output \
+  -v $(pwd)/data:/app/data \
   -v $(pwd)/gemini_credentials.json:/app/gemini_credentials.json:ro \
   -e GEMINI_CREDENTIALS_PATH=/app/gemini_credentials.json \
   -e GEMINI_PROJECT_ID=your-project-id \
@@ -274,7 +272,7 @@ docker run --rm \
 
 ```bash
 docker run -p 8501:8501 \
-  -v $(pwd)/reference:/app/reference \
+  -v $(pwd)/data:/app/data \
   -v $(pwd)/gemini_credentials.json:/app/gemini_credentials.json:ro \
   -e GEMINI_CREDENTIALS_PATH=/app/gemini_credentials.json \
   -e GEMINI_PROJECT_ID=your-project-id \
@@ -292,7 +290,6 @@ docker run -p 8501:8501 \
 ```python
 # config.py
 DEFAULT_SEARCH_MODE = "original"
-DEFAULT_ENABLE_QUERY_ENHANCEMENT = False
 ```
 
 **特徴:**
@@ -310,7 +307,6 @@ DEFAULT_ENABLE_QUERY_ENHANCEMENT = False
 ```python
 # config.py
 DEFAULT_SEARCH_MODE = "llm_enhanced"
-DEFAULT_ENABLE_QUERY_ENHANCEMENT = True
 ```
 
 **特徴:**
@@ -435,10 +431,10 @@ gemini-embedding-001はMRLを採用しており、用途に応じて出力次元
 
 ### ChromaDB 構造
 
-**永続化場所:** `reference/vector_db/`
+**永続化場所:** `data/vector_db/`
 
 ```text
-reference/vector_db/
+data/vector_db/
 ├── chroma.sqlite3              # メインデータベース
 ├── {collection_id}/            # コレクションデータ
 │   ├── data_level0.bin
@@ -487,7 +483,7 @@ flowchart TD
     C -->|ファイル変更なし| E[既存 DB 使用]
 ```
 
-**タイムスタンプ管理ファイル:** `reference/vector_db/update_timestamps.json`
+**タイムスタンプ管理ファイル:** `data/vector_db/update_timestamps.json`
 
 ```json
 {
@@ -533,7 +529,7 @@ flowchart TD
 ### DB構造（事務改定評価用）
 
 ```
-reference/vector_db/
+data/vector_db/
 ├── general/              # 通常検索用（総則）
 ├── deposit/              # 通常検索用（預金）
 │
@@ -583,7 +579,7 @@ python scripts/evaluate_revisions.py
 
 **出力:**
 ```
-output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
+data/output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
 ├── サマリーシート（改定×プロバイダーの正解率一覧）
 ├── 改定①シート（検索結果詳細）
 ├── 改定②シート
@@ -630,7 +626,7 @@ VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 
 ### 入力ファイル
 
-**場所:** `input/` ディレクトリ
+**場所:** `data/input/` ディレクトリ
 
 **形式:** Excel (.xlsx)
 
@@ -642,7 +638,7 @@ VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 
 ### 参照データ
 
-**シナリオデータ:** `reference/scenario/`
+**シナリオデータ:** `data/source/scenarios/`
 
 | 列 | 説明 |
 |----|------|
@@ -651,7 +647,7 @@ VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 | 質問内容 | 質問文（自動検出） |
 | 回答 | 回答文（自動検出） |
 
-**FAQ 履歴:** `reference/faq_data/`
+**FAQ 履歴:** `data/source/faq/`
 
 | 列名 | 必須 | 説明 |
 |------|------|------|
@@ -738,7 +734,7 @@ python main.py interactive
 | 問題 | 原因 | 解決策 |
 |------|------|--------|
 | Gemini 認証エラー | 認証ファイル未設定 | `gemini_credentials.json` 確認 |
-| ChromaDB エラー | vector_db/ 破損 | `rm -rf reference/vector_db/` |
+| ChromaDB エラー | vector_db/ 破損 | `rm -rf data/vector_db/` |
 | メモリエラー | 大量データ処理 | バッチサイズ縮小 |
 | API レート制限 | Gemini API 制限 | 待機時間追加 |
 | コレクション名エラー | 日本語文字 | 自動変換で対応済み |
@@ -955,11 +951,12 @@ rag-gemini/
 │
 ├── prompt/                       # プロンプトテンプレート
 ├── scripts/                      # ユーティリティスクリプト
-├── input/                        # 入力ファイル
-├── output/                       # 出力ファイル
-├── reference/                    # 参照データ
-│   ├── scenario/                 # シナリオデータ
-│   ├── faq_data/                 # FAQデータ
+├── data/                         # データディレクトリ
+│   ├── input/                    # 入力ファイル
+│   ├── output/                   # 出力ファイル
+│   ├── source/                   # 参照データ
+│   │   ├── scenarios/            # シナリオデータ
+│   │   └── faq/                  # FAQデータ
 │   └── vector_db/                # ベクトルDB（永続化）
 └── logs/                         # ログファイル
 ```

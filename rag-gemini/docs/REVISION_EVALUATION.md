@@ -69,7 +69,7 @@ Stage 3: 結果をマージ＋カテゴリ分類
 
 ### ディレクトリ構成
 ```
-reference/vector_db/
+data/vector_db/
 ├── general/              # 総則（通常検索用）
 │   ├── azure_openai/
 │   └── vertex_ai/
@@ -120,7 +120,7 @@ reference/vector_db/
 
 1. **シナリオファイルの配置**
    ```
-   reference/scenario/
+   data/source/scenarios/
    ├── rev01smile_シナリオデータ_YYYYMMDD.xlsx
    ├── rev02souzoku_シナリオデータ_YYYYMMDD.xlsx
    ├── rev03naibujimu_シナリオデータ_YYYYMMDD.xlsx
@@ -134,7 +134,7 @@ reference/vector_db/
 
 2. **入力ファイルの配置**
    ```
-   input/multi_stage_input.xlsx
+   data/input/multi_stage_input.xlsx
    ```
 
    必要な列:
@@ -191,7 +191,7 @@ ENABLE_LLM_ANALYSIS=false python scripts/evaluate_revisions.py
 
 ### ファイル名
 ```
-output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
+data/output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
 ```
 
 ### シート構成
@@ -281,7 +281,7 @@ rm: cannot remove '...': Device or resource busy
 
 ### DBが見つからない
 ```
-DBが存在しません: reference/vector_db/rev01smile/azure_openai
+DBが存在しません: data/vector_db/rev01smile/azure_openai
 ```
 → `rebuild_before_scenario_db.py`を先に実行してDBを構築。
 

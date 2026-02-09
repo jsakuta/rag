@@ -149,9 +149,6 @@ gemini_credentials.json
 azure_credentials.json
 
 # データファイル
-input/
-output/
-reference/
 data/
 
 # ログファイル
