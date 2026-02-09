@@ -721,13 +721,11 @@ class DynamicDBManager:
             "総則": "general",
             "預金": "deposit",
             "融資": "loan",
-            "外貨": "foreign_currency",
-            "投信": "investment_trust",
-            "住宅ローン": "housing_loan",
-            "投資信託": "investment_fund",
-            "カード": "card",
-            "保険": "insurance",
-            "年金": "pension"
+            "スマイルタブレット": "smile_tablet",
+            "スマイル": "smile",
+            "内部事務": "naibujimu",
+            "相続": "souzoku",
+            "取引時確認": "torikaku"
         }
 
         # 完全一致を優先
