@@ -73,3 +73,34 @@ logs/**
 *.xlsx
 *.csv
 .DS_Store
+# === Windows予約デバイス名（CRITICAL） ===
+# これらのファイルを作成するとWindowsファイルシステムで深刻な問題が発生
+nul
+nul.*
+con
+con.*
+prn
+prn.*
+aux
+aux.*
+com[1-9]
+com[1-9].*
+lpt[1-9]
+lpt[1-9].*
+NUL
+NUL.*
+CON
+CON.*
+PRN
+PRN.*
+AUX
+AUX.*
+COM[1-9]
+COM[1-9].*
+LPT[1-9]
+LPT[1-9].*
+
+# === リダイレクトミスによる不正なファイル ===
+# 例: pip install package=3.2.0 > file のようなミスで生成
+=[0-9]*
+=[0-9]*.*

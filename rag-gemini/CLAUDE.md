@@ -3,6 +3,22 @@
 ## プロジェクト概要
 シナリオボットの事務改定差分を管理し、RAG検索システムで正解IDを特定するプロジェクト。
 
+## ドキュメント構成
+
+最新のドキュメントは `docs/` ディレクトリに整理されています:
+
+| ドキュメント | 説明 |
+|-------------|------|
+| [README.md](../README.md) | プロジェクト概要とクイックスタート |
+| [docs/GOOGLE_CLOUD_AUTH.md](../docs/GOOGLE_CLOUD_AUTH.md) | Google Cloud 認証設定 |
+| [docs/CONFIGURATION.md](../docs/CONFIGURATION.md) | 環境変数と設定オプション詳細 |
+| [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) | システムアーキテクチャ |
+| [docs/API_REFERENCE.md](../docs/API_REFERENCE.md) | API仕様 |
+| [docs/SECURITY.md](../docs/SECURITY.md) | セキュリティガイド |
+| [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) | トラブルシューティング |
+| [docs/REVISION_EVALUATION.md](../docs/REVISION_EVALUATION.md) | 事務改定評価システム |
+| [docs/PROMPTS.md](../docs/PROMPTS.md) | プロンプト詳細 |
+
 ---
 
 ## 事務改定差分ファイル構成
@@ -150,3 +166,132 @@
 ### 出力
 - ファイル: `input/multi_stage_input.xlsx`
 - 列: 番号, 改定内容, 正解ID
+
+---
+
+## コード構成（最新）
+
+### ディレクトリ構造
+```
+rag-gemini/
+├── main.py                       # エントリーポイント
+├── config.py                     # 設定管理
+├── requirements.txt              # 依存パッケージ
+├── .env.example                  # 環境変数テンプレート
+├── Dockerfile                    # Docker設定
+│
+├── docs/                         # ドキュメント
+│   ├── GOOGLE_CLOUD_AUTH.md      # 認証設定
+│   ├── CONFIGURATION.md          # 設定詳細
+│   ├── ARCHITECTURE.md           # アーキテクチャ
+│   ├── API_REFERENCE.md          # API仕様
+│   ├── SECURITY.md               # セキュリティ
+│   ├── TROUBLESHOOTING.md        # トラブルシューティング
+│   ├── REVISION_EVALUATION.md    # 事務改定評価
+│   └── PROMPTS.md                # プロンプト詳細
+│
+├── src/                          # ソースコード
+│   ├── core/                     # コアロジック
+│   │   ├── processor.py          # データ処理エンジン
+│   │   ├── judgment_support.py   # LLM判断支援
+│   │   └── search/               # 検索エンジン
+│   │       ├── multi_stage_orchestrator.py  # 多段階検索
+│   │       ├── query_enhancer.py            # クエリ拡張
+│   │       ├── vector_search_engine.py      # ベクトル検索
+│   │       ├── keyword_search_engine.py     # キーワード検索
+│   │       └── text_combiner.py             # テキスト結合
+│   │
+│   ├── handlers/                 # 入出力処理
+│   │   ├── input_handler.py      # 入力処理
+│   │   └── output_handler.py     # 出力処理
+│   │
+│   └── utils/                    # ユーティリティ
+│       ├── dynamic_db_manager.py # DB管理
+│       ├── vector_db.py          # ChromaDB ラッパー
+│       ├── base_embedding.py     # 埋め込みモデル基底
+│       ├── gemini_embedding.py   # Gemini埋め込み
+│       ├── azure_embedding.py    # Azure埋め込み
+│       ├── auth.py               # Google Cloud認証
+│       ├── db_version_manager.py # DBバージョン管理
+│       ├── business_area_translator.py  # 業務領域変換
+│       └── logger.py             # ログ設定
+│
+├── ui/                           # Web UI
+│   └── chat.py                   # Streamlit UI
+│
+├── prompt/                       # プロンプト
+│   ├── summarize_v1.0.txt        # クエリ拡張
+│   ├── judgment_support.txt      # 関連性判定
+│   ├── tag_prompt.txt            # タグ付け（未使用）
+│   └── impact_analysis_v1.0.txt  # 影響分析（未使用）
+│
+├── scripts/                      # ユーティリティスクリプト
+│   ├── rebuild_before_scenario_db.py  # DB再構築
+│   ├── evaluate_revisions.py          # 評価実行
+│   ├── generate_correct_ids.py        # 正解ID生成
+│   ├── prepare_before_scenario.py     # データ前処理
+│   └── check_db_content.py            # DB内容確認
+│
+├── input/                        # 入力ファイル
+├── output/                       # 出力ファイル
+├── reference/                    # 参照データ
+│   ├── scenario/                 # シナリオExcel
+│   ├── faq_data/                 # FAQデータ
+│   └── vector_db/                # ベクトルDB
+│       ├── general/              # 総則
+│       ├── deposit/              # 預金
+│       ├── rev01smile/           # 事務改定①
+│       │   ├── azure_openai/
+│       │   └── vertex_ai/
+│       └── ...
+│
+└── logs/                         # ログファイル
+```
+
+### 主要モジュールの役割
+
+#### コアモジュール
+- **processor.py**: データ処理の統合管理
+- **judgment_support.py**: LLMによる関連性判定
+- **multi_stage_orchestrator.py**: 多段階ハイブリッド検索
+- **query_enhancer.py**: LLMクエリ拡張
+
+#### データベース管理
+- **dynamic_db_manager.py**: 業務領域別DB管理、タイムスタンプ検証
+- **vector_db.py**: ChromaDB操作ラッパー
+- **db_version_manager.py**: DBバージョン管理
+
+#### 埋め込みモデル
+- **base_embedding.py**: 抽象基底クラス
+- **gemini_embedding.py**: VertexAI Gemini埋め込み
+- **azure_embedding.py**: Azure OpenAI埋め込み
+
+詳細は [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) を参照してください。
+
+---
+
+## 環境変数設定
+
+### 必須環境変数
+```env
+# LLM設定
+DEFAULT_LLM_PROVIDER=gemini
+DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
+
+# 埋め込みモデル設定
+DEFAULT_EMBEDDING_PROVIDER=azure_openai
+DEFAULT_EMBEDDING_MODEL=text-embedding-3-large
+
+# Google Cloud
+GEMINI_CREDENTIALS_PATH=gemini_credentials.json
+GEMINI_PROJECT_ID=your-project-id
+GEMINI_LOCATION=us-central1
+
+# Azure OpenAI
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
+```
+
+詳細は [docs/CONFIGURATION.md](../docs/CONFIGURATION.md) を参照してください。

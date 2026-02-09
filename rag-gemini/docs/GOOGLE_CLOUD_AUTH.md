@@ -1,7 +1,7 @@
-# Gemini API セットアップガイド
+# Google Cloud 認証設定ガイド
 
 ## 概要
-このガイドは、別環境でGemini APIを使用するためのセットアップ手順を説明します。
+このガイドは、Vertex AI Gemini APIを使用するためのGoogle Cloud認証設定手順を説明します。
 
 ## 必要なファイル
 - `gemini_credentials.json` - 認証情報ファイル
@@ -47,7 +47,7 @@ credentials = service_account.Credentials.from_service_account_file(
 genai.configure(credentials=credentials)
 
 # モデルの初期化
-model = genai.GenerativeModel('gemini-2.0-flash-001')
+model = genai.GenerativeModel('gemini-2.5-flash-lite')
 
 # テキスト生成
 response = model.generate_content("こんにちは、世界！")
@@ -73,7 +73,7 @@ vertexai.init(
 )
 
 # モデルの初期化
-model = vertexai.language_models.TextGenerationModel.from_pretrained("gemini-2.0-flash-001")
+model = vertexai.language_models.TextGenerationModel.from_pretrained("gemini-2.5-flash-lite")
 
 # テキスト生成
 response = model.predict("こんにちは、世界！")
@@ -100,7 +100,7 @@ pip install google-auth
     "location": "us-central1"
   },
   "default_models": {
-    "vertex-gemini": "gemini-2.0-flash-001"
+    "vertex-gemini": "gemini-2.5-flash-lite"
   }
 }
 ```

@@ -59,6 +59,8 @@
 | クエリ拡張 | gemini-2.5-flash-lite | `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL` |
 | 関連性判定 | gemini-2.5-flash-lite | `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL` |
 
+詳細は [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) を参照してください。
+
 ---
 
 ## 他プロジェクトとの違い
@@ -196,36 +198,28 @@ pip install -r requirements.txt
 
 ### Google Cloud 認証設定
 
-#### 1. サービスアカウント作成
+認証設定の詳細は [docs/GOOGLE_CLOUD_AUTH.md](./docs/GOOGLE_CLOUD_AUTH.md) を参照してください。
 
-1. [Google Cloud Console](https://console.cloud.google.com/) にアクセス
-2. IAM & Admin → Service Accounts → 「サービスアカウントを作成」
-3. 役割を付与:
-   - `Vertex AI User`
-   - `AI Platform Admin`
-4. キーを作成（JSON 形式）
+#### クイック設定
 
-#### 2. 認証ファイル配置
+1. **サービスアカウントキーを取得**
+   - Google Cloud Console でサービスアカウントを作成
+   - 役割: `Vertex AI User`, `AI Platform Admin`
+   - JSON キーをダウンロード
 
+2. **認証ファイルを配置**
 ```bash
-# プロジェクトルートに配置
 cp downloaded_key.json gemini_credentials.json
-
-# .gitignore に追加（重要）
-echo "gemini_credentials.json" >> .gitignore
 ```
 
-#### 3. 環境変数設定
-
-`.env` ファイルを編集（**全ての変数にデフォルト値はありません。必ず設定してください**）:
-
+3. **環境変数を設定**（`.env`）
 ```env
 # LLM設定（必須）
-DEFAULT_LLM_PROVIDER=gemini          # gemini | anthropic | openai
+DEFAULT_LLM_PROVIDER=gemini
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 
 # 埋め込みモデル設定（必須）
-DEFAULT_EMBEDDING_PROVIDER=azure_openai   # azure_openai | vertex_ai
+DEFAULT_EMBEDDING_PROVIDER=azure_openai
 DEFAULT_EMBEDDING_MODEL=text-embedding-3-large
 
 # Vertex AI設定（geminiを使う場合必須）
@@ -240,31 +234,7 @@ AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
 AZURE_OPENAI_API_VERSION=2024-12-01-preview
 ```
 
-詳細は `.env.example` を参照してください。
-
-#### 4. Azure Key Vault 連携（オプション）
-
-本番環境での認証情報管理:
-
-```env
-AZURE_KEY_VAULT_URL=https://your-vault.vault.azure.net/
-AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
-```
-
-#### 5. Azure OpenAI Embedding 設定（オプション）
-
-Azure OpenAI を埋め込みモデルとして使用する場合:
-
-1. Azure Portal で OpenAI リソースを作成
-2. text-embedding-3-large モデルをデプロイ
-3. 環境変数を設定:
-
-```env
-EMBEDDING_PROVIDER=azure_openai
-AZURE_OPENAI_EMBEDDING_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_EMBEDDING_API_KEY=your_api_key
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
-```
+詳細な設定オプションは [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) を参照してください。
 
 ### データ配置
 
@@ -428,8 +398,8 @@ gemini-embedding-001はMRLを採用しており、用途に応じて出力次元
 
 | プロバイダー | モデル | 用途 |
 |-------------|--------|------|
-| Gemini | gemini-2.0-flash-001 | クエリ生成（UI デフォルト） |
-| Anthropic | claude-3-5-sonnet-20241022 | クエリ生成（config デフォルト） |
+| Gemini | gemini-2.5-flash-lite | クエリ生成（推奨） |
+| Anthropic | claude-3-5-sonnet-20241022 | クエリ生成（高精度） |
 | OpenAI | gpt-4o | クエリ生成（代替） |
 
 ### 設定パラメータ
@@ -652,7 +622,8 @@ VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 | `scripts/rebuild_before_scenario_db.py` | rev*DB再構築（両プロバイダー対応） |
 | `scripts/evaluate_revisions.py` | 評価実行・Excel出力 |
 | `scripts/generate_correct_ids.py` | 正解ID対応表生成 |
-| `scripts/README_REVISION_EVAL.md` | 詳細ドキュメント |
+
+詳細は [docs/REVISION_EVALUATION.md](./docs/REVISION_EVALUATION.md) を参照してください。
 
 ---
 
@@ -761,7 +732,7 @@ python main.py interactive
 
 ## トラブルシューティング
 
-共通の問題については [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) を参照してください。
+共通の問題については [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) を参照してください。
 
 ### よくある問題
 
@@ -926,28 +897,14 @@ tqdm
 
 ### セキュリティ
 
-詳細は [docs/SECURITY.md](../docs/SECURITY.md) を参照してください。
+詳細は [docs/SECURITY.md](./docs/SECURITY.md) を参照してください。
 
 **重要な注意事項:**
 
 - `gemini_credentials.json` は絶対に Git にコミットしない
 - `.env` ファイルも Git に含めない
-- サービスアカウントキーは定期的にローテーション
+- サービスアカウントキーは定期的にローテーション（90日推奨）
 - 最小権限の原則を適用
-
-**.gitignore 設定:**
-
-```text
-.env
-*.env
-gemini_credentials.json
-input/
-output/
-reference/
-logs/
-__pycache__/
-.venv/
-```
 
 ---
 
@@ -956,41 +913,59 @@ __pycache__/
 ```text
 rag-gemini/
 ├── main.py                       # エントリーポイント
-├── config.py                     # 設定管理（SearchConfig dataclass）
+├── config.py                     # 設定管理
 ├── requirements.txt              # Python 依存パッケージ
 ├── .env.example                  # 環境変数テンプレート
 ├── Dockerfile                    # Docker コンテナ設定
 ├── gemini_credentials.json       # Google Cloud 認証（.gitignore）
 │
-├── src/
-│   ├── core/
-│   │   ├── processor.py          # データ処理エンジン
-│   │   └── searcher.py           # ハイブリッド検索エンジン
-│   │
-│   ├── handlers/
-│   │   ├── input_handler.py      # 入力処理
-│   │   └── output_handler.py     # 出力処理
-│   │
-│   └── utils/
-│       ├── auth.py               # Google Cloud 認証
-│       ├── base_embedding.py     # 埋め込みモデル抽象基底クラス
-│       ├── gemini_embedding.py   # Gemini 埋め込みモデル
-│       ├── azure_embedding.py    # Azure OpenAI 埋め込みモデル
-│       ├── vector_db.py          # ChromaDB ラッパー
-│       ├── dynamic_db_manager.py # 動的 DB 管理
-│       ├── logger.py             # ログ設定
-│       └── utils.py              # Azure Key Vault 連携
+├── docs/                         # ドキュメント
+│   ├── GOOGLE_CLOUD_AUTH.md      # Google Cloud 認証設定
+│   ├── CONFIGURATION.md          # 設定詳細
+│   ├── ARCHITECTURE.md           # システムアーキテクチャ
+│   ├── API_REFERENCE.md          # API仕様
+│   ├── SECURITY.md               # セキュリティガイド
+│   ├── TROUBLESHOOTING.md        # トラブルシューティング
+│   ├── REVISION_EVALUATION.md    # 事務改定評価システム
+│   └── PROMPTS.md                # プロンプト詳細
 │
-├── ui/
+├── src/                          # ソースコード
+│   ├── core/                     # コアロジック
+│   │   ├── processor.py          # データ処理エンジン
+│   │   ├── judgment_support.py   # LLM判断支援
+│   │   └── search/               # 検索エンジン
+│   │       ├── multi_stage_orchestrator.py
+│   │       ├── query_enhancer.py
+│   │       ├── vector_search_engine.py
+│   │       └── keyword_search_engine.py
+│   │
+│   ├── handlers/                 # 入出力処理
+│   │   ├── input_handler.py
+│   │   └── output_handler.py
+│   │
+│   └── utils/                    # ユーティリティ
+│       ├── dynamic_db_manager.py # DB管理
+│       ├── vector_db.py          # ChromaDB ラッパー
+│       ├── base_embedding.py     # 埋め込みモデル基底
+│       ├── gemini_embedding.py   # Gemini埋め込み
+│       ├── azure_embedding.py    # Azure埋め込み
+│       └── auth.py               # Google Cloud認証
+│
+├── ui/                           # Web UI
 │   └── chat.py                   # Streamlit チャット UI
 │
 ├── prompt/                       # プロンプトテンプレート
 ├── scripts/                      # ユーティリティスクリプト
 ├── input/                        # 入力ファイル
-├── reference/                    # 参照データ + vector_db/
 ├── output/                       # 出力ファイル
-└── logs/                         # アプリケーションログ
+├── reference/                    # 参照データ
+│   ├── scenario/                 # シナリオデータ
+│   ├── faq_data/                 # FAQデータ
+│   └── vector_db/                # ベクトルDB（永続化）
+└── logs/                         # ログファイル
 ```
+
+詳細なアーキテクチャは [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) を参照してください。
 
 ---
 
