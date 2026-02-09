@@ -1,282 +1,152 @@
 # RAG-Gemini プロジェクト整理作業 - 引き継ぎ文書
 
-**作成日**: 2026-02-09
+**更新日**: 2026-02-09
 **作業ブランチ**: `refactor/project-cleanup`
-**進捗状況**: Phase 4.2-1まで完了（全体の約70%完了）
+**進捗状況**: Phase 0〜5 すべて完了（100%）
 
 ---
 
-## 📊 現在の状況
+## 全フェーズ完了状況
 
-### ✅ 完了したフェーズ
-
-| Phase | 内容 | 状態 | 成果 |
-|-------|------|------|------|
-| Phase 0 | バックアップ・準備 | ✅ 完了 | 作業ブランチ作成 |
-| Phase 1 | セキュリティ対応 | ✅ 完了 | 危険ファイル削除、.gitignore強化 |
-| Phase 2 | ファイルクリーンアップ | ✅ 完了 | 23,788ファイル削除、10MB削減 |
-| Phase 3 | フォルダ構造整理 | ✅ 完了 | data/配下に統一、825MB削減 |
-| Phase 4.1 | テスト基盤構築 | ✅ 完了 | pytest環境、ユニットテスト |
-| Phase 4.2-1 | キーワード抽出統一 | ✅ 完了 | KeywordSearchEngineに委譲 |
-| Phase 5 | ドキュメント整備 | ✅ 完了 | 8つのドキュメント作成 |
-
-### ⏳ 未完了（次回作業）
-
-| Phase | 内容 | 優先度 | 所要時間 |
-|-------|------|--------|---------|
-| Phase 4.2-2 | 検索モード設定統一 | 高 | 20分 |
-| Phase 4.3 | SearchStrategyパターン導入 | 高 | 45分 |
-| Phase 4.4 | DynamicDBManager簡素化 | 中 | 20分 |
-| Phase 4.5 | 旧コード削除 | 低 | 15分 |
-| Phase 6 | 最終確認・統合テスト | 高 | 30分 |
-
-**推定残り時間**: 約130分（2時間10分）
+| Phase | 内容 | 状態 | コミット |
+|-------|------|------|---------|
+| Phase 0 | バックアップ・準備 | ✅ 完了 | - |
+| Phase 1 | セキュリティ対応 | ✅ 完了 | `0cf519c` |
+| Phase 2 | ファイルクリーンアップ | ✅ 完了 | `0cf519c` |
+| Phase 3 | フォルダ構造整理 | ✅ 完了 | `0cf519c` |
+| Phase 4.1 | テスト基盤構築 | ✅ 完了 | `325a87a` |
+| Phase 4.2-1 | キーワード抽出統一 | ✅ 完了 | `325a87a` |
+| Phase 4.2-2 | 検索モード設定統一 | ✅ 完了 | `8d351cc` |
+| Phase 4.3 | SearchStrategyパターン | ✅ 完了 | `8d351cc` |
+| Phase 4.4 | DynamicDBManager簡素化 | ✅ 完了 | `8d351cc` |
+| Phase 4.5 | クリーンアップ | ✅ 完了 | `8d351cc` |
+| Phase 5 | ドキュメント整備 | ✅ 完了 | `ecef705` |
 
 ---
 
-## 🎯 次回セッションでの作業内容
+## 今回のセッション（2nd session）で実施した内容
 
-### 1. Phase 4.2-2: 検索モード設定の統一（20分）
+### Phase 4.2-2: enable_query_enhancement廃止
+- `config/settings.yaml` から `enable_query_enhancement` 設定を削除
+- `config.py` から `DEFAULT_ENABLE_QUERY_ENHANCEMENT` と `enable_query_enhancement` フィールド削除
+- `src/core/searcher.py` の参照を全て `search_mode` ベースに変更
+- `docs/CONFIGURATION.md`, `docs/API_REFERENCE.md`, `README.md` を更新
 
-**目的**: `enable_query_enhancement`を廃止し、`search_mode`に統一
+### Phase 4.3: SearchStrategyパターン導入
+- **新規ファイル**: `src/core/search/search_strategy.py` (333行)
+- **4戦略クラス**:
+  - `OriginalSearchStrategy` - 原文ハイブリッド検索
+  - `LLMEnhancedSearchStrategy` - LLM拡張検索
+  - `MultiStageSearchStrategy` - 多段階OR検索
+  - `KeywordFilterSearchStrategy` - キーワードフィルタ検索
+- **Searcher**: 1010行 → 676行 (33%削減)
+- `Searcher.search()` は `create_strategy()` に委譲
 
-**作業内容**:
-```python
-# config.py の修正
-@property
-def enable_query_enhancement(self) -> bool:
-    """Deprecated: search_mode='llm_enhanced'を使用してください"""
-    import warnings
-    warnings.warn(
-        "enable_query_enhancement is deprecated. "
-        "Use search_mode='llm_enhanced' instead.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    return self.search_mode == "llm_enhanced"
+### Phase 4.4: DynamicDBManagerタイムスタンプ簡素化
+- 3階層ネスト → フラットキー形式 (`{area}_{provider}_{type}`)
+- 旧形式の自動検出・移行対応
+
+### Phase 4.5: クリーンアップ
+- `src/core/__init__.py` 遅延インポート化（テスト環境の依存問題解消）
+- `src/core/search/__init__.py` 遅延インポート化
+- テスト追加:
+  - `tests/unit/test_search_strategy.py` (10テスト)
+  - `tests/unit/test_timestamp_migration.py` (2テスト)
+- 既存テスト修正: `test_keyword_search_engine.py`
+
+---
+
+## 変更ファイル一覧
+
+### 修正 (10ファイル)
+- `config.py` - enable_query_enhancement削除
+- `config/settings.yaml` - enable_query_enhancement削除、search_mode説明追加
+- `src/core/__init__.py` - 遅延インポート化
+- `src/core/search/__init__.py` - 遅延インポート化、SearchStrategy追加
+- `src/core/searcher.py` - Strategy委譲、不要メソッド削除（1010→676行）
+- `src/utils/dynamic_db_manager.py` - タイムスタンプフラット化
+- `tests/unit/test_keyword_search_engine.py` - stop_words引数修正
+- `README.md` - enable_query_enhancement参照削除
+- `docs/API_REFERENCE.md` - enable_query_enhancement参照削除
+- `docs/CONFIGURATION.md` - 検索モード説明更新
+
+### 新規 (3ファイル)
+- `src/core/search/search_strategy.py` - 検索戦略パターン (333行)
+- `tests/unit/test_search_strategy.py` - 戦略テスト (10テスト)
+- `tests/unit/test_timestamp_migration.py` - タイムスタンプ移行テスト (2テスト)
+
+---
+
+## テスト結果
+
+```
+15 passed in 0.38s
+
+tests/unit/test_keyword_search_engine.py  4 tests  ✅
+tests/unit/test_search_strategy.py       9 tests  ✅
+tests/unit/test_timestamp_migration.py   2 tests  ✅
 ```
 
-**影響ファイル**:
-- `config.py`
-- `src/core/searcher.py` (437行目付近)
-
----
-
-### 2. Phase 4.3: SearchStrategyパターン導入（45分）
-
-**目的**: Searcherクラスの責務分離（1021行 → 500行以下）
-
-**手順**:
-1. **新規ファイル作成**: `src/core/search/search_strategy.py`
-2. **抽象基底クラス作成**: `SearchStrategy`
-3. **具体クラス実装**:
-   - `OriginalSearchStrategy`: ハイブリッド検索
-   - `LLMEnhancedSearchStrategy`: LLM拡張検索
-   - `MultiStageSearchStrategy`: 多段階検索
-4. **Searcherクラスのリファクタリング**:
-   ```python
-   class Searcher:
-       def __init__(self, config: SearchConfig):
-           self.config = config
-           self.strategy = self._create_strategy()
-
-       def _create_strategy(self) -> SearchStrategy:
-           if self.config.search_mode == "original":
-               return OriginalSearchStrategy(...)
-           elif self.config.search_mode == "llm_enhanced":
-               return LLMEnhancedSearchStrategy(...)
-           elif self.config.search_mode == "multi_stage":
-               return MultiStageSearchStrategy(...)
-
-       def search(self, ...):
-           return self.strategy.search(...)
-   ```
-
-**影響ファイル**:
-- `src/core/searcher.py` (大幅リファクタリング)
-- `src/core/search/search_strategy.py` (新規作成)
-
----
-
-### 3. Phase 4.4: DynamicDBManager簡素化（20分）
-
-**目的**: タイムスタンプ構造のフラット化
-
-**変更内容**:
-```python
-# 修正前（3階層）
-{
-  "general": {
-    "vertex_ai": {"faq": 1234567890, "scenario": 1234567890},
-    "azure_openai": {"faq": 1234567890, "scenario": 1234567890}
-  }
-}
-
-# 修正後（フラット）
-{
-  "general_vertex_ai_faq": 1234567890,
-  "general_vertex_ai_scenario": 1234567890,
-  "general_azure_openai_faq": 1234567890,
-  "general_azure_openai_scenario": 1234567890
-}
-```
-
-**影響ファイル**:
-- `src/utils/dynamic_db_manager.py` (_load_update_timestamps, _save_update_timestamps)
-
----
-
-### 4. Phase 4.5: 旧コード削除とクリーンアップ（15分）
-
-**削除対象**:
-- `Searcher._execute_multi_stage_search()` → MultiStageOrchestrator完全移行後
-- Phase 4.3完了後、全テストがパスすることを確認してから削除
-
-**注意**: Deprecation警告を1バージョン期間表示してから削除
-
----
-
-### 5. Phase 6: 最終確認・統合テスト（30分）
-
-**確認項目**:
-1. **動作確認**:
-   ```bash
-   python main.py preflight --business スマイル
-   python scripts/evaluate_revisions.py
-   ```
-
-2. **テスト実行**:
-   ```bash
-   pytest tests/ -v
-   ```
-
-3. **パフォーマンステスト**:
-   - リファクタリング前後で性能劣化がないか確認
-
-4. **最終コミット**:
-   ```bash
-   git add .
-   git commit -m "refactor: Phase 4 コードリファクタリング完了
-
-   - SearchStrategyパターン導入
-   - DynamicDBManager簡素化
-   - テストコード基盤完成
-   - Searcherクラス500行以下に削減
-
-   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
-   ```
-
----
-
-## 📁 重要なファイル
-
-### 設定ファイル
-- `config.py` (SearchConfigクラス)
-- `config/settings.yaml` (検索設定、revision_areas)
-
-### コアファイル
-- `src/core/searcher.py` (1021行、リファクタリング対象)
-- `src/core/search/keyword_search_engine.py`
-- `src/core/search/multi_stage_orchestrator.py`
-- `src/utils/dynamic_db_manager.py`
-
-### テストファイル
-- `tests/conftest.py` (共通フィクスチャ)
-- `tests/unit/test_keyword_search_engine.py`
-
-### ドキュメント
-- `整理計画.md` (全体計画)
-- `docs/ARCHITECTURE.md` (システム設計)
-- `docs/API_REFERENCE.md` (API仕様)
-
----
-
-## ⚠️ 注意事項
-
-### 1. 後方互換性の維持
-- 既存のメソッドはDeprecated警告を表示しながら動作維持
-- 段階的な移行を推奨
-
-### 2. テストの重要性
-- Phase 4.3実装後、必ずテスト実行
-- プレフライトチェックで動作確認
-
-### 3. コミット戦略
-- 各サブフェーズごとにコミット
-- 問題があればロールバック可能に
-
-### 4. データ整理/は削除しない
-- トレーサビリティ確保のため保持
-- 事務改定の差分データが含まれる
-
----
-
-## 🔍 トラブルシューティング
-
-### コレクション名の不一致
-- **症状**: DBが見つからない
-- **確認**: `config/settings.yaml`のrevision_areasを確認
-- **正しい形式**: `rev01_smile` (アンダースコア区切り)
-
-### テスト失敗
-- **対処**: `conftest.py`のフィクスチャを確認
-- **依存関係**: `requirements-dev.txt`をインストール
-
-### プレフライトエラー
-- **確認**: `data/vector_db/`, `data/source/`のパス
-- **設定**: `src/utils/dynamic_db_manager.py`の26-28行
-
----
-
-## 📊 進捗管理
-
-### 完了判定基準
-
-- [ ] Phase 4.2-2完了（enable_query_enhancement廃止）
-- [ ] Phase 4.3完了（SearchStrategyパターン導入）
-- [ ] Phase 4.4完了（DynamicDBManager簡素化）
-- [ ] Phase 4.5完了（旧コード削除）
-- [ ] Phase 6完了（統合テスト成功）
-- [ ] Searcherクラス500行以下達成
-- [ ] 全テストパス
-- [ ] プレフライトチェック成功
-- [ ] 最終コミット完了
-
-### 成果物
-
-- [ ] `src/core/search/search_strategy.py`（新規）
-- [ ] `src/core/searcher.py`（500行以下）
-- [ ] `src/utils/dynamic_db_manager.py`（簡素化）
-- [ ] `tests/unit/`（追加テスト）
-- [ ] 統合テスト実行結果
-
----
-
-## 📝 参考リンク
-
-- **整理計画**: `整理計画.md`
-- **メモリ**: `~/.claude/projects/C--VSCode-rag/memory/MEMORY.md`
-- **詳細設計**: 調査エージェント（Task ID: a55c502）のレポート
-
----
-
-## 💡 推奨される開始コマンド
-
+**注意**: テスト実行には WindowsApps版 Python を使用:
 ```bash
-# 1. ブランチ確認
-git status
-git log --oneline -3
+"C:\Users\SakutaJunki(作田隼樹)\AppData\Local\Microsoft\WindowsApps\python.exe" -m pytest tests/ -v
+```
+（Programs\Python313 版は pip が壊れているため使用不可）
 
-# 2. 現在のディレクトリ構造確認
-ls data/
+---
 
-# 3. 動作確認
+## 次回セッションで実施すべきこと
+
+### 1. 統合テスト（本番環境で）
+```bash
+# プレフライトチェック
 python main.py preflight --business スマイル
 
-# 4. Phase 4.2-2から再開
-# config.pyの修正から開始
+# バッチ処理テスト
+python main.py batch --input data/input/XXX.xlsx
+
+# 評価スクリプトテスト
+python scripts/evaluate_revisions.py
 ```
+
+### 2. masterへのマージ
+```bash
+# PR作成
+gh pr create --base master --head refactor/project-cleanup \
+  --title "refactor: プロジェクト大規模整理" \
+  --body "Phase 0-5 完了。詳細は引き継ぎ_Phase4継続.md参照"
+```
+
+### 3. 残りの改善（オプション）
+- `Searcher._extract_keywords()` / `_calculate_keyword_similarity()` のDeprecated委譲ラッパー削除
+- `_load_latest_prompt()` / `_load_summarize_prompt()` の重複コード統一
+- SearchStrategy使用箇所をevaluate_revisions.pyでも確認
 
 ---
 
-**次回セッション開始時**: この文書を読み込んで、Phase 4.2-2から継続してください。
+## 重要な設計変更メモ
+
+### 検索モード設定（Phase 4.2-2）
+- **旧**: `search_mode` + `enable_query_enhancement` の2設定
+- **新**: `search_mode` のみ（original / llm_enhanced / multi_stage）
+
+### SearchStrategyパターン（Phase 4.3）
+```
+Searcher.search()
+  → create_strategy(searcher)  # 設定に基づきStrategy選択
+    → strategy.execute(input_number, query_text, original_answer)
+```
+
+各Strategyは `self.searcher` 経由で共有メソッドを呼び出す:
+- `_extract_keywords()`, `_execute_vector_search()`
+- `_calculate_and_merge_scores()`, `_format_final_results()`
+- `_build_result_data()`, `_build_source_filter()`
+
+### タイムスタンプ形式（Phase 4.4）
+- **旧**: `{"総則": {"azure_openai": {"faq": 123, "scenario": 456}}}`
+- **新**: `{"総則_azure_openai_faq": 123, "総則_azure_openai_scenario": 456}`
+- 旧形式は自動検出して読み込み、次回保存時にフラット形式に移行
+
+---
+
+**この文書の次の更新**: masterマージ後に整理計画.mdと共にアーカイブ

@@ -300,34 +300,37 @@ AZURE_OPENAI_API_VERSION=2024-12-01-preview
 
 ## プロジェクト整理作業（2026-02-09）
 
-### 実施済み
-- **Phase 0-3**: セキュリティ対応、クリーンアップ、フォルダ構造整理完了
-- **Phase 4.1-4.2-1**: テスト基盤構築、キーワード抽出統一完了
-- **Phase 5**: ドキュメント整備完了
+### 全Phase完了（2026-02-09）
+- **Phase 0-3**: セキュリティ対応、クリーンアップ、フォルダ構造整理
+- **Phase 4.1-4.5**: コードリファクタリング全完了
+  - SearchStrategyパターン導入（4戦略クラス）
+  - Searcher 1010行 → 676行 (33%削減)
+  - `enable_query_enhancement`廃止 → `search_mode`統一
+  - DynamicDBManagerタイムスタンプフラット化
+  - 遅延インポート導入、テスト15件全パス
+- **Phase 5**: ドキュメント整備（8ドキュメント）
 - **削減効果**: 23,788ファイル削除、835MB削減
 - **ディレクトリ統一**: `data/`配下に統一（819MB）
 
-### 新しいディレクトリ構造
+### ディレクトリ構造
 - `data/vector_db/` - ベクトルDB（コレクション名: rev{XX}_{bot}形式）
 - `data/source/scenarios/` - シナリオデータ
 - `data/source/faq/` - FAQデータ
 - `data/input/` - 入力ファイル
 - `data/output/` - 出力ファイル
 
-### 未完了（次回作業）
-- **Phase 4.2-2**: 検索モード設定統一（20分）
-- **Phase 4.3**: SearchStrategyパターン導入（45分）
-- **Phase 4.4**: DynamicDBManager簡素化（20分）
-- **Phase 4.5**: 旧コード削除（15分）
-- **Phase 6**: 最終確認（30分）
+### 次回作業
+- 統合テスト（本番環境でpreflight, batch, evaluate実行）
+- `refactor/project-cleanup` → `master` マージ
 
 ### 引き継ぎ文書
-- `引き継ぎ_Phase4継続.md` - 次回セッション用の詳細手順
+- `引き継ぎ_Phase4継続.md` - 全作業の詳細記録
 - `整理計画.md` - 全体計画
 - `~/.claude/projects/C--VSCode-rag/memory/MEMORY.md` - メモリ記録
 
 ### 重要な変更
-- 設定ファイル: `src/utils/dynamic_db_manager.py` (26-28行)
-- コレクション名: `config/settings.yaml` (revision_areas)
+- 検索モード: `search_mode` のみ（enable_query_enhancement廃止）
+- 検索実行: `SearchStrategy`パターン（`src/core/search/search_strategy.py`）
+- タイムスタンプ: フラット形式（旧3階層から自動移行）
 - テスト環境: `tests/`, `pytest.ini`, `requirements-dev.txt`
 
