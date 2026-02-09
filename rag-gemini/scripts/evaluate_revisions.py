@@ -93,10 +93,10 @@ for rev, config in _raw_revision_areas.items():
         REVISION_SEARCH_TYPES[rev] = "hybrid"
 
 # パス定数
-INPUT_FILE = PROJECT_ROOT / "input" / "multi_stage_input.xlsx"
-OUTPUT_DIR = PROJECT_ROOT / "output"
-VECTOR_DB_BASE = PROJECT_ROOT / "reference" / "vector_db"
-SCENARIO_DIR = PROJECT_ROOT / "reference" / "scenario"
+INPUT_FILE = PROJECT_ROOT / "data" / "input" / "multi_stage_input.xlsx"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "output" / "latest"
+VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
+SCENARIO_DIR = PROJECT_ROOT / "data" / "source" / "scenarios"
 
 
 class RevisionEvaluator:

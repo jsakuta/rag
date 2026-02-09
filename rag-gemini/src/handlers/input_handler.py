@@ -13,8 +13,8 @@ logger = setup_logger(__name__)
 class InputHandler:
     def __init__(self, config: SearchConfig):
         self.config = config
-        self.input_dir = os.path.join(config.base_dir, "input")
-        self.reference_dir = os.path.join(config.base_dir, "reference")
+        self.input_dir = os.path.join(config.base_dir, "data", "input")
+        self.reference_dir = os.path.join(config.base_dir, "data")
 
     def load_data(self) -> list:
         """入力データを読み込み、共通の形式に変換"""
@@ -439,7 +439,7 @@ class MultiFolderInputHandler(InputHandler):
         name_regex = self.config.REFERENCE_FILE_PATTERN
 
         # マージシナリオフォルダから読み込み
-        scenario_dir = os.path.join(self.reference_dir, "scenario")
+        scenario_dir = os.path.join(self.reference_dir, "source", "scenarios", "latest")
         if os.path.exists(scenario_dir):
             try:
                 scenario_file = self._get_latest_file(scenario_dir, "*.xlsx", name_regex=name_regex)
@@ -460,7 +460,7 @@ class MultiFolderInputHandler(InputHandler):
                 logger.warning(f"Error processing scenario file: {e}")
 
         # 履歴データフォルダから読み込み
-        history_dir = os.path.join(self.reference_dir, "faq_data")
+        history_dir = os.path.join(self.reference_dir, "source", "faq", "latest")
         if os.path.exists(history_dir):
             try:
                 history_file = self._get_latest_file(history_dir, "*.xlsx", name_regex=name_regex)

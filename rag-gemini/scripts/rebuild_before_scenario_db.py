@@ -54,7 +54,7 @@ EMBEDDING_MODELS = {
 
 def delete_existing_dbs() -> bool:
     """既存のrev* DBディレクトリを削除"""
-    db_base = PROJECT_ROOT / "reference" / "vector_db"
+    db_base = PROJECT_ROOT / "data" / "vector_db"
 
     for area in REVISION_AREAS:
         db_path = db_base / area
@@ -72,7 +72,7 @@ def delete_existing_dbs() -> bool:
 
 def reset_timestamps() -> bool:
     """タイムスタンプファイルからrev*エントリを削除"""
-    timestamp_file = PROJECT_ROOT / "reference" / "vector_db" / "update_timestamps.json"
+    timestamp_file = PROJECT_ROOT / "data" / "vector_db" / "update_timestamps.json"
 
     if not timestamp_file.exists():
         logger.info("タイムスタンプファイルが存在しません")

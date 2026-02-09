@@ -34,8 +34,8 @@ PROJECT_ROOT = Path(__file__).parent.parent
 # ディレクトリ設定
 MERGE_BASE_DIR = PROJECT_ROOT / "データ整理" / "最新_マージ版シナリオ"
 REVISION_BASE_DIR = PROJECT_ROOT / "データ整理" / "事務改定前後_個別シナリオ"
-OUTPUT_DIR = PROJECT_ROOT / "reference" / "scenario"
-BACKUP_DIR = PROJECT_ROOT / "reference" / "scenario_backup"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "revisions"
+BACKUP_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "backup"
 
 
 @dataclass

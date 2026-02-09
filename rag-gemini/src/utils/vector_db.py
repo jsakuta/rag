@@ -68,7 +68,7 @@ class MetadataVectorDB:
             self.base_dir = None  # db_path直接指定時はbase_dirは使用しない
         else:
             self.base_dir = base_dir
-            self.db_path = os.path.join(base_dir, "reference", "vector_db")
+            self.db_path = os.path.join(base_dir, "data", "vector_db")
 
         os.makedirs(self.db_path, exist_ok=True)
 

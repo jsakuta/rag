@@ -49,7 +49,7 @@ for rev, config in _raw_revision_areas.items():
 
 # パス定数
 PROJECT_ROOT = Path(__file__).parent.parent
-INPUT_FILE = PROJECT_ROOT / "input" / "multi_stage_input.xlsx"
+INPUT_FILE = PROJECT_ROOT / "data" / "input" / "multi_stage_input.xlsx"
 
 # デフォルトの業務分野リスト（DBが存在しない場合のフォールバック）
 DEFAULT_BUSINESS_AREAS = ["預金", "融資", "外貨", "投信", "住宅ローン", "カード", "保険", "年金", "総則"]
@@ -468,7 +468,7 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
     from src.utils.vector_db import MetadataVectorDB
 
     config = st.session_state.config
-    VECTOR_DB_BASE = PROJECT_ROOT / "reference" / "vector_db"
+    VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
     all_results = []
 
     for area in areas:

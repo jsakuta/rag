@@ -43,7 +43,7 @@ REVISION_MAP = {
 SOURCE_DIR = PROJECT_ROOT / "データ整理" / "変更前シナリオ"
 
 # 出力ディレクトリ
-OUTPUT_DIR = PROJECT_ROOT / "reference" / "scenario"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "revisions"
 
 # ファイル名パターン: ①変更前シナリオ_smile-bot.xlsx
 FILE_PATTERN = re.compile(r"^([①-⑨])変更前シナリオ_([a-z]+)-bot\.xlsx$")

@@ -10,7 +10,7 @@ logger = setup_logger(__name__)
 class OutputHandler:
     def __init__(self, config: SearchConfig):
         self.config = config
-        self.output_dir = os.path.join(config.base_dir, "output")
+        self.output_dir = os.path.join(config.base_dir, "data", "output", "latest")
         os.makedirs(self.output_dir, exist_ok=True)
 
     def save_data(self, data: list):
