@@ -204,9 +204,8 @@ config = SearchConfig(
     vector_weight=0.9,          # ベクトル検索の重み
     keyword_weight=0.1,         # キーワード検索の重み
 
-    # 検索モード
-    search_mode="original",     # original | llm_enhanced
-    enable_query_enhancement=False,  # LLMクエリ拡張
+    # 検索モード: original | llm_enhanced | multi_stage
+    search_mode="original",
 
     # 参照データ形式
     reference_type="multi_folder",   # excel | hierarchical_excel | multi_folder
@@ -219,7 +218,6 @@ config = SearchConfig(
 
 ```python
 search_mode="original"
-enable_query_enhancement=False
 ```
 
 **特徴:**
@@ -227,25 +225,26 @@ enable_query_enhancement=False
 - 直接的な類似性検索
 - コスト効率が良い
 
-**用途:**
-- バッチ処理
-- 大量データ検索
-
 #### LLM拡張検索モード
 
 ```python
 search_mode="llm_enhanced"
-enable_query_enhancement=True
 ```
 
 **特徴:**
 - 高精度（意図理解）
 - LLMがクエリを最適化
-- API呼び出しコスト増
 
-**用途:**
-- インタラクティブ検索
-- 精度重視の検索
+#### 多段階検索モード
+
+```python
+search_mode="multi_stage"
+```
+
+**特徴:**
+- 原文検索 + LLM拡張検索のOR結合
+- 最高の網羅性
+- 事務改定評価に適する
 
 ### 重み調整
 

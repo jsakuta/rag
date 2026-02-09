@@ -96,34 +96,51 @@ class DynamicDBManager:
             self._closed = True
 
     def _load_update_timestamps(self):
-        """更新日時の記録を読み込み（3階層構造: business_area → provider → faq/scenario）"""
+        """更新日時の記録を読み込み（フラット構造: "{area}_{provider}_{type}" → timestamp）"""
         try:
             if os.path.exists(self.update_timestamp_file):
                 with open(self.update_timestamp_file, 'r', encoding='utf-8') as f:
                     timestamps = json.load(f)
 
-                # 品質: JSONデータの型検証
                 if not isinstance(timestamps, dict):
                     logger.warning(f"タイムスタンプファイルの形式が不正です（dict期待）: {type(timestamps)}")
                     self._last_faq_mtime = {}
                     self._last_scenario_mtime = {}
                     return
 
-                # 3階層構造からプロバイダー別データを抽出
-                # 構造: {business_area: {provider: {faq: timestamp, scenario: timestamp}}}
                 self._last_faq_mtime = {}
                 self._last_scenario_mtime = {}
 
-                for business_area, providers in timestamps.items():
-                    if not isinstance(providers, dict):
-                        continue
+                # フラット構造を検出: キーに "_faq" or "_scenario" が含まれるか
+                is_flat = any("_faq" in k or "_scenario" in k for k in timestamps.keys())
 
-                    provider_data = providers.get(self.embedding_provider, {})
-                    if isinstance(provider_data, dict):
-                        if 'faq' in provider_data and isinstance(provider_data['faq'], (int, float)):
-                            self._last_faq_mtime[business_area] = provider_data['faq']
-                        if 'scenario' in provider_data and isinstance(provider_data['scenario'], (int, float)):
-                            self._last_scenario_mtime[business_area] = provider_data['scenario']
+                if is_flat:
+                    # フラット構造: "{area}_{provider}_{type}" → timestamp
+                    suffix_faq = f"_{self.embedding_provider}_faq"
+                    suffix_scenario = f"_{self.embedding_provider}_scenario"
+                    for key, value in timestamps.items():
+                        if not isinstance(value, (int, float)):
+                            continue
+                        if key.endswith(suffix_faq):
+                            area = key[:-len(suffix_faq)]
+                            self._last_faq_mtime[area] = value
+                        elif key.endswith(suffix_scenario):
+                            area = key[:-len(suffix_scenario)]
+                            self._last_scenario_mtime[area] = value
+                else:
+                    # 旧3階層構造からの移行読み込み
+                    for business_area, providers in timestamps.items():
+                        if not isinstance(providers, dict):
+                            continue
+                        provider_data = providers.get(self.embedding_provider, {})
+                        if isinstance(provider_data, dict):
+                            if 'faq' in provider_data and isinstance(provider_data['faq'], (int, float)):
+                                self._last_faq_mtime[business_area] = provider_data['faq']
+                            if 'scenario' in provider_data and isinstance(provider_data['scenario'], (int, float)):
+                                self._last_scenario_mtime[business_area] = provider_data['scenario']
+                    # 旧形式を検出した場合、次回保存時にフラット形式に自動移行
+                    if self._last_faq_mtime or self._last_scenario_mtime:
+                        logger.info("旧3階層形式を検出。次回保存時にフラット形式に移行します")
 
                 logger.info(f"更新日時記録を読み込み: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件 (プロバイダー: {self.embedding_provider})")
             else:
@@ -140,7 +157,7 @@ class DynamicDBManager:
             self._last_scenario_mtime = {}
     
     def _save_update_timestamps(self):
-        """更新日時の記録を保存（3階層構造: business_area → provider → faq/scenario）"""
+        """更新日時の記録を保存（フラット構造: "{area}_{provider}_{type}" → timestamp）"""
         try:
             # 既存のタイムスタンプファイルを読み込み（他のプロバイダーのデータを保持）
             existing_timestamps = {}
@@ -150,23 +167,22 @@ class DynamicDBManager:
                         existing_timestamps = json.load(f)
                     if not isinstance(existing_timestamps, dict):
                         existing_timestamps = {}
+                    # 旧3階層形式が残っていたらクリア（フラット形式に完全移行）
+                    if any(isinstance(v, dict) for v in existing_timestamps.values()):
+                        logger.info("旧3階層形式をフラット形式に移行します")
+                        existing_timestamps = {}
                 except Exception as e:
                     logger.warning(f"既存タイムスタンプの読み込みエラー: {e}")
                     existing_timestamps = {}
 
-            # 現在のプロバイダーのデータを更新
-            # 構造: {business_area: {provider: {faq: timestamp, scenario: timestamp}}}
+            # フラット構造で保存: "{area}_{provider}_{type}" → timestamp
             for business_area in set(list(self._last_faq_mtime.keys()) + list(self._last_scenario_mtime.keys())):
-                if business_area not in existing_timestamps:
-                    existing_timestamps[business_area] = {}
-                if self.embedding_provider not in existing_timestamps[business_area]:
-                    existing_timestamps[business_area][self.embedding_provider] = {}
-
-                provider_data = existing_timestamps[business_area][self.embedding_provider]
                 if business_area in self._last_faq_mtime:
-                    provider_data['faq'] = self._last_faq_mtime[business_area]
+                    key = f"{business_area}_{self.embedding_provider}_faq"
+                    existing_timestamps[key] = self._last_faq_mtime[business_area]
                 if business_area in self._last_scenario_mtime:
-                    provider_data['scenario'] = self._last_scenario_mtime[business_area]
+                    key = f"{business_area}_{self.embedding_provider}_scenario"
+                    existing_timestamps[key] = self._last_scenario_mtime[business_area]
 
             with open(self.update_timestamp_file, 'w', encoding='utf-8') as f:
                 json.dump(existing_timestamps, f, ensure_ascii=False, indent=2)

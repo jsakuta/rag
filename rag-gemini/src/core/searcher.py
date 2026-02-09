@@ -1,7 +1,5 @@
 # --- searcher.py ---
 import os
-import numpy as np
-from collections import Counter
 from typing import List, Dict, Any, Optional
 from sudachipy import Dictionary, tokenizer
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -72,10 +70,7 @@ class Searcher:
         logger.info("Searcherを初期化しました（依存性注入対応）")
 
         # LLM初期化（条件付き：LLM拡張検索または多段階検索が有効な場合）
-        needs_llm = (
-            self.config.search_mode in ["llm_enhanced", "multi_stage"]
-            or self.config.enable_query_enhancement
-        )
+        needs_llm = self.config.search_mode in ["llm_enhanced", "multi_stage"]
         if needs_llm:
             self.llm = create_llm(self.config)
             logger.info(f"LLM initialized for {self.config.search_mode} search mode")
@@ -330,7 +325,7 @@ class Searcher:
     # _build_filter_metadataメソッドを削除（タグレス対応）
 
     def search(self, input_number: str, query_text: str, original_answer: str, input_file: str = None) -> list:
-        """メタデータ対応ハイブリッド検索を実行（LLM拡張検索対応・動的DB選択対応）
+        """検索を実行（SearchStrategyパターンに委譲）
 
         Args:
             input_number: 入力番号
@@ -341,40 +336,14 @@ class Searcher:
         Returns:
             list: 検索結果のリスト
         """
-        # キーワード必須検索の場合は専用メソッドを使用
-        if self.config.search_type == "keyword_filter":
-            return self._execute_keyword_filter_search(
-                input_number, query_text, original_answer
-            )
+        # 動的DB選択（キーワードフィルタ以外）
+        if self.config.search_type != "keyword_filter":
+            self._select_db_if_needed(input_file)
 
-        # Step 1: 動的DB選択（ハイブリッド検索の場合のみ）
-        self._select_db_if_needed(input_file)
-
-        # 多段階検索モードの場合は専用メソッドを使用
-        if self.config.search_mode == "multi_stage":
-            return self._execute_multi_stage_search(
-                input_number, query_text, original_answer
-            )
-
-        # Step 2: 検索クエリの準備
-        search_query, query_for_vector = self._prepare_search_query(
-            input_number, query_text, original_answer
-        )
-
-        # Step 3: キーワード抽出
-        keywords = self._extract_keywords(query_text)
-        logger.info(f"  Extracted keywords: {keywords}")
-
-        # Step 4: ベクトル検索実行
-        search_results = self._execute_vector_search(query_for_vector)
-
-        # Step 5: スコア計算とマージ
-        results = self._calculate_and_merge_scores(search_results, keywords)
-
-        # Step 6: 最終結果のフォーマット
-        return self._format_final_results(
-            results, input_number, query_text, original_answer, search_query
-        )
+        # SearchStrategyに委譲
+        from src.core.search.search_strategy import create_strategy
+        strategy = create_strategy(self)
+        return strategy.execute(input_number, query_text, original_answer)
 
     def _select_db_if_needed(self, input_file: Optional[str]) -> None:
         """入力ファイルに基づいて動的にDBを選択
@@ -401,41 +370,6 @@ class Searcher:
         except DynamicDBError as e:
             logger.error(f"  DB選択エラー: {e}")
             raise
-
-    def _prepare_search_query(
-        self, input_number: str, query_text: str, original_answer: str
-    ) -> tuple:
-        """検索クエリを準備
-
-        Args:
-            input_number: 入力番号
-            query_text: 検索クエリテキスト
-            original_answer: 元の回答
-
-        Returns:
-            tuple: (search_query, query_for_vector)
-        """
-        # 検索方式の詳細ログ
-        logger.info(f"Row (No.{input_number}):")
-        logger.info(f"  Search mode: {self.config.search_mode}")
-        logger.info(f"  Query enhancement enabled: {self.config.enable_query_enhancement}")
-        logger.info(f"  Original query: {query_text[:100]}...")
-        logger.info(f"  Original answer: {original_answer[:100]}..." if original_answer else "  No original answer")
-
-        # 検索クエリの生成（検索方式による分岐）
-        if self.config.search_mode == "llm_enhanced" and self.config.enable_query_enhancement:
-            # LLM拡張検索：LLMで検索クエリを生成
-            logger.info("  Using LLM-enhanced search mode")
-            search_query = self.summarize_text(query_text)
-            logger.info(f"  Generated search query: {search_query}")
-            query_for_vector = search_query
-        else:
-            # 原文検索：質問文をそのまま使用
-            logger.info("  Using original search mode")
-            search_query = query_text
-            query_for_vector = query_text
-
-        return search_query, query_for_vector
 
     def _build_source_filter(self) -> Optional[Dict[str, str]]:
         """検索対象設定に基づいてソースフィルタを構築
@@ -677,113 +611,6 @@ class Searcher:
 
         return results
 
-    def _execute_keyword_filter_search(
-        self, input_number: str, query_text: str, original_answer: str
-    ) -> list:
-        """キーワード必須検索を実行（入力ワードを含む結果のみ返す）
-
-        Args:
-            input_number: 入力番号
-            query_text: 検索クエリテキスト
-            original_answer: 元の回答
-
-        Returns:
-            list: 検索結果のリスト（キーワードを含むもののみ）
-        """
-        logger.info(f"Row (No.{input_number}):")
-        logger.info(f"  Search type: keyword_filter (キーワード必須検索)")
-        logger.info(f"  Original query: {query_text[:100]}...")
-
-        # Step 1: キーワード抽出
-        keywords = self._extract_keywords(query_text)
-        if not keywords:
-            logger.warning("  キーワードが抽出できませんでした")
-            return []
-        logger.info(f"  Extracted keywords: {keywords}")
-
-        # Step 2: キーワードキャッシュを使用してフィルタリング
-        query_keywords_set = set(keywords)
-        matched_results = []
-
-        for idx, ref_keywords in self._reference_keywords_cache.items():
-            # キーワードの共通部分をカウント
-            match_count = len(query_keywords_set.intersection(ref_keywords))
-            if match_count > 0:
-                matched_results.append((idx, match_count))
-
-        if not matched_results:
-            logger.info("  キーワードに一致する結果がありませんでした")
-            return []
-
-        # Step 3: マッチ数の降順でソート、同数の場合は元の順序（idx昇順）
-        matched_results.sort(key=lambda x: (-x[1], x[0]))
-        logger.info(f"  Keyword filter matched: {len(matched_results)} results")
-
-        # Step 4: 結果をフォーマット
-        results = []
-        for idx, match_count in matched_results:
-            if idx >= len(self.reference_texts):
-                logger.warning(f"  Index {idx} out of range, skipping")
-                continue
-
-            # メタデータを取得
-            metadata = self.reference_metadatas[idx] if idx < len(self.reference_metadatas) else {}
-            combined_text = self.reference_texts[idx]
-            parsed_text = self.parse_enhanced_combined_text(combined_text)
-
-            # 階層構造 + 質問を表示
-            if metadata.get('source') == 'scenario':
-                hierarchy = metadata.get('hierarchy', '')
-                query = parsed_text['query']
-                if hierarchy and query:
-                    search_result_query = f"{hierarchy} > {query}"
-                elif hierarchy:
-                    search_result_query = hierarchy
-                else:
-                    search_result_query = query
-                search_result_answer = parsed_text['answer']
-            else:
-                search_result_query = parsed_text['query']
-                search_result_answer = parsed_text['answer']
-
-            # シナリオIDを生成（シート名_行番号）
-            sheet_name = metadata.get('sheet_name', '')
-            row_index = metadata.get('row_index', '')
-            scenario_id = f"{sheet_name}_{row_index}" if sheet_name and row_index != '' else ''
-
-            # マッチ数を類似度スコアとして使用（正規化: マッチ数 / クエリキーワード数）
-            similarity_score = match_count / len(query_keywords_set) if query_keywords_set else 0.0
-
-            result_data = {
-                'Input_Number': '',
-                'Original_Query': '',
-                'Original_Answer': '',
-                'Search_Query': '',
-                'Search_Result_Q': search_result_query,
-                'Search_Result_A': search_result_answer,
-                'Similarity': similarity_score,
-                'Match_Count': match_count,  # デバッグ用
-                'Scenario_ID': scenario_id,
-                'Sheet_Name': sheet_name,
-                'Row_Index': row_index,
-                'Vector_Weight': 0.0,  # キーワードフィルタではベクトルを使用しない
-                'Top_K': self.config.top_k
-            }
-            results.append(result_data)
-
-        # Step 5: top_k件に制限
-        results = results[:self.config.top_k]
-        logger.info(f"  Final results: {len(results)} items (limited to top_k={self.config.top_k})")
-
-        # 1位のみに質問情報を設定
-        if results:
-            results[0]['Input_Number'] = input_number
-            results[0]['Original_Query'] = query_text
-            results[0]['Original_Answer'] = original_answer
-            results[0]['Search_Query'] = f"[キーワード必須] {', '.join(keywords)}"
-
-        return results
-
     def _ensure_db_updated_for_business(self, business_area: str) -> None:
         """特定の業務分野のDBを必要に応じて更新
 
@@ -846,165 +673,3 @@ class Searcher:
         except DynamicDBError as e:
             logger.error(f"DB選択エラー: {e}")
             raise
-
-    # ========================================
-    # 多段階OR検索メソッド群
-    # ========================================
-
-    def _execute_multi_stage_search(
-        self, input_number: str, query_text: str, original_answer: str
-    ) -> List[Dict[str, Any]]:
-        """多段階OR検索を実行（原文検索 + LLMクエリ検索のOR結合）"""
-        logger.info(f"=== 多段階OR検索開始 (No.{input_number}) ===")
-        logger.info(f"  Threshold: {self.config.multi_stage_threshold}, Max: {self.config.multi_stage_max_results}")
-
-        keywords = self._extract_keywords(query_text)
-        logger.info(f"  Keywords: {keywords}")
-
-        # Stage 1: 原文検索
-        original_results = self._execute_hybrid_search_with_threshold(
-            query_text, keywords,
-            self.config.multi_stage_threshold,
-            self.config.multi_stage_max_results
-        )
-        logger.info(f"  原文検索: {len(original_results)}件")
-
-        # Stage 2: LLMクエリ検索
-        try:
-            llm_query = self.summarize_text(query_text)
-        except Exception as e:
-            logger.error(f"  LLMクエリ生成エラー: {e}")
-            llm_query = query_text
-
-        llm_results = self._execute_hybrid_search_with_threshold(
-            llm_query, keywords,
-            self.config.multi_stage_threshold,
-            self.config.multi_stage_max_results
-        )
-        logger.info(f"  LLMクエリ検索: {len(llm_results)}件")
-
-        # Stage 3: OR結合と3分類
-        merged_results = self._merge_multi_stage_results(
-            original_results, llm_results,
-            input_number, query_text, original_answer, llm_query
-        )
-
-        category_counts = {}
-        for r in merged_results:
-            cat = r.get('Search_Category', 'Unknown')
-            category_counts[cat] = category_counts.get(cat, 0) + 1
-        logger.info(f"=== 多段階OR検索完了: {len(merged_results)}件 {category_counts} ===")
-
-        return merged_results
-
-    def _execute_hybrid_search_with_threshold(
-        self,
-        query_for_vector: str,
-        keywords: List[str],
-        threshold: float,
-        max_results: int
-    ) -> List[Dict[str, Any]]:
-        """しきい値ベースのハイブリッド検索を実行"""
-        if self.vector_db is None:
-            raise DynamicDBError("VectorDB not initialized.")
-
-        # 検索対象フィルタを構築
-        filter_metadata = self._build_source_filter()
-
-        query_vector = self.model.encode([query_for_vector], normalize_embeddings=True)[0]
-        search_results = self.vector_db.search(
-            query_embedding=query_vector, n_results=max_results, filter_metadata=filter_metadata
-        )
-
-        keyword_similarities = self._calculate_keyword_similarities(search_results, keywords)
-
-        filtered_results = []
-        for i, search_result in enumerate(search_results):
-            combined_score = (
-                self.config.vector_weight * search_result['similarity'] +
-                self.config.keyword_weight * keyword_similarities[i]
-            )
-            combined_score = max(0.0, min(1.0, combined_score))
-
-            if combined_score >= threshold:
-                result_data = self._build_result_data(search_result, combined_score)
-                result_data['_doc_id'] = search_result['id']
-                filtered_results.append(result_data)
-
-        filtered_results.sort(key=lambda x: x['Similarity'], reverse=True)
-        return filtered_results
-
-    def _merge_multi_stage_results(
-        self,
-        original_results: List[Dict[str, Any]],
-        llm_results: List[Dict[str, Any]],
-        input_number: str,
-        query_text: str,
-        original_answer: str,
-        llm_query: str
-    ) -> List[Dict[str, Any]]:
-        """多段階検索結果をOR結合して3分類（重複時は高スコアを優先）"""
-        original_ids = {r['_doc_id'] for r in original_results}
-        llm_ids = {r['_doc_id'] for r in llm_results}
-
-        both_ids = original_ids & llm_ids
-        original_only_ids = original_ids - llm_ids
-        llm_only_ids = llm_ids - original_ids
-
-        logger.info(f"    Both: {len(both_ids)}, Original_Only: {len(original_only_ids)}, LLM_Only: {len(llm_only_ids)}")
-
-        merged_results = []
-        processed_ids = set()  # 処理済みIDを追跡（Silent Data Loss防止）
-
-        # 'Both'カテゴリ: 両方に存在する結果は高スコアを優先
-        for doc_id in both_ids:
-            orig_result = next((r for r in original_results if r.get('_doc_id') == doc_id), None)
-            llm_result = next((r for r in llm_results if r.get('_doc_id') == doc_id), None)
-
-            if orig_result and llm_result:
-                # スコアが高い方を選択
-                if orig_result.get('Similarity', 0) >= llm_result.get('Similarity', 0):
-                    best_result = orig_result
-                    logger.debug(f"    Both doc_id={doc_id}: Using original score ({orig_result.get('Similarity', 0):.4f} >= {llm_result.get('Similarity', 0):.4f})")
-                else:
-                    best_result = llm_result
-                    logger.debug(f"    Both doc_id={doc_id}: Using LLM score ({llm_result.get('Similarity', 0):.4f} > {orig_result.get('Similarity', 0):.4f})")
-
-                result_copy = best_result.copy()
-                result_copy.update({
-                    'Search_Category': 'Both',
-                    'Input_Number': input_number,
-                    'Original_Query': query_text,
-                    'Original_Answer': original_answer,
-                    'Search_Query': llm_query  # 'Both'の場合はLLMクエリを使用
-                })
-                result_copy.pop('_doc_id', None)
-                merged_results.append(result_copy)
-                processed_ids.add(doc_id)
-
-        def add_with_category(results: List[Dict], ids_set: set, category: str, search_query: str):
-            """指定カテゴリの結果を追加"""
-            for result in results:
-                doc_id = result.get('_doc_id')
-                if doc_id in ids_set and doc_id not in processed_ids:
-                    result_copy = result.copy()
-                    result_copy.update({
-                        'Search_Category': category,
-                        'Input_Number': input_number,
-                        'Original_Query': query_text,
-                        'Original_Answer': original_answer,
-                        'Search_Query': search_query
-                    })
-                    result_copy.pop('_doc_id', None)
-                    merged_results.append(result_copy)
-                    processed_ids.add(doc_id)
-
-        add_with_category(original_results, original_only_ids, 'Original_Only', query_text)
-        add_with_category(llm_results, llm_only_ids, 'LLM_Enhanced_Only', llm_query)
-
-        merged_results.sort(key=lambda x: x['Similarity'], reverse=True)
-
-        # 上位K件に絞る
-        merged_results = merged_results[:self.config.top_k]
-
-        return merged_results

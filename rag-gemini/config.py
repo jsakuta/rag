@@ -75,7 +75,6 @@ class SearchConfig:
 
     # 検索方式設定（LLM拡張検索対応）
     DEFAULT_SEARCH_MODE: str = _common_settings.get("search_mode", "original")
-    DEFAULT_ENABLE_QUERY_ENHANCEMENT: bool = _common_settings.get("enable_query_enhancement", False)
 
     # 検索対象設定
     DEFAULT_SEARCH_SOURCE: str = _common_settings.get("search_source", "all")
@@ -160,7 +159,6 @@ class SearchConfig:
 
     # 検索方式設定
     search_mode: str = DEFAULT_SEARCH_MODE
-    enable_query_enhancement: bool = DEFAULT_ENABLE_QUERY_ENHANCEMENT
 
     # 検索対象設定
     search_source: str = DEFAULT_SEARCH_SOURCE

@@ -27,10 +27,10 @@ common:
   vector_weight: 0.9
 
   # 検索モード: original | llm_enhanced | multi_stage
+  # original: 原文検索（ベクトル+キーワード）
+  # llm_enhanced: LLMでクエリを拡張して検索
+  # multi_stage: 原文検索 + LLM拡張検索のOR結合
   search_mode: original
-
-  # LLMクエリ拡張の有効化
-  enable_query_enhancement: false
 
   # 検索対象: all | scenario | history_data
   search_source: all

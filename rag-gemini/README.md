@@ -416,8 +416,7 @@ gemini-embedding-001はMRLを採用しており、用途に応じて出力次元
 | `azure_openai_embedding_api_key` | str | **必須**※ | Azure OpenAI API キー |
 | `azure_openai_embedding_deployment` | str | (環境変数) | デプロイメント名 |
 | `azure_openai_embedding_api_version` | str | (環境変数) | API バージョン |
-| `search_mode` | str | original | 検索モード |
-| `enable_query_enhancement` | bool | False | LLM クエリ拡張 |
+| `search_mode` | str | original | 検索モード（original/llm_enhanced/multi_stage） |
 | `reference_type` | str | multi_folder | 参照データ形式 |
 
 ※ `embedding_provider=azure_openai` の場合に必須

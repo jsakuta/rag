@@ -40,9 +40,8 @@ class SearchConfig:
     vector_weight: float = 0.9
     keyword_weight: float = 0.1
 
-    # 検索モード
+    # 検索モード: original | llm_enhanced | multi_stage
     search_mode: str = "original"
-    enable_query_enhancement: bool = False
 
     # 参照データ形式
     reference_type: str = "multi_folder"
@@ -59,8 +58,7 @@ class SearchConfig:
 | `top_k` | int | 4 | 返却する結果数 |
 | `vector_weight` | float | 0.9 | ベクトル検索の重み |
 | `keyword_weight` | float | 0.1 | キーワード検索の重み |
-| `search_mode` | str | "original" | 検索モード（original/llm_enhanced） |
-| `enable_query_enhancement` | bool | False | LLMクエリ拡張の有効化 |
+| `search_mode` | str | "original" | 検索モード（original/llm_enhanced/multi_stage） |
 | `reference_type` | str | "multi_folder" | 参照データ形式 |
 
 #### 使用例
@@ -78,7 +76,7 @@ config = SearchConfig(
     embedding_provider="vertex_ai",
     top_k=10,
     vector_weight=0.7,
-    enable_query_enhancement=True
+    search_mode="llm_enhanced"
 )
 ```
 
@@ -804,7 +802,7 @@ config = SearchConfig(
     embedding_provider="azure_openai",
     top_k=4,
     vector_weight=0.9,
-    enable_query_enhancement=True
+    search_mode="llm_enhanced"
 )
 
 # 2. 入力データ読み込み
