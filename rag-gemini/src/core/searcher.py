@@ -84,22 +84,23 @@ class Searcher:
             logger.info("LLM not initialized - using original search mode")
 
     def _extract_keywords(self, text: str, top_k: int = 5) -> List[str]:
-        morphemes = self.tokenizer.tokenize(text, self.mode)
-        keywords = []
-        for m in morphemes:
-            if m.part_of_speech()[0] == '名詞':
-                important_types = ['固有名詞', '一般']
-                weight = 2 if m.part_of_speech()[1] in important_types else 1
-                word = m.dictionary_form()
-                if len(word) > 1:
-                    keywords.extend([word] * weight)
+        """キーワード抽出（KeywordSearchEngineに委譲）
 
-        stop_words = set(self.config.STOP_WORDS)
-        filtered_words = {word: count for word, count in Counter(keywords).items() if word not in stop_words}
-        return [word for word, _ in Counter(filtered_words).most_common(top_k)]
+        Deprecated: 新規コードはKeywordSearchEngineを直接使用してください。
+        後方互換性のため残していますが、内部でKeywordSearchEngineを使用します。
+        """
+        if not hasattr(self, '_keyword_engine'):
+            from src.core.search.keyword_search_engine import KeywordSearchEngine
+            self._keyword_engine = KeywordSearchEngine(
+                stop_words=self.config.STOP_WORDS,
+                position_weight=self.config.POSITION_WEIGHT
+            )
+        return self._keyword_engine.extract_keywords(text, top_k)
 
     def _calculate_keyword_similarity(self, query_keywords: List[str], reference_text: str) -> float:
-        """キーワード類似度を計算（Jaccard-like正規化）
+        """キーワード類似度を計算（KeywordSearchEngineに委譲）
+
+        Deprecated: 新規コードはKeywordSearchEngineを直接使用してください。
 
         Args:
             query_keywords: クエリから抽出されたキーワードリスト
@@ -108,25 +109,13 @@ class Searcher:
         Returns:
             float: 0.0〜1.0の類似度スコア
         """
-        ref_keywords = set(self._extract_keywords(reference_text))
-        query_keywords_set = set(query_keywords)
-        if not ref_keywords or not query_keywords_set:
-            return 0.0
-
-        intersection = ref_keywords.intersection(query_keywords_set)
-        union = ref_keywords.union(query_keywords_set)
-        if not union:
-            return 0.0
-
-        position_weight = self.config.POSITION_WEIGHT
-        # 交差したキーワードにのみ位置の重みを適用
-        weighted_score = sum(
-            position_weight if reference_text.find(kw) < len(reference_text) // 2 else 1.0
-            for kw in intersection
-        )
-        # 分母は素のunionサイズ（Jaccard-like正規化）
-        normalized_score = weighted_score / len(union)
-        return min(normalized_score, 1.0)
+        if not hasattr(self, '_keyword_engine'):
+            from src.core.search.keyword_search_engine import KeywordSearchEngine
+            self._keyword_engine = KeywordSearchEngine(
+                stop_words=self.config.STOP_WORDS,
+                position_weight=self.config.POSITION_WEIGHT
+            )
+        return self._keyword_engine.calculate_similarity(query_keywords, reference_text)
 
     def _load_latest_prompt(self) -> str:
         """最新のプロンプトファイルを読み込む（キャッシュ対応・パストラバーサル防止）"""
