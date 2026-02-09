@@ -156,34 +156,34 @@ evaluation:
   revision_areas:
     "①":
       areas:
-        - rev01smile
+        - rev01_smile
       search_type: hybrid
       vector_weight: 0.9
     "②":
       areas:
-        - rev02souzoku
+        - rev02_souzoku
       search_type: hybrid
       vector_weight: 0.9
     "③":
       areas:
-        - rev03naibujimu
-        - rev03smile
-        - rev03souzoku
-        - rev03torikaku
+        - rev03_naibujimu
+        - rev03_smile
+        - rev03_souzoku
+        - rev03_torikaku
       search_type: hybrid
       vector_weight: 0.9
     "④":
       areas:
-        - rev04naibujimu
+        - rev04_naibujimu
       search_type: hybrid
       vector_weight: 0.9
     "⑤":
       areas:
-        - rev05smile
+        - rev05_smile
       search_type: keyword_filter
     "⑥":
       areas:
-        - rev06smile
+        - rev06_smile
       search_type: keyword_filter
 
   # -------------------------------------------

@@ -23,9 +23,9 @@ class DynamicDBManager:
     
     def __init__(self, config: SearchConfig):
         self.config = config
-        self.base_db_path = os.path.join(config.base_dir, "reference", "vector_db")
-        self.reference_faq_path = os.path.join(config.base_dir, "reference", "faq_data")
-        self.reference_scenario_path = os.path.join(config.base_dir, "reference", "scenario")
+        self.base_db_path = os.path.join(config.base_dir, "data", "vector_db")
+        self.reference_faq_path = os.path.join(config.base_dir, "data", "source", "faq", "latest")
+        self.reference_scenario_path = os.path.join(config.base_dir, "data", "source", "scenarios", "revisions")
 
         # ディレクトリの作成
         os.makedirs(self.base_db_path, exist_ok=True)
