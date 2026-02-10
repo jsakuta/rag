@@ -2,7 +2,7 @@
 
 **文書ID**: SETUP-FAQ-IMPACT-001
 
-**版数**: 1.3
+**版数**: 1.4
 
 **作成日**: 2026/2/10
 
@@ -20,6 +20,7 @@
 | 1.1 | 2026/2/10 | セルフレビューによる10件修正: ロール付与先修正（Azure OpenAI→AI Search MI）、データソース/Indexer設計を2系統に変更、SDK選定を要件定義書と整合、Key Vaultロール付与追加、Cosmos DB管理プレーンロール追加、不要な環境変数削除、Week 3注記追加 | デジタル戦略部 |
 | 1.2 | 2026/2/10 | リソース命名規則変更（impact→maintenance）、要件定義書参照をv3.2に更新 | デジタル戦略部 |
 | 1.3 | 2026/2/10 | Step 8・11・12をM365 Agents Toolkit ベースに書き換え、Step 13にF5ローカルデバッグ追加 | デジタル戦略部 |
+| 1.4 | 2026/2/10 | Toolkit v6系対応: `teamsapp.yml`→`m365agents.yml`リネーム、テンプレート選択フロー（Custom Engine Agent → Basic Custom Engine Agent）に修正、プロジェクト構造を実態に合わせ更新、サインイン手順に具体アカウント名を明記 | デジタル戦略部 |
 
 ---
 
@@ -482,27 +483,48 @@ Web App →「設定」→「環境変数」で以下を設定:
 
 ### 10.2 Azureアカウント・M365アカウントのサインイン
 
-1. M365 Agents Toolkit サイドバーを開く
+<!-- スクリーンショット: step8-toolkit-signin.png -->
+
+1. 左サイドバーの **M365 Agents Toolkit アイコン**（Mマーク）をクリック
 2. 「ACCOUNTS」セクションで以下にサインイン:
-   - **Microsoft 365**: Teams管理者権限を持つアカウント
-   - **Azure**: サブスクリプションの所有者/共同作成者権限を持つアカウント
-3. サインイン完了後、サブスクリプション名が表示されることを確認
+   - **Microsoft 365 にサインイン**: Teams管理者権限を持つアカウント（`admin@bdxcorp.onmicrosoft.com`）
+   - **Azure にサインイン**: 同じアカウント（サブスクリプションの所有者/共同作成者権限）
+3. サインイン完了後、サブスクリプション名「**Azure subscription 1**」が表示されることを確認
 
 ### 10.3 プロジェクト作成
 
-1. M365 Agents Toolkit サイドバー →「Create a New App」
-2. テンプレート選択:
-   - **Agent** → **Basic Agent**（M365 Agents SDKテンプレート）
-3. プログラミング言語: **TypeScript**
-4. プロジェクトフォルダ名: `maintenance-bot`
-5. 保存先: `rag-maintenance/` 配下を推奨
+プロジェクトタイプ → テンプレート → 言語 → フォルダ → アプリ名の順に選択する。
 
-**生成されるプロジェクト構造:**
+1. M365 Agents Toolkit サイドバーで「**新しいエージェント/アプリの作成**」（Create a New Agent/App）をクリック
+2. プロジェクトタイプ選択: **Custom Engine Agent**（AI Agentグループ内）
+3. テンプレート選択: **Basic Custom Engine Agent**（M365 Agents SDKテンプレート）
+4. LLMサービス選択: **Azure OpenAI** を選択し、以下を入力（※後で`m365agents.yml`カスタマイズ時に変更するため仮値で可）:
+   - Azure OpenAI Key: 任意の仮値
+   - Azure OpenAI Endpoint: `https://aoai-maintenance-poc.openai.azure.com/`
+   - Model Name: `text-embedding-3-large`
+5. プログラミング言語: **TypeScript**
+6. Default folder: `C:\VSCode\rag\rag-maintenance\`
+7. Application Name: `maintenance-bot`
+
+> **補足:** テンプレート選択時の全体構造は以下の通り。本手順ではBotアプリからAzure OpenAIを直接呼び出さない方針（要件定義書8.4参照）だが、M365 Agents SDKベースのプロジェクト構造を得るためCustom Engine Agentを選択する。LLM接続部分はStep 10.4で削除・変更する。
+>
+> - **AI Agent** → Declarative Agent（No plugin / With API Plugin）
+> - **AI Agent** → **Custom Engine Agent**（**Basic Custom Engine Agent** / Weather Agent）← 本手順で選択
+> - **AI Agent** → Copilot Connector（Graph Connector）
+> - **Apps for Microsoft 365** → Teams Agents and Apps（General Teams Agent / Simple Bot 等）
+> - **Apps for Microsoft 365** → Office Add-in（Excel / Word / Outlook）
+
+**生成されるプロジェクト構造（Toolkit v6系）:**
 
 ```
 maintenance-bot/
+├── .vscode/
+│   ├── extensions.json
+│   ├── launch.json            # デバッグプロファイル
+│   ├── settings.json
+│   └── tasks.json             # ビルド/デバッグタスク
 ├── appPackage/
-│   ├── manifest.json          # Teamsアプリマニフェスト（プレースホルダー付き）
+│   ├── manifest.json          # Teamsアプリマニフェスト（${{変数名}}プレースホルダー）
 │   ├── color.png              # カラーアイコン（192x192）
 │   └── outline.png            # アウトラインアイコン（32x32）
 ├── infra/
@@ -512,22 +534,36 @@ maintenance-bot/
 │       └── azurebot.bicep     # Bot Service定義
 ├── env/
 │   ├── .env.local             # ローカル環境変数
-│   ├── .env.local.user        # ローカル機密情報
+│   ├── .env.local.user        # ローカル機密情報（gitignore済み）
 │   ├── .env.dev               # リモート環境変数
-│   └── .env.dev.user          # リモート機密情報
+│   ├── .env.dev.user          # リモート機密情報（gitignore済み）
+│   ├── .env.playground        # Playground環境
+│   ├── .env.playground.user
+│   ├── .env.sandbox           # Sandbox環境
+│   └── .env.sandbox.user
 ├── src/
-│   └── index.ts               # Botエントリポイント
-├── teamsapp.yml               # リモート環境ライフサイクル定義
-├── teamsapp.local.yml         # ローカルデバッグ定義
+│   ├── index.ts               # エントリポイント（Express server）
+│   ├── agent.ts               # エージェントロジック（LLM呼出し）
+│   └── config.ts              # 設定読み込み
+├── m365agents.yml             # メインライフサイクル定義（provision/deploy/publish）
+├── m365agents.local.yml       # ローカルデバッグ用オーバーライド
+├── m365agents.playground.yml  # Playground用
+├── m365agents.sandbox.yml     # Sandbox用
+├── .webappignore              # デプロイ除外設定
+├── web.config                 # IIS設定（Azure App Service用）
 ├── package.json
 └── tsconfig.json
 ```
 
-### 10.4 teamsapp.yml のカスタマイズ（既存リソース参照）
+> **注意:** Toolkit v6系（M365 Agents Toolkit）ではライフサイクル定義ファイルが旧`teamsapp.yml`から**`m365agents.yml`**に改名されている。
 
-生成されたデフォルトの`teamsapp.yml`を編集し、Step 1〜7で作成済みのリソースを使用するようカスタマイズする。
+### 10.4 m365agents.yml のカスタマイズ（既存リソース参照）
 
-**teamsapp.yml の provision セクション:**
+生成されたデフォルトの`m365agents.yml`を編集し、Step 1〜7で作成済みのリソースを使用するようカスタマイズする。
+
+> **注意:** Toolkit v6系では旧`teamsapp.yml`が`m365agents.yml`に改名されている。
+
+**m365agents.yml の provision セクション:**
 
 ```yaml
 provision:
@@ -574,10 +610,12 @@ provision:
 ```
 
 **重要な変更点:**
-- デフォルトの`arm/deploy`アクション（Bicepによるリソース作成）は**削除またはコメントアウト**する。Web App、App Service Plan等は既に作成済みのため。
+
+- デフォルトの`arm/deploy`アクション（Bicepによるリソース作成）は**削除またはコメントアウト**する。Web App、App Service Plan等は既に作成済みのため
 - `botAadApp/create`が Entra IDアプリ登録 + クライアントシークレット生成を自動実行する
 - `botFramework/create`が Azure Bot Service登録 + Teamsチャネル有効化を自動実行する
 - 生成された`BOT_ID`と`SECRET_BOT_PASSWORD`は`env/.env.dev`と`env/.env.dev.user`に自動書き込みされる
+- LLM接続用の環境変数（`AZURE_OPENAI_API_KEY`等）が`src/config.ts`で参照されている場合、BotからAzure OpenAIを直接呼び出さない方針のため不要。削除するか空値にする
 
 ### 10.5 環境変数ファイルの設定
 
@@ -655,7 +693,7 @@ az webapp config appsettings set \
 - [ ] M365 Agents Toolkit拡張機能がインストール済み
 - [ ] Azure / M365 アカウントにサインイン済み
 - [ ] プロジェクトが作成された（`maintenance-bot/`）
-- [ ] `teamsapp.yml`がカスタマイズ済み（既存リソース参照）
+- [ ] `m365agents.yml`がカスタマイズ済み（既存リソース参照）
 - [ ] Provisionが正常に完了した
 - [ ] `BOT_ID`（MicrosoftAppId）が取得できた
 - [ ] `SECRET_BOT_PASSWORD`（MicrosoftAppPassword）が取得できた
@@ -1222,9 +1260,9 @@ startServer(app)
 
 **注記:** 上記は動作確認用の最小構成。検索ロジック、Adaptive Card生成、Cosmos DB書き込み等の実装詳細は別途実装ガイドで扱う。
 
-### 13.4 teamsapp.yml の deploy セクション設定
+### 13.4 m365agents.yml の deploy セクション設定
 
-`teamsapp.yml`のdeployセクションで既存のWeb Appへデプロイするよう設定する:
+`m365agents.yml`のdeployセクションで既存のWeb Appへデプロイするよう設定する:
 
 ```yaml
 deploy:
@@ -1257,8 +1295,10 @@ infra/
 node_modules/
 *.ts
 !dist/
-teamsapp.yml
-teamsapp.local.yml
+m365agents.yml
+m365agents.local.yml
+m365agents.playground.yml
+m365agents.sandbox.yml
 .deployignore
 ```
 
@@ -1289,7 +1329,7 @@ az webapp deploy \
 
 - [ ] 追加パッケージがインストールされた
 - [ ] 最小構成のBotコードが用意された
-- [ ] `teamsapp.yml`のdeployセクションが設定済み
+- [ ] `m365agents.yml`のdeployセクションが設定済み
 - [ ] Toolkit Deployが正常に完了した
 - [ ] Web Appのログストリームでエラーが出ていない
 - [ ] `https://app-maintenance-bot-poc.azurewebsites.net/api/messages`エンドポイントが応答している
@@ -1361,7 +1401,7 @@ Step 10.3で生成された`appPackage/manifest.json`を編集する。Toolkit�
 
 ### 14.2 アプリパッケージの自動生成
 
-Provision時に`teamsapp.yml`の`teamsApp/zipAppPackage`アクションにより、以下が自動実行される:
+Provision時に`m365agents.yml`の`teamsApp/zipAppPackage`アクションにより、以下が自動実行される:
 
 1. マニフェストのバリデーション
 2. プレースホルダーの値置換
@@ -1409,7 +1449,7 @@ M365 Agents Toolkitの F5 デバッグ機能を使用すると、Botをローカ
 2. **F5キー**を押す（または「実行とデバッグ」→「Debug in Teams」）
 3. Toolkitが以下を自動実行:
    - Dev Tunnel（ngrok代替）の起動 → ローカルサーバーをインターネットに公開
-   - `teamsapp.local.yml`に基づくローカルProvision
+   - `m365agents.local.yml`に基づくローカルProvision
    - Botアプリのローカル起動
    - ブラウザでTeams Web版を自動オープン → Botアプリを自動サイドロード
 4. Teamsの1:1チャットでBotに話しかけて動作確認
@@ -1424,7 +1464,7 @@ M365 Agents Toolkitの F5 デバッグ機能を使用すると、Botをローカ
 **注意事項:**
 - Dev Tunnelの利用にはMicrosoftアカウントでの認証が必要
 - 初回実行時にDev Tunnel拡張機能のインストールを求められる場合がある
-- ローカルデバッグ中は`teamsapp.local.yml`のProvisionが使用される（`teamsapp.yml`とは別）
+- ローカルデバッグ中は`m365agents.local.yml`のProvisionが使用される（`m365agents.yml`とは別）
 
 ### 15.1 基本通信確認
 

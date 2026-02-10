@@ -10,7 +10,7 @@
 **既存のAzureリソースを削除・変更してはならない。**
 
 - 現在のサブスクリプション内の既存リソースグループ・リソースを一切削除・変更しない
-- `rg-impact-poc` 内のリソースのみ新規作成する
+- `rg-maintenance-poc` 内のリソースのみ新規作成する
 - 他のリソースグループへの操作は禁止
 - `az group delete`、`az resource delete` 等の破壊的コマンドは実行しない
 - ロール付与は手順書に記載されたスコープのみに限定する
@@ -31,10 +31,11 @@ rag-maintenance/
 ├── CLAUDE.md                 ← このファイル
 ├── docs/
 │   ├── phase2-poc-requirements-definition.md   # 要件定義書 v3.2
-│   └── phase2-poc-setup-guide.md               # 導入手順書 v1.1
+│   ├── phase2-poc-setup-guide.md               # 導入手順書 v1.4
+│   └── screenshots/                            # Azureポータルスクリーンショット
+├── scripts/                  # AI Search設定用JSON（index, datasource, skillset, indexer）
 └── (今後追加)
-    ├── screenshots/          # Azure構築時のスクリーンショット
-    └── src/                  # Botアプリケーションソース
+    └── src/                  # Botアプリケーションソース（Toolkit生成）
 ```
 
 ## 要件定義書（v3.2）概要
@@ -47,11 +48,13 @@ rag-maintenance/
 - UI: Adaptive Card（ToggleVisibility でタブ切替、ScrollArea でスクロール）
 - 8.4節: **BotアプリからAzure OpenAIを直接呼び出さない**。EmbeddingはすべてAI Search経由（Skillset/Vectorizer）
 
-## 導入手順書（v1.1）概要
+## 導入手順書（v1.4）概要
 
 - 文書ID: SETUP-FAQ-IMPACT-001
-- 全13ステップ、約1,300行
-- v1.0 → v1.1 でセルフレビューにより10件修正済み
+- 全13ステップ
+- v1.0 → v1.1: セルフレビュー10件修正
+- v1.2 → v1.3: Step 8/11/12をM365 Agents Toolkitベースに書換え、F5デバッグ追加
+- v1.3 → v1.4: Toolkit v6系対応（`teamsapp.yml`→`m365agents.yml`、テンプレート選択フロー修正）
 
 ### v1.1 修正済み内容
 
@@ -89,6 +92,37 @@ rag-maintenance/
 - 同一インデックス `maintenance-search-index` に両方書き込む（AI Search公式サポート）
 - System Assigned MI 使用時、データソースの `identity` フィールドは省略
 
+## 基本方針（2026-02-10〜）
+
+**運用保守効率化AIの導入がメインタスク。** 以下の3つを並行して進める:
+
+1. **Azure環境構築の実行** — MCP（M365 Agents Toolkit）+ Azure CLIで自動化
+2. **スクリーンショット取得** — Chrome拡張でAzureポータル操作時に随時キャプチャ → `docs/screenshots/`
+3. **手順書v2.0の並行完成** — 実環境との差異を発見次第、手順書MDを即時修正 → 最終的にWord化
+
+### ツール構成
+
+```
+Claude Code
+  ├── Chrome拡張（mcp__claude-in-chrome__*）
+  │   └── Azureポータル操作 + スクリーンショット取得
+  ├── M365 Agents Toolkit MCP（mcp__m365-agents-toolkit__*）
+  │   └── Provision / Deploy / トラブルシュート
+  ├── Azure CLI（az コマンド）
+  │   └── リソース作成・設定・RBAC付与
+  └── ファイル操作
+      └── 手順書MD編集 + スクショ保存
+```
+
+### 作業フロー
+1. 手順書の該当Stepを読む
+2. MCP/CLI/Chromeで実行
+3. 実行結果のスクリーンショットを取得・保存
+4. 手順書と実環境の差異があれば手順書を修正
+5. 次のStepへ
+
+---
+
 ## Azure環境構築 進捗（2026-02-10）
 
 ### ✅ 完了（Step 1〜7, 9〜10）
@@ -97,14 +131,12 @@ rag-maintenance/
 - AI Search: インデックス + DS2 + Skillset + Indexer2 設定済み
 - 詳細値はメモリ参照: `memory/azure-deployment-progress.md`
 
-### ⬜ 未完了（次セッションで実施）
-1. **Step 8: Entra IDアプリ登録 + Bot Service**（CLI or ポータル）
-   - `az ad app create --display-name app-maintenance-bot-poc --sign-in-audience AzureADMyOrg`
-   - クライアントシークレット作成、Bot Service(F0)作成、Teamsチャネル有効化
-   - Web Appアプリケーション設定に AppId/Password/TenantId 登録
-2. **Step 11: Botアプリデプロイ**（M365 Agents SDK）
-3. **Step 12-13: Teamsサイドロード + 動作確認**
-4. **スクショ付き手順書 v2.0 完成**（最終的にWord化）
+### ⬜ 未完了
+1. **Step 8: Entra IDアプリ登録 + Bot Service** — Toolkit Provision（SingleTenant + Secret）
+2. **Step 11: Botアプリデプロイ** — Toolkit Deploy
+3. **Step 12: Teamsサイドロード登録**
+4. **Step 13: F5デバッグ + 動作確認**
+5. **手順書 v2.0 完成**（スクショ付き、最終Word化）
 
 ## コーディング規約・ドキュメント規約
 
