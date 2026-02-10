@@ -231,12 +231,14 @@ rag-gemini/
 │   └── check_db_content.py            # DB内容確認
 │
 ├── data/                         # データディレクトリ
-│   ├── vector_db/                # ベクトルDB (819MB)
-│   │   ├── chroma.sqlite3
-│   │   ├── metadata/
-│   │   └── collections/
-│   │       ├── general/, deposit/, smile/
-│   │       └── revisions/ (rev01_smile, rev02_souzoku, ...)
+│   ├── vector_db/                # ベクトルDB
+│   │   ├── update_timestamps.json
+│   │   ├── general/              # 総則DB
+│   │   ├── deposit/              # 預金DB
+│   │   ├── smile/                # スマイルDB
+│   │   ├── rev01_smile/          # 改定DB
+│   │   ├── rev02_souzoku/
+│   │   └── ... (rev03-06)
 │   ├── source/
 │   │   ├── scenarios/            # シナリオExcel
 │   │   │   ├── latest/
