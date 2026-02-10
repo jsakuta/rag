@@ -2,13 +2,13 @@
 
 **文書ID**: SETUP-FAQ-IMPACT-001
 
-**版数**: 1.1
+**版数**: 1.3
 
 **作成日**: 2026/2/10
 
 **作成者**: デジタル戦略部
 
-**関連文書**: REQ-FAQ-IMPACT-002（Phase2 PoC 要件定義書 v3.1）
+**関連文書**: REQ-FAQ-IMPACT-002（Phase2 PoC 要件定義書 v3.2）
 
 ---
 
@@ -18,6 +18,8 @@
 |------|------|---------|------|
 | 1.0 | 2026/2/10 | 初版作成 | デジタル戦略部 |
 | 1.1 | 2026/2/10 | セルフレビューによる10件修正: ロール付与先修正（Azure OpenAI→AI Search MI）、データソース/Indexer設計を2系統に変更、SDK選定を要件定義書と整合、Key Vaultロール付与追加、Cosmos DB管理プレーンロール追加、不要な環境変数削除、Week 3注記追加 | デジタル戦略部 |
+| 1.2 | 2026/2/10 | リソース命名規則変更（impact→maintenance）、要件定義書参照をv3.2に更新 | デジタル戦略部 |
+| 1.3 | 2026/2/10 | Step 8・11・12をM365 Agents Toolkit ベースに書き換え、Step 13にF5ローカルデバッグ追加 | デジタル戦略部 |
 
 ---
 
@@ -25,7 +27,7 @@
 
 ### 1.1 目的
 
-本手順書は、Phase2 PoC「事務改定 影響候補検出システム」のAzure環境を構築するための手順を記載する。要件定義書（REQ-FAQ-IMPACT-002 v3.1）に基づき、Week 1〜2で必要なリソースの作成・設定を行う。
+本手順書は、Phase2 PoC「事務改定 影響候補検出システム」のAzure環境を構築するための手順を記載する。要件定義書（REQ-FAQ-IMPACT-002 v3.2）に基づき、Week 1〜2で必要なリソースの作成・設定を行う。
 
 ### 1.2 構築対象リソース
 
@@ -38,7 +40,7 @@
 | 5 | Key Vault | Standard | シークレット管理 |
 | 6 | Application Insights | — | 監視・ログ |
 | 7 | App Service（Web App） | Basic B1 | Botバックエンド |
-| 8 | Azure Bot Service | F0（Free） | Teamsチャネル登録（Single-Tenant） |
+| 8 | Azure Bot Service | F0（Free） | Teamsチャネル登録（Single-Tenant）※M365 Agents Toolkit で自動作成 |
 
 ### 1.3 全体構築フロー
 
@@ -57,17 +59,18 @@ Step 6: Application Insights 作成
   ↓
 Step 7: App Service (Web App) 作成 + Managed Identity有効化
   ↓
-Step 8: Azure Bot Service 作成 + Teamsチャネル有効化
+Step 8: M365 Agents Toolkit セットアップ + Provision
+        （Entra IDアプリ登録・Bot Service・Teamsチャネルを自動作成）
   ↓
 Step 9: Managed Identityロール付与
   ↓
 Step 10: AI Search インデックス・データソース・Skillset・Indexer設定
   ↓
-Step 11: Botアプリケーションデプロイ
+Step 11: Botアプリケーション実装 + Toolkit Deploy
   ↓
-Step 12: Teamsアプリ登録・サイドロード
+Step 12: Teamsアプリ登録（Toolkit自動生成マニフェスト使用）
   ↓
-Step 13: 動作確認
+Step 13: 動作確認（F5ローカルデバッグ + 本番テスト）
 ```
 
 ---
@@ -106,15 +109,15 @@ Step 13: 動作確認
 
 | リソース | 命名例 |
 |---------|--------|
-| リソースグループ | `rg-impact-<env>` |
-| Azure OpenAI | `aoai-impact-<env>` |
-| Azure AI Search | `srch-impact-<env>` |
-| Cosmos DB | `cosmos-impact-<env>` |
-| Key Vault | `kv-impact-<env>` |
-| Application Insights | `appi-impact-<env>` |
-| App Service Plan | `asp-impact-<env>` |
-| Web App | `app-impact-bot-<env>` |
-| Azure Bot Service | `bot-impact-<env>` |
+| リソースグループ | `rg-maintenance-<env>` |
+| Azure OpenAI | `aoai-maintenance-<env>` |
+| Azure AI Search | `srch-maintenance-<env>` |
+| Cosmos DB | `cosmos-maintenance-<env>` |
+| Key Vault | `kv-maintenance-<env>` |
+| Application Insights | `appi-maintenance-<env>` |
+| App Service Plan | `asp-maintenance-<env>` |
+| Web App | `app-maintenance-bot-<env>` |
+| Azure Bot Service | `bot-maintenance-<env>` |
 
 ---
 
@@ -129,7 +132,7 @@ Step 13: 動作確認
 | 項目 | 値 |
 |------|-----|
 | サブスクリプション | 対象サブスクリプション |
-| リソースグループ名 | `rg-impact-poc` |
+| リソースグループ名 | `rg-maintenance-poc` |
 | リージョン | Japan East |
 
 4. 「確認および作成」→「作成」を選択
@@ -138,7 +141,7 @@ Step 13: 動作確認
 
 ```bash
 az group create \
-  --name rg-impact-poc \
+  --name rg-maintenance-poc \
   --location japaneast
 ```
 
@@ -154,9 +157,9 @@ az group create \
 | 項目 | 値 |
 |------|-----|
 | サブスクリプション | 対象サブスクリプション |
-| リソースグループ | `rg-impact-poc` |
+| リソースグループ | `rg-maintenance-poc` |
 | リージョン | Japan East |
-| 名前 | `aoai-impact-poc` |
+| 名前 | `aoai-maintenance-poc` |
 | 価格レベル | Standard S0 |
 
 3. ネットワーク: 「すべてのネットワーク」（PoCのため。本番ではプライベートエンドポイント推奨）
@@ -166,8 +169,8 @@ az group create \
 
 ```bash
 az cognitiveservices account create \
-  --name aoai-impact-poc \
-  --resource-group rg-impact-poc \
+  --name aoai-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --kind OpenAI \
   --sku S0 \
   --location japaneast
@@ -194,7 +197,7 @@ az cognitiveservices account create \
 ### 4.3 確認事項
 
 - [ ] リソースが正常に作成された
-- [ ] エンドポイントURLを記録した（例: `https://aoai-impact-poc.openai.azure.com/`）
+- [ ] エンドポイントURLを記録した（例: `https://aoai-maintenance-poc.openai.azure.com/`）
 - [ ] Embeddingモデルがデプロイ済み
 - [ ] デプロイ名を記録した
 
@@ -210,8 +213,8 @@ az cognitiveservices account create \
 | 項目 | 値 |
 |------|-----|
 | サブスクリプション | 対象サブスクリプション |
-| リソースグループ | `rg-impact-poc` |
-| サービス名 | `srch-impact-poc` |
+| リソースグループ | `rg-maintenance-poc` |
+| サービス名 | `srch-maintenance-poc` |
 | 場所 | Japan East |
 | 価格レベル | **Basic** |
 
@@ -221,8 +224,8 @@ az cognitiveservices account create \
 
 ```bash
 az search service create \
-  --name srch-impact-poc \
-  --resource-group rg-impact-poc \
+  --name srch-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --sku basic \
   --location japaneast
 ```
@@ -252,7 +255,7 @@ AI SearchのIndexerがCosmos DBに接続する際にManaged Identityを使用す
 - [ ] AI Searchリソースが正常に作成された（Basic SKU）
 - [ ] Semantic Rankerが有効化された（Freeプラン）
 - [ ] システム割り当てManaged Identityが有効
-- [ ] サービスURLを記録した（例: `https://srch-impact-poc.search.windows.net`）
+- [ ] サービスURLを記録した（例: `https://srch-maintenance-poc.search.windows.net`）
 - [ ] 管理キーを記録した（Key Vault格納用）
 
 ---
@@ -268,8 +271,8 @@ AI SearchのIndexerがCosmos DBに接続する際にManaged Identityを使用す
 | 項目 | 値 |
 |------|-----|
 | サブスクリプション | 対象サブスクリプション |
-| リソースグループ | `rg-impact-poc` |
-| アカウント名 | `cosmos-impact-poc` |
+| リソースグループ | `rg-maintenance-poc` |
+| アカウント名 | `cosmos-maintenance-poc` |
 | 場所 | Japan East |
 | 容量モード | **サーバーレス** |
 
@@ -279,8 +282,8 @@ AI SearchのIndexerがCosmos DBに接続する際にManaged Identityを使用す
 
 ```bash
 az cosmosdb create \
-  --name cosmos-impact-poc \
-  --resource-group rg-impact-poc \
+  --name cosmos-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --locations regionName=japaneast \
   --capabilities EnableServerless
 ```
@@ -292,7 +295,7 @@ Cosmos DBリソース作成後、データエクスプローラーで以下を�
 **データベース作成:**
 
 1. 「データ エクスプローラー」→「New Database」
-2. Database id: `impact-db`
+2. Database id: `maintenance-db`
 
 **コンテナ作成（3つ）:**
 
@@ -304,7 +307,7 @@ Cosmos DBリソース作成後、データエクスプローラーで以下を�
 
 各コンテナの作成手順:
 
-1. `impact-db`を右クリック →「New Container」
+1. `maintenance-db`を右クリック →「New Container」
 2. Container id と Partition key を上表の通り入力
 3. 「OK」を選択
 
@@ -313,31 +316,31 @@ Cosmos DBリソース作成後、データエクスプローラーで以下を�
 ```bash
 # データベース作成
 az cosmosdb sql database create \
-  --account-name cosmos-impact-poc \
-  --resource-group rg-impact-poc \
-  --name impact-db
+  --account-name cosmos-maintenance-poc \
+  --resource-group rg-maintenance-poc \
+  --name maintenance-db
 
 # scenariosコンテナ
 az cosmosdb sql container create \
-  --account-name cosmos-impact-poc \
-  --resource-group rg-impact-poc \
-  --database-name impact-db \
+  --account-name cosmos-maintenance-poc \
+  --resource-group rg-maintenance-poc \
+  --database-name maintenance-db \
   --name scenarios \
   --partition-key-path /categoryId
 
 # faqsコンテナ
 az cosmosdb sql container create \
-  --account-name cosmos-impact-poc \
-  --resource-group rg-impact-poc \
-  --database-name impact-db \
+  --account-name cosmos-maintenance-poc \
+  --resource-group rg-maintenance-poc \
+  --database-name maintenance-db \
   --name faqs \
   --partition-key-path /categoryId
 
 # impactAssessmentsコンテナ
 az cosmosdb sql container create \
-  --account-name cosmos-impact-poc \
-  --resource-group rg-impact-poc \
-  --database-name impact-db \
+  --account-name cosmos-maintenance-poc \
+  --resource-group rg-maintenance-poc \
+  --database-name maintenance-db \
   --name impactAssessments \
   --partition-key-path /searchId
 ```
@@ -349,9 +352,9 @@ az cosmosdb sql container create \
 ### 6.4 確認事項
 
 - [ ] Cosmos DBアカウントが正常に作成された（Serverless）
-- [ ] `impact-db`データベースが作成された
+- [ ] `maintenance-db`データベースが作成された
 - [ ] 3つのコンテナが作成された（`scenarios`, `faqs`, `impactAssessments`）
-- [ ] エンドポイントURLを記録した（例: `https://cosmos-impact-poc.documents.azure.com:443/`）
+- [ ] エンドポイントURLを記録した（例: `https://cosmos-maintenance-poc.documents.azure.com:443/`）
 
 ---
 
@@ -363,8 +366,8 @@ az cosmosdb sql container create \
 | 項目 | 値 |
 |------|-----|
 | サブスクリプション | 対象サブスクリプション |
-| リソースグループ | `rg-impact-poc` |
-| Key Vault名 | `kv-impact-poc` |
+| リソースグループ | `rg-maintenance-poc` |
+| Key Vault名 | `kv-maintenance-poc` |
 | リージョン | Japan East |
 | 価格レベル | Standard |
 | アクセス許可モデル | Azure ロールベースのアクセス制御（RBAC） |
@@ -392,8 +395,8 @@ API キーをManaged Identityではなくキーで認証する場合、以下を
 | 項目 | 値 |
 |------|-----|
 | サブスクリプション | 対象サブスクリプション |
-| リソースグループ | `rg-impact-poc` |
-| 名前 | `appi-impact-poc` |
+| リソースグループ | `rg-maintenance-poc` |
+| 名前 | `appi-maintenance-poc` |
 | リージョン | Japan East |
 | ワークスペース | 既存のLog Analyticsワークスペース、またはデフォルト |
 
@@ -412,13 +415,13 @@ API キーをManaged Identityではなくキーで認証する場合、以下を
 | 項目 | 値 |
 |------|-----|
 | サブスクリプション | 対象サブスクリプション |
-| リソースグループ | `rg-impact-poc` |
-| 名前 | `app-impact-bot-poc` |
+| リソースグループ | `rg-maintenance-poc` |
+| 名前 | `app-maintenance-bot-poc` |
 | 公開 | コード |
 | ランタイムスタック | Node 20 LTS |
 | オペレーティングシステム | Linux |
 | 地域 | Japan East |
-| App Serviceプラン | 新規作成: `asp-impact-poc`、SKU: **Basic B1** |
+| App Serviceプラン | 新規作成: `asp-maintenance-poc`、SKU: **Basic B1** |
 
 3. 「確認して作成」→「作成」
 
@@ -440,10 +443,10 @@ Web App →「設定」→「環境変数」で以下を設定:
 | `MicrosoftAppPassword` | （Step 8で取得） | Botのクライアントシークレット |
 | `MicrosoftAppTenantId` | （テナントID） | Single-Tenant構成で必須 |
 | `MicrosoftAppType` | `SingleTenant` | Single-Tenant構成を明示 |
-| `AI_SEARCH_ENDPOINT` | `https://srch-impact-poc.search.windows.net` | |
-| `AI_SEARCH_INDEX_NAME` | `impact-search-index` | |
-| `COSMOS_DB_ENDPOINT` | `https://cosmos-impact-poc.documents.azure.com:443/` | |
-| `COSMOS_DB_DATABASE` | `impact-db` | |
+| `AI_SEARCH_ENDPOINT` | `https://srch-maintenance-poc.search.windows.net` | |
+| `AI_SEARCH_INDEX_NAME` | `maintenance-search-index` | |
+| `COSMOS_DB_ENDPOINT` | `https://cosmos-maintenance-poc.documents.azure.com:443/` | |
+| `COSMOS_DB_DATABASE` | `maintenance-db` | |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | （Step 6で取得） | |
 
 **注記:**
@@ -454,96 +457,211 @@ Web App →「設定」→「環境変数」で以下を設定:
 
 - [ ] Web Appが正常に作成された（Node 20 LTS, Linux, B1）
 - [ ] Managed Identityが有効化され、オブジェクトIDを記録した
-- [ ] メッセージングエンドポイントURL: `https://app-impact-bot-poc.azurewebsites.net/api/messages`
+- [ ] メッセージングエンドポイントURL: `https://app-maintenance-bot-poc.azurewebsites.net/api/messages`
 
 ---
 
-## 10. Step 8: Azure Bot Service 作成
+## 10. Step 8: M365 Agents Toolkit セットアップ + Provision
 
-### 10.1 Entra IDアプリ登録
+本ステップでは、VS CodeのM365 Agents Toolkit拡張機能を使用して、以下を自動化する:
 
-Azure Bot Serviceを作成する前に、Single-Tenant用のアプリ登録を行う。
+- Entra IDアプリ登録（Single-Tenant）+ クライアントシークレット生成
+- Azure Bot Service作成（F0）+ メッセージングエンドポイント設定
+- Teamsチャネル有効化
 
-1. Azure Portal →「Microsoft Entra ID」→「アプリの登録」→「新規登録」
-2. 以下を入力:
+**注記:** Multi-Tenant構成は2025年7月31日以降、新規作成が非推奨となった。本手順ではSingle-Tenant + クライアントシークレット構成を使用する。本番環境では User-Assigned Managed Identity への移行を推奨する。
 
-| 項目 | 値 |
-|------|-----|
-| 名前 | `app-impact-bot-poc` |
-| サポートされているアカウントの種類 | **この組織ディレクトリのみに含まれるアカウント（シングルテナント）** |
-| リダイレクトURI | 空欄のまま |
+### 10.1 VS Code拡張機能のインストール
 
-3. 「登録」を選択
-4. 以下を記録:
-   - **アプリケーション（クライアント）ID** → `MicrosoftAppId`として使用
-   - **ディレクトリ（テナント）ID** → `MicrosoftAppTenantId`として使用
+1. VS Codeの拡張機能マーケットプレイス（Ctrl+Shift+X）を開く
+2. 「Microsoft 365 Agents Toolkit」を検索
+3. インストール後、VS Codeを再読み込み
+4. 左サイドバーに**M365 Agents Toolkit アイコン**（Mマーク）が表示されることを確認
 
-### 10.2 クライアントシークレットの作成
+**参考:** https://marketplace.visualstudio.com/items?itemName=TeamsDevApp.ms-teams-vscode-extension
 
-1. 登録したアプリに移動 →「証明書とシークレット」
-2. 「新しいクライアントシークレット」を選択
-3. 説明: `bot-secret`、有効期限: 任意（PoCでは6ヶ月推奨）
-4. 「追加」を選択
-5. 表示される**値**を即座に記録（一度しか表示されない）→ `MicrosoftAppPassword`として使用
+### 10.2 Azureアカウント・M365アカウントのサインイン
 
-**重要:** シークレットの値はこの時点でしか確認できない。必ず安全な場所に記録すること。
+1. M365 Agents Toolkit サイドバーを開く
+2. 「ACCOUNTS」セクションで以下にサインイン:
+   - **Microsoft 365**: Teams管理者権限を持つアカウント
+   - **Azure**: サブスクリプションの所有者/共同作成者権限を持つアカウント
+3. サインイン完了後、サブスクリプション名が表示されることを確認
 
-### 10.3 Azure Bot Service リソース作成
+### 10.3 プロジェクト作成
 
-1. Azure Portal →「リソースの作成」→「Azure Bot」を検索
-2. 以下を入力:
+1. M365 Agents Toolkit サイドバー →「Create a New App」
+2. テンプレート選択:
+   - **Agent** → **Basic Agent**（M365 Agents SDKテンプレート）
+3. プログラミング言語: **TypeScript**
+4. プロジェクトフォルダ名: `maintenance-bot`
+5. 保存先: `rag-maintenance/` 配下を推奨
 
-| 項目 | 値 |
-|------|-----|
-| ボットハンドル | `bot-impact-poc` |
-| サブスクリプション | 対象サブスクリプション |
-| リソースグループ | `rg-impact-poc` |
-| 価格レベル | **F0（Free）** |
-| アプリの種類 | **シングルテナント** |
-| 作成の種類 | 「既存のアプリの登録を使用する」 |
-| アプリID | Step 10.1で取得したアプリケーションID |
-| アプリテナントID | Step 10.1で取得したテナントID |
-
-3. 「確認して作成」→「作成」
-
-**注記:** Multi-Tenant構成は2025年7月31日以降、新規作成が非推奨となった。本手順ではSingle-Tenant構成を使用する。
-
-### 10.4 メッセージングエンドポイントの設定
-
-1. 作成したBot Serviceリソースに移動
-2. 左メニュー →「構成」
-3. メッセージングエンドポイントに以下を入力:
+**生成されるプロジェクト構造:**
 
 ```
-https://app-impact-bot-poc.azurewebsites.net/api/messages
+maintenance-bot/
+├── appPackage/
+│   ├── manifest.json          # Teamsアプリマニフェスト（プレースホルダー付き）
+│   ├── color.png              # カラーアイコン（192x192）
+│   └── outline.png            # アウトラインアイコン（32x32）
+├── infra/
+│   ├── azure.bicep            # Azureリソース定義
+│   ├── azure.parameters.json  # パラメータファイル
+│   └── botRegistration/
+│       └── azurebot.bicep     # Bot Service定義
+├── env/
+│   ├── .env.local             # ローカル環境変数
+│   ├── .env.local.user        # ローカル機密情報
+│   ├── .env.dev               # リモート環境変数
+│   └── .env.dev.user          # リモート機密情報
+├── src/
+│   └── index.ts               # Botエントリポイント
+├── teamsapp.yml               # リモート環境ライフサイクル定義
+├── teamsapp.local.yml         # ローカルデバッグ定義
+├── package.json
+└── tsconfig.json
 ```
 
-4. 「適用」を選択
+### 10.4 teamsapp.yml のカスタマイズ（既存リソース参照）
 
-### 10.5 Teamsチャネルの有効化
+生成されたデフォルトの`teamsapp.yml`を編集し、Step 1〜7で作成済みのリソースを使用するようカスタマイズする。
 
-1. Bot Serviceリソース →「チャネル」
-2. 「Microsoft Teams」を選択
-3. 利用規約に同意 → 「適用」
-4. Teams チャネルが「実行中」になっていることを確認
+**teamsapp.yml の provision セクション:**
 
-### 10.6 MicrosoftAppId / Password の設定（Step 7に戻る）
+```yaml
+provision:
+  # 1. Entra IDアプリ登録（Toolkitが自動実行）
+  - uses: botAadApp/create
+    with:
+      name: app-maintenance-bot-poc
+      generateClientSecret: true
+    writeToEnvironmentFile:
+      botId: BOT_ID
+      botPassword: SECRET_BOT_PASSWORD
 
-Step 10.1〜10.2で取得した以下の値を、Step 9.3のWeb Appアプリケーション設定に登録する:
+  # 2. Bot Framework登録 + Teamsチャネル有効化（Toolkitが自動実行）
+  - uses: botFramework/create
+    with:
+      botId: ${{BOT_ID}}
+      name: bot-maintenance-poc
+      messagingEndpoint: https://app-maintenance-bot-poc.azurewebsites.net/api/messages
+      description: "事務改定 影響候補検出Bot"
+      channels:
+        - name: msteams
 
-- `MicrosoftAppId` = アプリケーション（クライアント）ID
-- `MicrosoftAppPassword` = クライアントシークレットの値
-- `MicrosoftAppTenantId` = ディレクトリ（テナント）ID
-- `MicrosoftAppType` = `SingleTenant`
+  # 3. Teamsアプリ登録
+  - uses: teamsApp/create
+    with:
+      name: 影響候補検出Bot-${{TEAMSFX_ENV}}
+    writeToEnvironmentFile:
+      teamsAppId: TEAMS_APP_ID
 
-### 10.7 確認事項
+  # 4. アプリマニフェストのバリデーションとパッケージ化
+  - uses: teamsApp/validateManifest
+    with:
+      manifestPath: ./appPackage/manifest.json
+  - uses: teamsApp/zipAppPackage
+    with:
+      manifestPath: ./appPackage/manifest.json
+      outputZipPath: ./appPackage/build/appPackage.${{TEAMSFX_ENV}}.zip
+  - uses: teamsApp/validateAppPackage
+    with:
+      appPackagePath: ./appPackage/build/appPackage.${{TEAMSFX_ENV}}.zip
+  - uses: teamsApp/update
+    with:
+      appPackagePath: ./appPackage/build/appPackage.${{TEAMSFX_ENV}}.zip
+```
 
-- [ ] Entra IDアプリ登録が完了した（Single-Tenant）
-- [ ] クライアントシークレットを記録した
-- [ ] Azure Bot Service（F0）が作成された
-- [ ] メッセージングエンドポイントが設定された
-- [ ] Teamsチャネルが有効化された
-- [ ] Web Appのアプリケーション設定にAppId/Password/TenantIdを登録した
+**重要な変更点:**
+- デフォルトの`arm/deploy`アクション（Bicepによるリソース作成）は**削除またはコメントアウト**する。Web App、App Service Plan等は既に作成済みのため。
+- `botAadApp/create`が Entra IDアプリ登録 + クライアントシークレット生成を自動実行する
+- `botFramework/create`が Azure Bot Service登録 + Teamsチャネル有効化を自動実行する
+- 生成された`BOT_ID`と`SECRET_BOT_PASSWORD`は`env/.env.dev`と`env/.env.dev.user`に自動書き込みされる
+
+### 10.5 環境変数ファイルの設定
+
+**env/.env.dev:**
+
+```env
+TEAMSFX_ENV=dev
+# 以下はProvision実行後に自動書き込みされる
+# BOT_ID=<自動生成>
+# TEAMS_APP_ID=<自動生成>
+
+# 既存リソース情報（手動記入）
+AZURE_SUBSCRIPTION_ID=5a471c83-2f59-4509-806a-3c1fc77bb89a
+AZURE_RESOURCE_GROUP_NAME=rg-maintenance-poc
+APP_SERVICE_NAME=app-maintenance-bot-poc
+AI_SEARCH_ENDPOINT=https://srch-maintenance-poc.search.windows.net
+AI_SEARCH_INDEX_NAME=maintenance-search-index
+COSMOS_DB_ENDPOINT=https://cosmos-maintenance-poc.documents.azure.com:443/
+COSMOS_DB_DATABASE=maintenance-db
+```
+
+**env/.env.dev.user:**
+
+```env
+# Provision実行後に自動書き込みされる
+# SECRET_BOT_PASSWORD=<自動生成>
+```
+
+### 10.6 Provision実行
+
+1. VS Code コマンドパレット（Ctrl+Shift+P）→「M365 Agents Toolkit: Provision」を選択
+2. 環境: `dev` を選択
+3. サブスクリプション: `Azure subscription 1` を選択
+4. Toolkitが以下を自動実行:
+   - Entra IDアプリ登録（Single-Tenant）
+   - クライアントシークレット生成
+   - Azure Bot Service登録（F0）
+   - メッセージングエンドポイント設定
+   - Teamsチャネル有効化
+   - Teamsアプリ登録
+5. 完了後、`env/.env.dev`に`BOT_ID`が、`env/.env.dev.user`に`SECRET_BOT_PASSWORD`が書き込まれる
+
+### 10.7 Web Appアプリケーション設定の登録
+
+Provision完了後、`env/.env.dev`から取得した値をWeb Appの環境変数に設定する。
+
+**Azure CLI:**
+
+```bash
+# env/.env.dev から BOT_ID を確認
+# env/.env.dev.user から SECRET_BOT_PASSWORD を確認
+
+az webapp config appsettings set \
+  --resource-group rg-maintenance-poc \
+  --name app-maintenance-bot-poc \
+  --settings \
+    MicrosoftAppId=<BOT_ID> \
+    MicrosoftAppPassword=<SECRET_BOT_PASSWORD> \
+    MicrosoftAppTenantId=<テナントID> \
+    MicrosoftAppType=SingleTenant \
+    AI_SEARCH_ENDPOINT=https://srch-maintenance-poc.search.windows.net \
+    AI_SEARCH_INDEX_NAME=maintenance-search-index \
+    COSMOS_DB_ENDPOINT=https://cosmos-maintenance-poc.documents.azure.com:443/ \
+    COSMOS_DB_DATABASE=maintenance-db \
+    APPLICATIONINSIGHTS_CONNECTION_STRING="<Step 6で取得した接続文字列>"
+```
+
+**注記:**
+- `MicrosoftAppId`と`MicrosoftAppPassword`はProvision実行後に`env/`ファイルに記録される
+- `MicrosoftAppTenantId`はEntra IDのテナントID（`env/.env.dev`の`AAD_APP_TENANT_ID`に記録される場合あり）
+- Azure OpenAI関連の環境変数は不要（EmbeddingはAI Search経由で実行。要件定義書8.4参照）
+
+### 10.8 確認事項
+
+- [ ] M365 Agents Toolkit拡張機能がインストール済み
+- [ ] Azure / M365 アカウントにサインイン済み
+- [ ] プロジェクトが作成された（`maintenance-bot/`）
+- [ ] `teamsapp.yml`がカスタマイズ済み（既存リソース参照）
+- [ ] Provisionが正常に完了した
+- [ ] `BOT_ID`（MicrosoftAppId）が取得できた
+- [ ] `SECRET_BOT_PASSWORD`（MicrosoftAppPassword）が取得できた
+- [ ] Azure PortalでBot Serviceリソースが確認できる
+- [ ] Bot ServiceのTeamsチャネルが「実行中」になっている
+- [ ] Web Appのアプリケーション設定に全環境変数を登録した
 
 ---
 
@@ -579,7 +697,7 @@ Step 10.1〜10.2で取得した以下の値を、Step 9.3のWeb Appアプリケ�
 1. Azure OpenAIリソースに移動
 2. 「アクセス制御（IAM）」→「ロールの割り当ての追加」
 3. ロール: `Cognitive Services OpenAI User`
-4. メンバー: 「マネージドID」→ 対象のAI Search（`srch-impact-poc`）を選択
+4. メンバー: 「マネージドID」→ 対象のAI Search（`srch-maintenance-poc`）を選択
 5. 「確認と割り当て」
 
 **Azure CLI:**
@@ -587,14 +705,14 @@ Step 10.1〜10.2で取得した以下の値を、Step 9.3のWeb Appアプリケ�
 ```bash
 # AI SearchのプリンシパルIDを取得
 SEARCH_PRINCIPAL_ID=$(az search service show \
-  --name srch-impact-poc \
-  --resource-group rg-impact-poc \
+  --name srch-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --query identity.principalId -o tsv)
 
 # Azure OpenAIのリソースIDを取得
 AOAI_RESOURCE_ID=$(az cognitiveservices account show \
-  --name aoai-impact-poc \
-  --resource-group rg-impact-poc \
+  --name aoai-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --query id -o tsv)
 
 # AI SearchのMIにCognitive Services OpenAI Userを付与
@@ -618,13 +736,13 @@ az role assignment create \
 ```bash
 # Web AppのプリンシパルIDを取得
 WEB_APP_PRINCIPAL_ID=$(az webapp identity show \
-  --name app-impact-bot-poc \
-  --resource-group rg-impact-poc \
+  --name app-maintenance-bot-poc \
+  --resource-group rg-maintenance-poc \
   --query principalId -o tsv)
 
 SEARCH_RESOURCE_ID=$(az search service show \
-  --name srch-impact-poc \
-  --resource-group rg-impact-poc \
+  --name srch-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --query id -o tsv)
 
 az role assignment create \
@@ -646,8 +764,8 @@ az role assignment create \
 
 ```bash
 KV_RESOURCE_ID=$(az keyvault show \
-  --name kv-impact-poc \
-  --resource-group rg-impact-poc \
+  --name kv-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --query id -o tsv)
 
 az role assignment create \
@@ -678,15 +796,15 @@ AI SearchのIndexerがCosmos DBアカウントのメタデータを読み取る�
 1. Cosmos DBリソースに移動
 2. 「アクセス制御（IAM）」→「ロールの割り当ての追加」
 3. ロール: `Cosmos DB Account Reader Role`
-4. メンバー: AI SearchのManaged Identity（`srch-impact-poc`）を選択
+4. メンバー: AI SearchのManaged Identity（`srch-maintenance-poc`）を選択
 5. 「確認と割り当て」
 
 **Azure CLI:**
 
 ```bash
 COSMOS_RESOURCE_ID=$(az cosmosdb show \
-  --name cosmos-impact-poc \
-  --resource-group rg-impact-poc \
+  --name cosmos-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --query id -o tsv)
 
 az role assignment create \
@@ -700,8 +818,8 @@ az role assignment create \
 
 ```bash
 az cosmosdb sql role assignment create \
-  --account-name cosmos-impact-poc \
-  --resource-group rg-impact-poc \
+  --account-name cosmos-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --scope "/" \
   --principal-id $SEARCH_PRINCIPAL_ID \
   --role-definition-id 00000000-0000-0000-0000-000000000001
@@ -711,8 +829,8 @@ az cosmosdb sql role assignment create \
 
 ```bash
 az cosmosdb sql role assignment create \
-  --account-name cosmos-impact-poc \
-  --resource-group rg-impact-poc \
+  --account-name cosmos-maintenance-poc \
+  --resource-group rg-maintenance-poc \
   --scope "/" \
   --principal-id $WEB_APP_PRINCIPAL_ID \
   --role-definition-id 00000000-0000-0000-0000-000000000002
@@ -721,7 +839,7 @@ az cosmosdb sql role assignment create \
 **注意事項:**
 - Cosmos DBのデータプレーンロールはAzureポータルのIAMには表示されない（管理プレーンのロールとは別系統のため）
 - ロール付与が反映されるまで数分かかる場合がある
-- データプレーンロール付与の確認: `az cosmosdb sql role assignment list --account-name cosmos-impact-poc --resource-group rg-impact-poc`
+- データプレーンロール付与の確認: `az cosmosdb sql role assignment list --account-name cosmos-maintenance-poc --resource-group rg-maintenance-poc`
 - 管理プレーンロール付与の確認: `az role assignment list --scope $COSMOS_RESOURCE_ID`
 
 ### 11.6 確認事項
@@ -758,12 +876,12 @@ api-key: <AI Searchの管理キー>
 ### 12.2 インデックス作成
 
 ```
-PUT https://srch-impact-poc.search.windows.net/indexes/impact-search-index?api-version=2025-09-01
+PUT https://srch-maintenance-poc.search.windows.net/indexes/maintenance-search-index?api-version=2025-09-01
 ```
 
 ```json
 {
-  "name": "impact-search-index",
+  "name": "maintenance-search-index",
   "fields": [
     { "name": "id", "type": "Edm.String", "key": true, "filterable": true },
     { "name": "dataType", "type": "Edm.String", "filterable": true },
@@ -801,7 +919,7 @@ PUT https://srch-impact-poc.search.windows.net/indexes/impact-search-index?api-v
         "name": "openai-vectorizer",
         "kind": "azureOpenAI",
         "azureOpenAIParameters": {
-          "resourceUri": "https://aoai-impact-poc.openai.azure.com",
+          "resourceUri": "https://aoai-maintenance-poc.openai.azure.com",
           "deploymentId": "text-embedding-3-large",
           "modelName": "text-embedding-3-large"
         }
@@ -842,7 +960,7 @@ PUT https://srch-impact-poc.search.windows.net/indexes/impact-search-index?api-v
 **データソース1: scenarios**
 
 ```
-POST https://srch-impact-poc.search.windows.net/datasources?api-version=2025-09-01
+POST https://srch-maintenance-poc.search.windows.net/datasources?api-version=2025-09-01
 ```
 
 ```json
@@ -850,7 +968,7 @@ POST https://srch-impact-poc.search.windows.net/datasources?api-version=2025-09-
   "name": "cosmos-scenarios-ds",
   "type": "cosmosdb",
   "credentials": {
-    "connectionString": "ResourceId=/subscriptions/<subscription-id>/resourceGroups/rg-impact-poc/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-impact-poc;Database=impact-db;"
+    "connectionString": "ResourceId=/subscriptions/<subscription-id>/resourceGroups/rg-maintenance-poc/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-maintenance-poc;Database=maintenance-db;"
   },
   "container": {
     "name": "scenarios",
@@ -871,7 +989,7 @@ POST https://srch-impact-poc.search.windows.net/datasources?api-version=2025-09-
 **データソース2: faqs**
 
 ```
-POST https://srch-impact-poc.search.windows.net/datasources?api-version=2025-09-01
+POST https://srch-maintenance-poc.search.windows.net/datasources?api-version=2025-09-01
 ```
 
 ```json
@@ -879,7 +997,7 @@ POST https://srch-impact-poc.search.windows.net/datasources?api-version=2025-09-
   "name": "cosmos-faqs-ds",
   "type": "cosmosdb",
   "credentials": {
-    "connectionString": "ResourceId=/subscriptions/<subscription-id>/resourceGroups/rg-impact-poc/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-impact-poc;Database=impact-db;"
+    "connectionString": "ResourceId=/subscriptions/<subscription-id>/resourceGroups/rg-maintenance-poc/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-maintenance-poc;Database=maintenance-db;"
   },
   "container": {
     "name": "faqs",
@@ -907,18 +1025,18 @@ POST https://srch-impact-poc.search.windows.net/datasources?api-version=2025-09-
 AzureOpenAIEmbeddingSkillを使用して、Indexer実行時に自動でベクトル化する。
 
 ```
-PUT https://srch-impact-poc.search.windows.net/skillsets/impact-skillset?api-version=2025-09-01
+PUT https://srch-maintenance-poc.search.windows.net/skillsets/maintenance-skillset?api-version=2025-09-01
 ```
 
 ```json
 {
-  "name": "impact-skillset",
+  "name": "maintenance-skillset",
   "skills": [
     {
       "@odata.type": "#Microsoft.Skills.Text.AzureOpenAIEmbeddingSkill",
       "name": "embedding-skill",
       "context": "/document",
-      "resourceUri": "https://aoai-impact-poc.openai.azure.com",
+      "resourceUri": "https://aoai-maintenance-poc.openai.azure.com",
       "deploymentId": "text-embedding-3-large",
       "modelName": "text-embedding-3-large",
       "dimensions": 3072,
@@ -945,20 +1063,20 @@ PUT https://srch-impact-poc.search.windows.net/skillsets/impact-skillset?api-ver
 
 ### 12.5 Indexer作成
 
-2つのデータソースに対応するIndexerをそれぞれ作成する。両方とも同一インデックス（`impact-search-index`）と同一Skillset（`impact-skillset`）を使用する。
+2つのデータソースに対応するIndexerをそれぞれ作成する。両方とも同一インデックス（`maintenance-search-index`）と同一Skillset（`maintenance-skillset`）を使用する。
 
 **Indexer 1: scenarios**
 
 ```
-PUT https://srch-impact-poc.search.windows.net/indexers/impact-scenarios-indexer?api-version=2025-09-01
+PUT https://srch-maintenance-poc.search.windows.net/indexers/maintenance-scenarios-indexer?api-version=2025-09-01
 ```
 
 ```json
 {
-  "name": "impact-scenarios-indexer",
+  "name": "maintenance-scenarios-indexer",
   "dataSourceName": "cosmos-scenarios-ds",
-  "targetIndexName": "impact-search-index",
-  "skillsetName": "impact-skillset",
+  "targetIndexName": "maintenance-search-index",
+  "skillsetName": "maintenance-skillset",
   "schedule": {
     "interval": "PT1H"
   },
@@ -991,15 +1109,15 @@ PUT https://srch-impact-poc.search.windows.net/indexers/impact-scenarios-indexer
 **Indexer 2: faqs**
 
 ```
-PUT https://srch-impact-poc.search.windows.net/indexers/impact-faqs-indexer?api-version=2025-09-01
+PUT https://srch-maintenance-poc.search.windows.net/indexers/maintenance-faqs-indexer?api-version=2025-09-01
 ```
 
 ```json
 {
-  "name": "impact-faqs-indexer",
+  "name": "maintenance-faqs-indexer",
   "dataSourceName": "cosmos-faqs-ds",
-  "targetIndexName": "impact-search-index",
-  "skillsetName": "impact-skillset",
+  "targetIndexName": "maintenance-search-index",
+  "skillsetName": "maintenance-skillset",
   "schedule": {
     "interval": "PT1H"
   },
@@ -1038,22 +1156,22 @@ PUT https://srch-impact-poc.search.windows.net/indexers/impact-faqs-indexer?api-
 両方のIndexerを手動実行する:
 
 ```
-POST https://srch-impact-poc.search.windows.net/indexers/impact-scenarios-indexer/run?api-version=2025-09-01
-POST https://srch-impact-poc.search.windows.net/indexers/impact-faqs-indexer/run?api-version=2025-09-01
+POST https://srch-maintenance-poc.search.windows.net/indexers/maintenance-scenarios-indexer/run?api-version=2025-09-01
+POST https://srch-maintenance-poc.search.windows.net/indexers/maintenance-faqs-indexer/run?api-version=2025-09-01
 ```
 
 実行状態の確認:
 
 ```
-GET https://srch-impact-poc.search.windows.net/indexers/impact-scenarios-indexer/status?api-version=2025-09-01
-GET https://srch-impact-poc.search.windows.net/indexers/impact-faqs-indexer/status?api-version=2025-09-01
+GET https://srch-maintenance-poc.search.windows.net/indexers/maintenance-scenarios-indexer/status?api-version=2025-09-01
+GET https://srch-maintenance-poc.search.windows.net/indexers/maintenance-faqs-indexer/status?api-version=2025-09-01
 ```
 
 `lastResult.status`が`success`であれば正常。`transientFailure`の場合はAzure OpenAIのTPM超過による一時的なエラーの可能性があり、再実行で解消する。
 
 ### 12.7 確認事項
 
-- [ ] インデックス `impact-search-index` が作成された
+- [ ] インデックス `maintenance-search-index` が作成された
 - [ ] データソースが2つ作成された（`cosmos-scenarios-ds`, `cosmos-faqs-ds`）
 - [ ] Skillsetが作成された
 - [ ] Indexerが2つ作成され、初回実行が成功した
@@ -1061,7 +1179,7 @@ GET https://srch-impact-poc.search.windows.net/indexers/impact-faqs-indexer/stat
 
 ---
 
-## 13. Step 11: Botアプリケーションのデプロイ
+## 13. Step 11: Botアプリケーション実装 + Toolkit Deploy
 
 ### 13.1 SDK選定
 
@@ -1071,62 +1189,110 @@ GET https://srch-impact-poc.search.windows.net/indexers/impact-faqs-indexer/stat
 | Teams SDK（旧Teams AI Library v2） | GA（JS, C#） | `@microsoft/teams-ai` | Teams特化のBot開発SDK。M365 Agents SDKと併用可能 |
 | Bot Framework SDK | **サポート終了**（2025/12/31） | `botbuilder` | 新規開発には使用しない |
 
-要件定義書に基づき、本PoCでは**M365 Agents SDK**（TypeScript）を基本方針とする。Teams固有機能が必要な場合は`@microsoft/agents-hosting-extensions-teams`を併用する。
+要件定義書に基づき、本PoCでは**M365 Agents SDK**（TypeScript）を基本方針とする。Step 10.3で作成したToolkitプロジェクトには、SDK依存関係が既に含まれている。
 
-### 13.2 プロジェクト初期化
+### 13.2 追加パッケージのインストール
+
+Toolkitテンプレートに含まれないパッケージを追加する:
 
 ```bash
-mkdir impact-bot && cd impact-bot
-npm init -y
-npm install @microsoft/agents-hosting @microsoft/agents-hosting-express
-npm install @microsoft/agents-hosting-extensions-teams
-npm install @azure/cosmos @azure/identity
-npm install typescript ts-node @types/node --save-dev
-npx tsc --init
+cd maintenance-bot
+npm install @azure/cosmos @azure/identity @azure/search-documents
 ```
 
-**最小限のエントリポイント（index.mjs）:**
+### 13.3 最小構成の動作確認コード
 
-```javascript
-import { startServer } from '@microsoft/agents-hosting-express'
+Step 10.3で生成された`src/index.ts`を編集し、まず最小限のエコーBotで動作確認する:
+
+```typescript
 import { AgentApplication, MemoryStorage } from '@microsoft/agents-hosting'
+import { startServer } from '@microsoft/agents-hosting-express'
 
 const app = new AgentApplication({
   storage: new MemoryStorage()
 })
 
 app.activity('message', async (context) => {
-  // ここに検索ロジック・Adaptive Card生成ロジックを実装
+  // 動作確認用: エコー応答
   await context.sendActivity(`受信: ${context.activity.text}`)
 })
 
 startServer(app)
 ```
 
-**注記:** 上記は動作確認用の最小構成。検索ロジック、Adaptive Card生成、Cosmos DB書き込み等の実装詳細は別途実装ガイドを参照すること。
+**注記:** 上記は動作確認用の最小構成。検索ロジック、Adaptive Card生成、Cosmos DB書き込み等の実装詳細は別途実装ガイドで扱う。
 
-### 13.3 デプロイ方法
+### 13.4 teamsapp.yml の deploy セクション設定
 
-VS CodeのM365 Agents Toolkit拡張機能を使用するか、Azure CLIでデプロイする。
+`teamsapp.yml`のdeployセクションで既存のWeb Appへデプロイするよう設定する:
 
-**Azure CLI でのデプロイ:**
+```yaml
+deploy:
+  # 1. npm install
+  - uses: cli/runNpmCommand
+    with:
+      args: install
+
+  # 2. TypeScript ビルド
+  - uses: cli/runNpmCommand
+    with:
+      args: run build
+
+  # 3. 既存Web Appへの ZIPデプロイ
+  - uses: azureAppService/zipDeploy
+    with:
+      artifactFolder: .
+      ignoreFile: .deployignore
+      resourceId: /subscriptions/${{AZURE_SUBSCRIPTION_ID}}/resourceGroups/${{AZURE_RESOURCE_GROUP_NAME}}/providers/Microsoft.Web/sites/${{APP_SERVICE_NAME}}
+```
+
+**`.deployignore`ファイルの作成:**
+
+```
+.git
+.vscode
+env/
+appPackage/
+infra/
+node_modules/
+*.ts
+!dist/
+teamsapp.yml
+teamsapp.local.yml
+.deployignore
+```
+
+### 13.5 Toolkit Deployの実行
+
+1. VS Code コマンドパレット（Ctrl+Shift+P）→「M365 Agents Toolkit: Deploy」
+2. 環境: `dev` を選択
+3. Toolkitが以下を自動実行:
+   - `npm install`
+   - TypeScriptビルド
+   - 既存Web App（`app-maintenance-bot-poc`）へZIPデプロイ
+4. デプロイ完了のメッセージを確認
+
+**Azure CLI でのデプロイ（代替方法）:**
 
 ```bash
-# ZIPデプロイ
-cd impact-bot
-zip -r deploy.zip . -x "node_modules/*" ".git/*"
+cd maintenance-bot
+npm install && npm run build
+zip -r deploy.zip . -x "node_modules/*" ".git/*" "env/*" "*.ts"
 az webapp deploy \
-  --resource-group rg-impact-poc \
-  --name app-impact-bot-poc \
+  --resource-group rg-maintenance-poc \
+  --name app-maintenance-bot-poc \
   --src-path deploy.zip \
   --type zip
 ```
 
-### 13.4 確認事項
+### 13.6 確認事項
 
-- [ ] Botアプリケーションがデプロイされた
+- [ ] 追加パッケージがインストールされた
+- [ ] 最小構成のBotコードが用意された
+- [ ] `teamsapp.yml`のdeployセクションが設定済み
+- [ ] Toolkit Deployが正常に完了した
 - [ ] Web Appのログストリームでエラーが出ていない
-- [ ] `/api/messages`エンドポイントが応答している
+- [ ] `https://app-maintenance-bot-poc.azurewebsites.net/api/messages`エンドポイントが応答している
 
 **注記:** 本ステップは環境構築（デプロイ先の準備と初回デプロイ）を対象とする。検索ロジック、Adaptive Card生成、Cosmos DB書き込み、エラーハンドリング等の実装詳細は別途作成する実装ガイドで扱う。
 
@@ -1134,16 +1300,16 @@ az webapp deploy \
 
 ## 14. Step 12: Teamsアプリ登録・サイドロード
 
-### 14.1 アプリマニフェストの作成
+### 14.1 アプリマニフェストの編集
 
-`manifest.json`を以下の内容で作成する:
+Step 10.3で生成された`appPackage/manifest.json`を編集する。Toolkitはプレースホルダー構文（`${{変数名}}`）を使用しており、Provision/Deploy時に自動で実際の値に置換される。
 
 ```json
 {
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
   "manifestVersion": "1.17",
   "version": "1.0.0",
-  "id": "<MicrosoftAppId>",
+  "id": "${{TEAMS_APP_ID}}",
   "developer": {
     "name": "デジタル戦略部",
     "websiteUrl": "https://chibabank.co.jp",
@@ -1165,7 +1331,7 @@ az webapp deploy \
   "accentColor": "#2B5292",
   "bots": [
     {
-      "botId": "<MicrosoftAppId>",
+      "botId": "${{BOT_ID}}",
       "scopes": ["personal"],
       "supportsFiles": false,
       "isNotificationOnly": false,
@@ -1184,45 +1350,81 @@ az webapp deploy \
   ],
   "permissions": ["identity", "messageTeamMembers"],
   "validDomains": [
-    "app-impact-bot-poc.azurewebsites.net"
+    "app-maintenance-bot-poc.azurewebsites.net"
   ]
 }
 ```
 
-`<MicrosoftAppId>`をStep 10.1で取得したアプリケーションIDに置き換えること。
+**注記:**
+- `${{TEAMS_APP_ID}}`と`${{BOT_ID}}`はProvision時に自動生成された値で置換される
+- アイコンファイル（`color.png`, `outline.png`）はToolkitが生成するデフォルトアイコンを使用するか、カスタムアイコンに差し替える
 
-### 14.2 アプリパッケージの作成
+### 14.2 アプリパッケージの自動生成
 
-以下の3ファイルをZIPファイルにまとめる:
+Provision時に`teamsapp.yml`の`teamsApp/zipAppPackage`アクションにより、以下が自動実行される:
 
-- `manifest.json`
-- `color.png`（192x192ピクセルのカラーアイコン）
-- `outline.png`（32x32ピクセルの透明背景アウトラインアイコン）
+1. マニフェストのバリデーション
+2. プレースホルダーの値置換
+3. ZIPパッケージの生成（`appPackage/build/appPackage.dev.zip`）
+4. Teams Developer Portalへの登録
 
-```bash
-zip impact-bot-app.zip manifest.json color.png outline.png
-```
+手動でパッケージを作成する必要はない。
 
 ### 14.3 Teamsへのサイドロード
 
-1. Microsoft Teamsを開く
-2. 左サイドバーの「アプリ」→「アプリを管理」→「アプリのアップロード」
-3. 「カスタムアプリをアップロード」を選択（組織の管理者がサイドロードを許可している必要がある）
-4. 作成した`impact-bot-app.zip`を選択
-5. アプリの詳細が表示されたら「追加」を選択
+**方法A: Toolkit経由（推奨）**
+
+1. VS Code コマンドパレット → 「M365 Agents Toolkit: Publish」を選択
+2. 組織のTeamsアプリカタログに公開される
+3. または、F5デバッグ実行時にToolkitが自動でサイドロードする
+
+**方法B: 手動サイドロード**
+
+1. `appPackage/build/appPackage.dev.zip`を取得
+2. Microsoft Teamsを開く
+3. 左サイドバーの「アプリ」→「アプリを管理」→「アプリのアップロード」
+4. 「カスタムアプリをアップロード」を選択
+5. ZIPファイルを選択 →「追加」
 
 **注記:** サイドロードが無効な場合、Teams管理者に依頼してTeams管理センター（https://admin.teams.microsoft.com）→「Teamsアプリ」→「セットアップポリシー」でカスタムアプリのアップロードを許可する必要がある。
 
 ### 14.4 確認事項
 
-- [ ] アプリマニフェストが正しく作成された
-- [ ] アプリパッケージ（ZIP）が作成された
-- [ ] Teamsにサイドロードでアプリがインストールされた
+- [ ] `appPackage/manifest.json`がカスタマイズ済み
+- [ ] アプリパッケージが自動生成された（`appPackage/build/`配下）
+- [ ] Teamsにアプリがインストールされた
 - [ ] 1:1チャットでBotに話しかけられる
 
 ---
 
 ## 15. Step 13: 動作確認チェックリスト
+
+### 15.0 F5ローカルデバッグ（開発時推奨）
+
+M365 Agents Toolkitの F5 デバッグ機能を使用すると、Botをローカル実行しながらTeamsで動作確認できる。
+
+**手順:**
+
+1. VS Codeで`maintenance-bot`プロジェクトを開く
+2. **F5キー**を押す（または「実行とデバッグ」→「Debug in Teams」）
+3. Toolkitが以下を自動実行:
+   - Dev Tunnel（ngrok代替）の起動 → ローカルサーバーをインターネットに公開
+   - `teamsapp.local.yml`に基づくローカルProvision
+   - Botアプリのローカル起動
+   - ブラウザでTeams Web版を自動オープン → Botアプリを自動サイドロード
+4. Teamsの1:1チャットでBotに話しかけて動作確認
+5. VS Codeのデバッガーでブレークポイント設定・変数検査が可能
+
+**ローカルデバッグの利点:**
+- コード変更 → 即時反映（ホットリロード）
+- ブレークポイントでステップ実行
+- console.logがVS Codeのデバッグコンソールに表示
+- Azureへのデプロイ不要で高速な開発サイクル
+
+**注意事項:**
+- Dev Tunnelの利用にはMicrosoftアカウントでの認証が必要
+- 初回実行時にDev Tunnel拡張機能のインストールを求められる場合がある
+- ローカルデバッグ中は`teamsapp.local.yml`のProvisionが使用される（`teamsapp.yml`とは別）
 
 ### 15.1 基本通信確認
 
@@ -1307,6 +1509,10 @@ zip impact-bot-app.zip manifest.json color.png outline.png
 | Teams SDK（旧Teams AI Library） | https://github.com/microsoft/teams-sdk |
 | M365 Agents SDK | https://github.com/microsoft/Agents |
 | M365 Agents Toolkit（旧Teams Toolkit） | https://github.com/OfficeDev/microsoft-365-agents-toolkit |
+| M365 Agents Toolkit VS Code拡張機能 | https://marketplace.visualstudio.com/items?itemName=TeamsDevApp.ms-teams-vscode-extension |
+| Agents Toolkit v5 ガイド（Wiki） | https://github.com/OfficeDev/microsoft-365-agents-toolkit/wiki/The-Microsoft-365-Agents-Toolkit-Visual-Studio-Code-v5-Guide |
+| Toolkit Bot MSI認証への移行 | https://learn.microsoft.com/en-us/microsoftteams/platform/toolkit/update-bot-me-app-to-use-certificate-or-msi-for-authentication |
+| Azure Bot MI作成ガイド | https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/azure-bot-create-managed-identity |
 | AI Search Integrated Vectorization | https://learn.microsoft.com/en-us/azure/search/vector-search-integrated-vectorization |
 | AI Search Cosmos DB Indexer | https://learn.microsoft.com/en-us/azure/search/search-how-to-index-cosmosdb-sql |
 | AI Search Managed Identity設定 | https://learn.microsoft.com/en-us/azure/search/search-how-to-managed-identities |

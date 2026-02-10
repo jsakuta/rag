@@ -1,0 +1,32 @@
+{
+  "name": "maintenance-faqs-indexer",
+  "dataSourceName": "cosmos-faqs-ds",
+  "targetIndexName": "maintenance-search-index",
+  "skillsetName": "maintenance-skillset",
+  "schedule": {
+    "interval": "PT1H"
+  },
+  "parameters": {
+    "batchSize": 100,
+    "maxFailedItems": -1,
+    "maxFailedItemsPerBatch": -1
+  },
+  "fieldMappings": [
+    { "sourceFieldName": "id", "targetFieldName": "id" },
+    { "sourceFieldName": "dataType", "targetFieldName": "dataType" },
+    { "sourceFieldName": "categoryId", "targetFieldName": "categoryId" },
+    { "sourceFieldName": "categoryName", "targetFieldName": "categoryName" },
+    { "sourceFieldName": "title", "targetFieldName": "title" },
+    { "sourceFieldName": "content", "targetFieldName": "content" },
+    { "sourceFieldName": "combinedContent", "targetFieldName": "combinedContent" },
+    { "sourceFieldName": "keywords", "targetFieldName": "keywords" },
+    { "sourceFieldName": "updatedAt", "targetFieldName": "updatedAt" },
+    { "sourceFieldName": "isDeleted", "targetFieldName": "isDeleted" }
+  ],
+  "outputFieldMappings": [
+    {
+      "sourceFieldName": "/document/contentVector",
+      "targetFieldName": "contentVector"
+    }
+  ]
+}

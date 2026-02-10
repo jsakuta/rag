@@ -1,0 +1,20 @@
+{
+  "name": "cosmos-faqs-ds",
+  "type": "cosmosdb",
+  "credentials": {
+    "connectionString": "ResourceId=/subscriptions/5a471c83-2f59-4509-806a-3c1fc77bb89a/resourceGroups/rg-maintenance-poc/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-maintenance-poc;Database=maintenance-db;"
+  },
+  "container": {
+    "name": "faqs",
+    "query": null
+  },
+  "dataChangeDetectionPolicy": {
+    "@odata.type": "#Microsoft.Azure.Search.HighWaterMarkChangeDetectionPolicy",
+    "highWaterMarkColumnName": "_ts"
+  },
+  "dataDeletionDetectionPolicy": {
+    "@odata.type": "#Microsoft.Azure.Search.SoftDeleteColumnDeletionDetectionPolicy",
+    "softDeleteColumnName": "isDeleted",
+    "softDeleteMarkerValue": "true"
+  }
+}

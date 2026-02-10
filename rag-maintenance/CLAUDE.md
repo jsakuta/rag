@@ -86,55 +86,25 @@ rag-maintenance/
 
 ### データソース設計
 - `scenarios` と `faqs` は **別コンテナ** → データソース2つ + Indexer2つ
-- 同一インデックス `impact-search-index` に両方書き込む（AI Search公式サポート）
+- 同一インデックス `maintenance-search-index` に両方書き込む（AI Search公式サポート）
 - System Assigned MI 使用時、データソースの `identity` フィールドは省略
 
-## 次のタスク: Azure環境構築 + スクショ付き手順書作成
+## Azure環境構築 進捗（2026-02-10）
 
-### 目的
-導入手順書の各Stepを実際のAzureポータルで実行し:
-1. 手順の正確性を検証
-2. スクリーンショットを取得
-3. 不備があれば手順書を修正
-4. 最終的にスクショ付き手順書 v2.0 を完成
+### ✅ 完了（Step 1〜7, 9〜10）
+- リソースグループ `rg-maintenance-poc` + 全サービス8リソース作成済み
+- RBAC 7ロール（管理プレーン5 + データプレーン2）付与済み
+- AI Search: インデックス + DS2 + Skillset + Indexer2 設定済み
+- 詳細値はメモリ参照: `memory/azure-deployment-progress.md`
 
-### ツール構成（Claude Code + Chrome連携）
-
-```
-Claude Code（CLI / VS Code）
-  ├── Chrome連携（--chrome フラグ）
-  │   └── Azureポータル操作 + スクリーンショット取得
-  ├── Azure MCP Server（補助）
-  │   └── リソース設定値の自動検証
-  └── ファイル操作
-      └── 手順書MD直接編集 + スクショ保存
-```
-
-**Chrome連携セットアップ:**
-```bash
-# Claude Code起動時に --chrome フラグを付ける
-claude --chrome
-
-# または起動後に /chrome コマンドで有効化
-/chrome
-```
-
-**Azure MCP Server セットアップ（補助、オプション）:**
-```bash
-# Azure CLIでログイン
-az login
-
-# Claude Codeに Azure MCP を追加
-claude mcp add-json "Azure MCP Server" '{"command":"npx","args":["-y","@azure/mcp@latest","server","start"]}'
-```
-
-### 進め方
-1. 作田さんが Chrome で Azureポータルにログイン
-2. Claude Code に `--chrome` で Chrome連携を有効化
-3. 手順書の Step 1 から順に実行
-4. 各画面でスクリーンショット取得 → `docs/screenshots/` に保存
-5. 実画面と手順書の記載を比較 → 差異があれば手順書を修正
-6. 全Step完了後、スクショ付き手順書 v2.0 を完成
+### ⬜ 未完了（次セッションで実施）
+1. **Step 8: Entra IDアプリ登録 + Bot Service**（CLI or ポータル）
+   - `az ad app create --display-name app-maintenance-bot-poc --sign-in-audience AzureADMyOrg`
+   - クライアントシークレット作成、Bot Service(F0)作成、Teamsチャネル有効化
+   - Web Appアプリケーション設定に AppId/Password/TenantId 登録
+2. **Step 11: Botアプリデプロイ**（M365 Agents SDK）
+3. **Step 12-13: Teamsサイドロード + 動作確認**
+4. **スクショ付き手順書 v2.0 完成**（最終的にWord化）
 
 ## コーディング規約・ドキュメント規約
 
@@ -145,11 +115,11 @@ claude mcp add-json "Azure MCP Server" '{"command":"npx","args":["-y","@azure/mc
 - 図表番号: 「図2-1」形式（章番号+通番）
 
 ### 命名規則（Azureリソース）
-- リソースグループ: `rg-impact-<env>`
-- Azure OpenAI: `aoai-impact-<env>`
-- AI Search: `srch-impact-<env>`
-- Cosmos DB: `cosmos-impact-<env>`
-- Key Vault: `kv-impact-<env>`
-- Web App: `app-impact-bot-<env>`
-- Bot Service: `bot-impact-<env>`
+- リソースグループ: `rg-maintenance-<env>`
+- Azure OpenAI: `aoai-maintenance-<env>`
+- AI Search: `srch-maintenance-<env>`
+- Cosmos DB: `cosmos-maintenance-<env>`
+- Key Vault: `kv-maintenance-<env>`
+- Web App: `app-maintenance-bot-<env>`
+- Bot Service: `bot-maintenance-<env>`
 - PoC環境の `<env>` は `poc`

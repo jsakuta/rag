@@ -1,0 +1,71 @@
+{
+  "name": "maintenance-search-index",
+  "fields": [
+    { "name": "id", "type": "Edm.String", "key": true, "filterable": true },
+    { "name": "dataType", "type": "Edm.String", "filterable": true },
+    { "name": "categoryId", "type": "Edm.String", "filterable": true },
+    { "name": "categoryName", "type": "Edm.String", "searchable": true, "filterable": true, "analyzer": "ja.microsoft" },
+    { "name": "title", "type": "Edm.String", "searchable": true, "analyzer": "ja.microsoft" },
+    { "name": "content", "type": "Edm.String", "searchable": true, "analyzer": "ja.microsoft" },
+    { "name": "combinedContent", "type": "Edm.String", "searchable": true, "analyzer": "ja.microsoft" },
+    {
+      "name": "contentVector",
+      "type": "Collection(Edm.Single)",
+      "searchable": true,
+      "dimensions": 3072,
+      "vectorSearchProfile": "vector-profile"
+    },
+    { "name": "keywords", "type": "Collection(Edm.String)", "searchable": true, "filterable": true },
+    { "name": "updatedAt", "type": "Edm.DateTimeOffset", "filterable": true, "sortable": true },
+    { "name": "isDeleted", "type": "Edm.Boolean", "filterable": true }
+  ],
+  "vectorSearch": {
+    "algorithms": [
+      {
+        "name": "hnsw-algorithm",
+        "kind": "hnsw",
+        "hnswParameters": {
+          "m": 4,
+          "efConstruction": 400,
+          "efSearch": 500,
+          "metric": "cosine"
+        }
+      }
+    ],
+    "vectorizers": [
+      {
+        "name": "openai-vectorizer",
+        "kind": "azureOpenAI",
+        "azureOpenAIParameters": {
+          "resourceUri": "https://aoai-maintenance-poc.openai.azure.com",
+          "deploymentId": "text-embedding-3-large",
+          "modelName": "text-embedding-3-large"
+        }
+      }
+    ],
+    "profiles": [
+      {
+        "name": "vector-profile",
+        "algorithm": "hnsw-algorithm",
+        "vectorizer": "openai-vectorizer"
+      }
+    ]
+  },
+  "semantic": {
+    "configurations": [
+      {
+        "name": "semantic-config",
+        "prioritizedFields": {
+          "titleField": { "fieldName": "title" },
+          "prioritizedContentFields": [
+            { "fieldName": "content" },
+            { "fieldName": "combinedContent" }
+          ],
+          "prioritizedKeywordsFields": [
+            { "fieldName": "keywords" }
+          ]
+        }
+      }
+    ]
+  }
+}
