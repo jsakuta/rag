@@ -90,6 +90,18 @@ agentApp.adaptiveCards.actionExecute(
   }
 );
 
+// --- ページ遷移 (Action.Execute verb: searchPage) ---
+agentApp.adaptiveCards.actionExecute(
+  "searchPage",
+  async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
+    const query = extractQuery(data, context);
+    const mode = (data.mode as string) === "keyword" ? "keyword" : "semantic";
+    const page = Number(data.page) || 1;
+    console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}`);
+    return await executeSearchPaged(query, mode, page);
+  }
+);
+
 // --- FR-013: FAQ削除確認 (Action.Execute verb: confirmDeleteFaqs) ---
 agentApp.adaptiveCards.actionExecute(
   "confirmDeleteFaqs",
@@ -176,23 +188,61 @@ async function executeSearch(
 
     return buildResultCard(query, mode, items);
   } catch (err: unknown) {
-    console.error("[executeSearch] Error:", err);
-    let message: string;
-    if (err instanceof Error) {
-      const e = err as unknown as Record<string, unknown>;
-      message = [err.message, e.statusCode, e.code, e.details]
-        .filter(Boolean)
-        .join(" | ");
-    } else {
-      message = JSON.stringify(err);
-    }
+    return buildSearchErrorCard(err);
+  }
+}
+
+// --- ページ遷移用の検索実行（再検索 + 指定ページ表示） ---
+async function executeSearchPaged(
+  query: string,
+  mode: "semantic" | "keyword",
+  page: number
+): Promise<AdaptiveCard> {
+  if (!query) {
     return {
       type: "AdaptiveCard",
       $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
       version: "1.5",
-      body: [{ type: "TextBlock", text: `検索エラー: ${message || "(詳細はデバッグコンソール参照)"}`, color: "Attention", wrap: true }],
+      body: [{ type: "TextBlock", text: "検索クエリが取得できませんでした。", wrap: true, color: "Attention" }],
     } as AdaptiveCard;
   }
+  try {
+    const items = mode === "semantic"
+      ? await searchSemantic(query)
+      : await searchKeyword(query);
+
+    if (items.length === 0) {
+      return {
+        type: "AdaptiveCard",
+        $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+        version: "1.5",
+        body: [{ type: "TextBlock", text: "該当する候補が見つかりませんでした。", wrap: true }],
+      } as AdaptiveCard;
+    }
+
+    return buildResultCard(query, mode, items, page);
+  } catch (err: unknown) {
+    return buildSearchErrorCard(err);
+  }
+}
+
+function buildSearchErrorCard(err: unknown): AdaptiveCard {
+  console.error("[executeSearch] Error:", err);
+  let message: string;
+  if (err instanceof Error) {
+    const e = err as unknown as Record<string, unknown>;
+    message = [err.message, e.statusCode, e.code, e.details]
+      .filter(Boolean)
+      .join(" | ");
+  } else {
+    message = JSON.stringify(err);
+  }
+  return {
+    type: "AdaptiveCard",
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    version: "1.5",
+    body: [{ type: "TextBlock", text: `検索エラー: ${message || "(詳細はデバッグコンソール参照)"}`, color: "Attention", wrap: true }],
+  } as AdaptiveCard;
 }
 
 // --- FR-003: 意味検索（ハイブリッド + Semantic Ranker） ---

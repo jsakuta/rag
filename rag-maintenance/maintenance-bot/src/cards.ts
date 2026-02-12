@@ -57,27 +57,74 @@ export function buildModeSelectCard(queryText: string): AdaptiveCard {
   };
 }
 
-// --- FR-005: 検索結果カード（タブ切り替え） ---
+// --- FR-005: 検索結果カード（タブ切り替え + ページネーション） ---
 export function buildResultCard(
   queryText: string,
   searchMode: string,
-  items: SearchResultItem[]
+  items: SearchResultItem[],
+  page: number = 1
 ): AdaptiveCard {
-  const scenarios = items.filter((i) => i.dataType === "scenario");
-  const faqs = items.filter((i) => i.dataType === "faq");
+  const allScenarios = items.filter((i) => i.dataType === "scenario");
+  const allFaqs = items.filter((i) => i.dataType === "faq");
   const modeLabel = searchMode === "semantic" ? "意味検索" : "キーワード一致検索";
 
   // カードサイズ28KB超過チェック（簡易計算）
   const estimatedSize = JSON.stringify(items).length;
-  const usePagination = estimatedSize > 24000; // 24KBで安全マージン
+  const needsSplit = estimatedSize > 24000; // 24KBで安全マージン
+  const totalPages = needsSplit ? 2 : 1;
 
-  if (usePagination) {
-    // ページネーションフォールバック（PoCでは先頭5件ずつ表示）
-    return buildResultCard(
-      queryText,
-      searchMode,
-      items.slice(0, 10)
-    );
+  // ページネーション: シナリオ・FAQそれぞれ件数均等分割
+  let pageScenarios: SearchResultItem[];
+  let pageFaqs: SearchResultItem[];
+
+  if (needsSplit) {
+    const halfS = Math.ceil(allScenarios.length / 2);
+    const halfF = Math.ceil(allFaqs.length / 2);
+
+    if (page === 1) {
+      pageScenarios = allScenarios.slice(0, halfS);
+      pageFaqs = allFaqs.slice(0, halfF);
+    } else {
+      pageScenarios = allScenarios.slice(halfS);
+      pageFaqs = allFaqs.slice(halfF);
+    }
+  } else {
+    pageScenarios = allScenarios;
+    pageFaqs = allFaqs;
+  }
+
+  // ページ情報テキスト
+  const pageInfo = totalPages > 1
+    ? ` (${page}/${totalPages}ページ)`
+    : "";
+
+  // 件数表示: 分割時はページ内/全体を表示
+  const scenarioLabel = totalPages > 1
+    ? `シナリオ (${pageScenarios.length}/${allScenarios.length}件)`
+    : `シナリオ (${allScenarios.length}件)`;
+  const faqLabel = totalPages > 1
+    ? `FAQ (${pageFaqs.length}/${allFaqs.length}件)`
+    : `FAQ (${allFaqs.length}件)`;
+
+  // ページ遷移アクション
+  const pageActions: Record<string, unknown>[] = [];
+  if (totalPages > 1) {
+    if (page > 1) {
+      pageActions.push({
+        type: "Action.Execute",
+        title: "← 前のページ",
+        verb: "searchPage",
+        data: { query: queryText, mode: searchMode, page: page - 1 },
+      });
+    }
+    if (page < totalPages) {
+      pageActions.push({
+        type: "Action.Execute",
+        title: "次のページ →",
+        verb: "searchPage",
+        data: { query: queryText, mode: searchMode, page: page + 1 },
+      });
+    }
   }
 
   const card: AdaptiveCard = {
@@ -87,7 +134,7 @@ export function buildResultCard(
     body: [
       {
         type: "TextBlock",
-        text: "事務改定 影響候補検出結果",
+        text: `事務改定 影響候補検出結果${pageInfo}`,
         weight: "Bolder",
         size: "Medium",
       },
@@ -110,7 +157,7 @@ export function buildResultCard(
         actions: [
           {
             type: "Action.ToggleVisibility",
-            title: `シナリオ (${scenarios.length}件)`,
+            title: scenarioLabel,
             targetElements: [
               { elementId: "scenarioContainer", isVisible: true },
               { elementId: "faqContainer", isVisible: false },
@@ -118,7 +165,7 @@ export function buildResultCard(
           },
           {
             type: "Action.ToggleVisibility",
-            title: `FAQ (${faqs.length}件)`,
+            title: faqLabel,
             targetElements: [
               { elementId: "scenarioContainer", isVisible: false },
               { elementId: "faqContainer", isVisible: true },
@@ -127,9 +174,13 @@ export function buildResultCard(
         ],
       },
       // --- シナリオタブ ---
-      buildScenarioContainer(scenarios, queryText),
+      buildScenarioContainer(pageScenarios, queryText),
       // --- FAQタブ ---
-      buildFaqContainer(faqs),
+      buildFaqContainer(pageFaqs),
+      // --- ページ遷移 ---
+      ...(pageActions.length > 0
+        ? [{ type: "ActionSet", actions: pageActions }]
+        : []),
     ],
   };
 

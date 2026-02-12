@@ -95,3 +95,7 @@ gemini_credentials.json
 # Azure Key Vault
 *.pem
 *.key
+
+# Serena AI memories
+.serena/
+**/.serena/
