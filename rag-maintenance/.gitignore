@@ -1,0 +1,5 @@
+# Generated data (regenerate with: python scripts/convert-excel-to-json.py)
+scripts/data/*.json
+
+# Plans
+.plans/

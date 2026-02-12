@@ -21,7 +21,8 @@
     { "sourceFieldName": "combinedContent", "targetFieldName": "combinedContent" },
     { "sourceFieldName": "keywords", "targetFieldName": "keywords" },
     { "sourceFieldName": "updatedAt", "targetFieldName": "updatedAt" },
-    { "sourceFieldName": "isDeleted", "targetFieldName": "isDeleted" }
+    { "sourceFieldName": "isDeleted", "targetFieldName": "isDeleted" },
+    { "sourceFieldName": "tags", "targetFieldName": "tags" }
   ],
   "outputFieldMappings": [
     {

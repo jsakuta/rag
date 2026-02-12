@@ -17,7 +17,11 @@
     },
     { "name": "keywords", "type": "Collection(Edm.String)", "searchable": true, "filterable": true },
     { "name": "updatedAt", "type": "Edm.DateTimeOffset", "filterable": true, "sortable": true },
-    { "name": "isDeleted", "type": "Edm.Boolean", "filterable": true }
+    { "name": "isDeleted", "type": "Edm.Boolean", "filterable": true },
+    { "name": "path", "type": "Edm.String", "searchable": true, "filterable": true, "analyzer": "ja.microsoft" },
+    { "name": "order", "type": "Edm.Int32", "filterable": true, "sortable": true },
+    { "name": "isFinalAnswer", "type": "Edm.Boolean", "filterable": true },
+    { "name": "tags", "type": "Edm.String", "searchable": true, "filterable": true, "analyzer": "ja.microsoft" }
   ],
   "vectorSearch": {
     "algorithms": [

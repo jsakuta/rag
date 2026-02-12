@@ -21,7 +21,10 @@
     { "sourceFieldName": "combinedContent", "targetFieldName": "combinedContent" },
     { "sourceFieldName": "keywords", "targetFieldName": "keywords" },
     { "sourceFieldName": "updatedAt", "targetFieldName": "updatedAt" },
-    { "sourceFieldName": "isDeleted", "targetFieldName": "isDeleted" }
+    { "sourceFieldName": "isDeleted", "targetFieldName": "isDeleted" },
+    { "sourceFieldName": "path", "targetFieldName": "path" },
+    { "sourceFieldName": "order", "targetFieldName": "order" },
+    { "sourceFieldName": "isFinalAnswer", "targetFieldName": "isFinalAnswer" }
   ],
   "outputFieldMappings": [
     {
