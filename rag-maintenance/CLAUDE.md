@@ -30,12 +30,12 @@
 rag-maintenance/
 ├── CLAUDE.md                 ← このファイル
 ├── docs/
-│   ├── phase2-poc-requirements-definition.md   # 要件定義書 v3.2
-│   ├── phase2-poc-setup-guide.md               # 導入手順書 v1.4
-│   └── screenshots/                            # Azureポータルスクリーンショット
+│   ├── 要件定義書.md                            # 要件定義書 v3.2
+│   ├── 導入手順書.md                            # 導入手順書 v1.4
+│   └── screenshots/                            # スクリーンショット
 ├── scripts/                  # AI Search設定用JSON（index, datasource, skillset, indexer）
+├── maintenance-bot/          # Botアプリケーション（M365 Agents Toolkit生成）
 └── (今後追加)
-    └── src/                  # Botアプリケーションソース（Toolkit生成）
 ```
 
 ## 要件定義書（v3.2）概要
