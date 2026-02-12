@@ -24,9 +24,8 @@
     },
     "dependencies": {
         "@azure/identity": "^4.8.0",
-        "@azure/openai": "^2.0.0",
-        "@microsoft/agents-hosting-express": "^1.0.0",
-        "openai": "^4.94.0"
+        "@azure/search-documents": "^12.2.0",
+        "@microsoft/agents-hosting-express": "^1.0.0"
     },
     "devDependencies": {
         "@types/express": "^5.0.0",

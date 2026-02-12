@@ -1,7 +1,8 @@
 const config = {
-  azureOpenAIKey: process.env.AZURE_OPENAI_API_KEY,
-  azureOpenAIEndpoint: process.env.AZURE_OPENAI_ENDPOINT,
-  azureOpenAIDeploymentName: process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
+  aiSearchEndpoint: process.env.AI_SEARCH_ENDPOINT || "",
+  aiSearchIndexName: process.env.AI_SEARCH_INDEX_NAME || "maintenance-search-index",
+  cosmosDbEndpoint: process.env.COSMOS_DB_ENDPOINT || "",
+  cosmosDbDatabase: process.env.COSMOS_DB_DATABASE || "maintenance-db",
 };
 
 export default config;
