@@ -1,7 +1,7 @@
 # CLAUDE.md — Phase2 PoC 影響候補検出システム
 
 > このファイルは Claude Code が起動時に自動で読み込むプロジェクトコンテキストです。
-> 最終更新: 2026-02-10
+> 最終更新: 2026-02-12
 
 ---
 
@@ -16,6 +16,29 @@
 - ロール付与は手順書に記載されたスコープのみに限定する
 
 **Azure CLIステータス:** ログイン済み（`admin@bdxcorp.onmicrosoft.com` / `Azure subscription 1`）
+
+---
+
+## 手順書メンテナンスルール（必須）
+
+### 実装後の手順書反映判断
+
+実装・修正・トラブルシューティングを行った後は、以下を必ず判断する:
+
+1. **顧客が引き継ぎ時に実行すべき手順か？** → `docs/導入手順書.md` に追記・修正する
+   - 環境変数の設定変更、ロール付与、パッケージ変更、設定ファイルの編集 → 手順書に反映
+   - 開発時のみのデバッグ修正、一時的なワークアラウンド → 手順書には不要
+2. **判断基準**: 「顧客が新規環境でゼロから構築する際に、この情報がないと詰まるか？」がYesなら手順書に記載
+
+### 手順書変更後の整合性レビュー（必須）
+
+`docs/導入手順書.md` を変更した後は、**手順書全体を通読して以下を確認すること**:
+
+- セクション番号の連番が正しいか（重複・欠番がないか）
+- 変数名（`$DEVELOPER_OID` 等）が文書全体で統一されているか
+- 前のStepで定義した値が後のStepで正しく参照されているか
+- 新規追加した手順が他セクションと矛盾していないか
+- トラブルシューティング表に関連するエントリが追加されているか
 
 ---
 
@@ -51,25 +74,10 @@ rag-maintenance/
 ## 導入手順書（v1.4）概要
 
 - 文書ID: SETUP-FAQ-IMPACT-001
-- 全13ステップ
-- v1.0 → v1.1: セルフレビュー10件修正
-- v1.2 → v1.3: Step 8/11/12をM365 Agents Toolkitベースに書換え、F5デバッグ追加
-- v1.3 → v1.4: Toolkit v6系対応（`teamsapp.yml`→`m365agents.yml`、テンプレート選択フロー修正）
-
-### v1.1 修正済み内容
-
-| # | 重大度 | 修正内容 | 状態 |
-|---|--------|---------|------|
-| ① | 🔴 | Azure OpenAIの`Cognitive Services OpenAI User`付与先: Web App → **AI Search** MI | ✅済 |
-| ② | 🔴 | AI Search → Azure OpenAI ロール付与手順の新規追加 | ✅済 |
-| ③ | 🔴 | データソース2系統分離（`cosmos-scenarios-ds` + `cosmos-faqs-ds`）、Indexerも2つ | ✅済 |
-| ④ | 🟡 | SDK選定を M365 Agents SDK に統一（`@microsoft/agents-hosting`） | ✅済 |
-| ⑤ | 🟡 | Web App環境変数から `AZURE_OPENAI_*` 削除（Bot→OpenAI直接呼出なし） | ✅済 |
-| ⑥ | 🟢 | インデックス定義にWeek 3 `imageVector`追加注記 | ✅済 |
-| ⑦ | 🟢 | Key Vault `Key Vault Secrets User` ロール付与追加 | ✅済 |
-| ⑧ | 🟢 | データソースの `identity` フィールド削除（System Assigned MI時は省略が正） | ✅済 |
-| ⑨ | 🟢 | Cosmos DB 管理プレーン `Cosmos DB Account Reader Role` 追加 | ✅済 |
-| ⑩ | 🟢 | Bot実装ステップに「詳細は別途実装ガイド参照」注記 | ✅済 |
+- 全13ステップ（Step 1: RG作成 〜 Step 13: 動作確認）
+- v1.1: セルフレビュー10件修正（ロール付与先修正、DS分離、SDK統一 等）— 全件反映済み
+- v1.3: Step 8/11/12をM365 Agents Toolkitベースに書換え、F5デバッグ追加
+- v1.4: Toolkit v6系対応（`teamsapp.yml`→`m365agents.yml`、テンプレート選択フロー修正）
 
 ## 技術的な重要決定事項
 
@@ -92,53 +100,45 @@ rag-maintenance/
 - 同一インデックス `maintenance-search-index` に両方書き込む（AI Search公式サポート）
 - System Assigned MI 使用時、データソースの `identity` フィールドは省略
 
-## 基本方針（2026-02-10〜）
+## 基本方針
 
-**運用保守効率化AIの導入がメインタスク。** 以下の3つを並行して進める:
+**運用保守効率化AIの導入がメインタスク。** Azure環境構築 + Bot実装 + 手順書完成を並行して進める。
 
-1. **Azure環境構築の実行** — MCP（M365 Agents Toolkit）+ Azure CLIで自動化
-2. **スクリーンショット取得** — Chrome拡張でAzureポータル操作時に随時キャプチャ → `docs/screenshots/`
-3. **手順書v2.0の並行完成** — 実環境との差異を発見次第、手順書MDを即時修正 → 最終的にWord化
-
-### ツール構成
-
-```
-Claude Code
-  ├── Chrome拡張（mcp__claude-in-chrome__*）
-  │   └── Azureポータル操作 + スクリーンショット取得
-  ├── M365 Agents Toolkit MCP（mcp__m365-agents-toolkit__*）
-  │   └── Provision / Deploy / トラブルシュート
-  ├── Azure CLI（az コマンド）
-  │   └── リソース作成・設定・RBAC付与
-  └── ファイル操作
-      └── 手順書MD編集 + スクショ保存
-```
-
-### 作業フロー
-1. 手順書の該当Stepを読む
-2. MCP/CLI/Chromeで実行
-3. 実行結果のスクリーンショットを取得・保存
-4. 手順書と実環境の差異があれば手順書を修正
-5. 次のStepへ
+- 手順書の該当Stepを読む → 実行 → 差異があれば手順書修正 → 次のStepへ
+- スクリーンショットは `docs/screenshots/` に保存
+- 実装後は「手順書メンテナンスルール」に従い手順書反映を判断する
 
 ---
 
-## Azure環境構築 進捗（2026-02-10）
+## Azure環境構築 進捗（2026-02-12）
 
-### ✅ 完了（Step 1〜7, 9〜10）
+### ✅ 完了（Step 1〜12）
+
 - リソースグループ `rg-maintenance-poc` + 全サービス8リソース作成済み
 - RBAC 7ロール（管理プレーン5 + データプレーン2）付与済み
 - AI Search: インデックス + DS2 + Skillset + Indexer2 設定済み
+- Bot: M365 Agents SDK 実装 + Toolkit Provision/Deploy/Publish 完了
 - 詳細値はメモリ参照: `memory/azure-deployment-progress.md`
 
+### 🔧 Step 13: 動作確認（進行中）
+
+- **F5ローカルデバッグ起動**: ✅ 完了（遅延初期化修正、AZURE_OPENAI_*削除、.localConfigs設定済み）
+- **Bot基本通信（カード表示）**: ✅ 完了（モード選択カード表示まで動作確認）
+- **検索機能**: 🔧 403→開発者にSearch Index Data Readerロール付与済み（反映待ち）
+- **Cosmos DBテストデータ投入**: ⬜ 未着手（`scripts/seed-cosmos.ts`作成済み）
+- **Adaptive Card UIテスト**: ⬜ 未着手
+
 ### ⬜ 未完了
-1. **Step 8: Entra IDアプリ登録 + Bot Service** — Toolkit Provision（SingleTenant + Secret）
-2. **Step 11: Botアプリデプロイ** — Toolkit Deploy
-3. **Step 12: Teamsサイドロード登録**
-4. **Step 13: F5デバッグ + 動作確認**
-5. **手順書 v2.0 完成**（スクショ付き、最終Word化）
+
+1. **Step 13残タスク**: 検索テスト + テストデータ投入 + UI確認
+2. **手順書 v2.0 完成**（スクショ付き、最終Word化）
 
 ## コーディング規約・ドキュメント規約
+
+### TypeScript（maintenance-bot）
+- **`ts-node` は `tsc --noEmit` より厳格**: `Error as Record<string, unknown>` は TS2352 エラー。`as unknown as Record<string, unknown>` で二段キャストが必要
+- **M365 Agents SDK の `actionExecute` コールバック**: 第3引数 `data` は Action全体（`{type, title, verb, data: {...}}`）が渡される。ユーザーデータは `data.data.query` でアクセスする（`data.query` ではない）
+- **Azure SDKクライアントは遅延初期化必須**: `SearchClient` / `CosmosClient` をモジュールトップレベルで初期化すると `env-cmd` の環境変数読み込み前に評価され `Invalid URL` エラーになる
 
 ### ドキュメント
 - Excel/Word: Meiryo UI、本文10.5pt、見出し黒太字

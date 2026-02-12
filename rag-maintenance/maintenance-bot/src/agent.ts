@@ -71,16 +71,22 @@ agentApp.onActivity(ActivityTypes.Message, async (context: TurnContext) => {
 // --- FR-003: 意味検索 (Action.Execute verb: searchSemantic) ---
 agentApp.adaptiveCards.actionExecute(
   "searchSemantic",
-  async (_context: TurnContext, _state: TurnState, data: { query: string }) => {
-    return await executeSearch(data.query, "semantic");
+  async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
+    const query = extractQuery(data, context);
+    console.log("[searchSemantic] data:", JSON.stringify(data));
+    console.log("[searchSemantic] query:", query);
+    return await executeSearch(query, "semantic");
   }
 );
 
 // --- FR-004: キーワード一致検索 (Action.Execute verb: searchKeyword) ---
 agentApp.adaptiveCards.actionExecute(
   "searchKeyword",
-  async (_context: TurnContext, _state: TurnState, data: { query: string }) => {
-    return await executeSearch(data.query, "keyword");
+  async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
+    const query = extractQuery(data, context);
+    console.log("[searchKeyword] data:", JSON.stringify(data));
+    console.log("[searchKeyword] query:", query);
+    return await executeSearch(query, "keyword");
   }
 );
 
@@ -142,6 +148,14 @@ async function executeSearch(
   query: string,
   mode: "semantic" | "keyword"
 ): Promise<AdaptiveCard> {
+  if (!query) {
+    return {
+      type: "AdaptiveCard",
+      $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+      version: "1.5",
+      body: [{ type: "TextBlock", text: "検索クエリが取得できませんでした。もう一度テキストを入力してください。", wrap: true, color: "Attention" }],
+    } as AdaptiveCard;
+  }
   try {
     let items: SearchResultItem[];
 
@@ -162,12 +176,21 @@ async function executeSearch(
 
     return buildResultCard(query, mode, items);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    console.error("[executeSearch] Error:", err);
+    let message: string;
+    if (err instanceof Error) {
+      const e = err as unknown as Record<string, unknown>;
+      message = [err.message, e.statusCode, e.code, e.details]
+        .filter(Boolean)
+        .join(" | ");
+    } else {
+      message = JSON.stringify(err);
+    }
     return {
       type: "AdaptiveCard",
       $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
       version: "1.5",
-      body: [{ type: "TextBlock", text: `検索エラー: ${message}`, color: "Attention", wrap: true }],
+      body: [{ type: "TextBlock", text: `検索エラー: ${message || "(詳細はデバッグコンソール参照)"}`, color: "Attention", wrap: true }],
     } as AdaptiveCard;
   }
 }
@@ -244,6 +267,23 @@ async function searchKeyword(query: string): Promise<SearchResultItem[]> {
 }
 
 // --- ユーティリティ ---
+
+/** Action.Execute の data から query を取得（SDKのデータ構造差異を吸収） */
+function extractQuery(data: Record<string, unknown>, context: TurnContext): string {
+  // 1. data.query（直接渡し）
+  if (typeof data?.query === "string" && data.query) return data.query;
+  // 2. activity.value.action.data.query（Bot Framework標準構造）
+  const val = context.activity.value as Record<string, unknown> | undefined;
+  const actionData = (val?.action as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+  if (typeof actionData?.query === "string" && actionData.query) return actionData.query;
+  // 3. activity.value.data.query
+  const valData = val?.data as Record<string, unknown> | undefined;
+  if (typeof valData?.query === "string" && valData.query) return valData.query;
+  // 4. activity.value.query
+  if (typeof val?.query === "string" && val.query) return val.query;
+  return "";
+}
+
 function extractSelectedIds(
   data: Record<string, string>,
   prefix: string
