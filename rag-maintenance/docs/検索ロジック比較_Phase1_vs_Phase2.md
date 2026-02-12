@@ -1,9 +1,9 @@
 # 検索ロジック比較: Phase 1 (rag-gemini) vs Phase 2 (maintenance-bot)
 
 - 文書番号: COMP-SEARCH-001
-- 最終更新: 2026-02-12
-- 目的: Phase 1→2 の検索精度差分を網羅的に記録し、Phase 2 改善計画の基礎資料とする
-- 前提: Phase 2 は「業務分野選択 + 表示件数選択 UI」を追加実装する予定
+- 最終更新: 2026-02-12（Semantic Ranker 廃止 + topN 選択肢拡張を反映）
+- 目的: Phase 1→2 の検索精度差分を網羅的に記録し、Phase 2 改善の結果を反映する
+- 前提: Phase 2 は「業務分野選択 + 表示件数選択 UI」を実装済み。Semantic Ranker は精度向上が確認されなかったため廃止
 
 ---
 
@@ -14,14 +14,14 @@
 | **ベクトル化** | combined_text / 3,072次元 | combinedContent / 3,072次元 | **同等**（同一フォーマット） |
 | **テキスト検索** | Sudachi + Jaccard（1フィールド） | ja.microsoft + BM25（5フィールド横断） | **同等〜改善**（再現率向上） |
 | **スコア統合** | 加重平均 (0.9v + 0.1k) → チューニング自在 | RRF (k=60固定) → チューニング自由度は低下 | **方式変更**（RRFは順位ベースで異スケールに強い） |
-| **キーワード抽出** | Sudachi 品詞重み + 位置重み（クエリ主導） | BM25 IDF + Semantic Ranker keywords参照（ドキュメント主導） | **間接カバー**（銀行固有名詞の明示重み付けは消失） |
-| **再ランキング** | oversampling + keyword boost（2段階） | BM25 + HNSW cosine + **Semantic Ranker**（3段階） | **改善**（言語モデル再評価が追加） |
-| **rerankerScore** | — | 0〜4（言語モデルが生テキストを読解して付与） | cosine類似度(0〜1)とは**全く別の概念** |
-| **業務分野スコープ** | 分野別DB（自動分離・高精度） | 全21,000件横断（改善後: filter で分野絞り込み） | **改善後に同等** |
-| **LLM クエリ拡張** | 3戦略あり | なし（精度向上未確認 → Semantic Rankerで代替） | **影響なし** |
-| **結果件数** | 固定 top_k=4 | ユーザー選択 (5/10/20) | **改善** |
+| **キーワード抽出** | Sudachi 品詞重み + 位置重み（クエリ主導） | BM25 IDF + keywords フィールド検索（ドキュメント主導） | **間接カバー**（銀行固有名詞の明示重み付けは消失） |
+| **再ランキング** | oversampling + keyword boost（2段階） | BM25 + HNSW cosine の RRF 統合（2段階） | **方式変更**（Semantic Ranker 廃止、RRF のみ） |
+| **スコア表示** | cosine 0〜1 + keyword 0〜1 → 加重平均 | RRF @search.score（順位ベースの統合スコア） | **方式変更** |
+| **業務分野スコープ** | 分野別DB（自動分離・高精度） | filter で分野絞り込み（実装済み） | **同等** |
+| **LLM クエリ拡張** | 3戦略あり | なし（精度向上未確認のため非採用） | **影響なし** |
+| **結果件数** | 固定 top_k=4 | ユーザー選択 (10〜150、11段階) | **改善** |
 
-> **総合:** Phase 2 は BM25 + ベクトル cosine + Semantic Ranker の3段階ランキングで Phase 1 の2段階より層が厚い。チューニング自由度は低下するが、業務分野 filter 追加後は Phase 1 と同等以上の検索精度を実現可能。
+> **総合:** Phase 2 は BM25 + ベクトル cosine の RRF 統合（2段階ランキング）。Semantic Ranker は PoC 評価で精度向上が確認されなかったため廃止。業務分野 filter + 件数選択 UI の実装により、Phase 1 と同等以上の検索精度と柔軟性を実現。
 
 ---
 
@@ -41,10 +41,12 @@ Python (Searcher)
   └─ Excel 出力 (top_k=4)
 ```
 
-### Phase 2 (maintenance-bot) — 現行
+### Phase 2 (maintenance-bot) — 実装済み
 
 ```
 ユーザー → Teams チャット入力
+  ↓
+モード選択カード: 業務分野選択 + 表示件数選択（10〜150件）
   ↓
 Bot (TypeScript) → Azure AI Search API 1回コール
   ↓
@@ -52,25 +54,13 @@ AI Search 内部:
   ├─ BM25 テキスト検索 (ja.microsoft アナライザ)
   ├─ Vectorizer → クエリベクトル生成 (text-embedding-3-large)
   ├─ HNSW ベクトル検索 (cosine)
-  ├─ RRF (Reciprocal Rank Fusion) でスコア統合
-  └─ Semantic Ranker で再ランキング
+  └─ RRF (Reciprocal Rank Fusion) でスコア統合
   ↓
-Adaptive Card (top 20, rerankerScore >= 1.5)
+Adaptive Card (top N件, RRFスコア順, 10件/ページ)
 ```
 
-### Phase 2 — 改善後（予定）
-
-```
-ユーザー → Teams チャット入力
-  ↓
-モード選択カード: 業務分野選択 + 表示件数選択
-  ↓
-Bot → AI Search API (filter: categoryId eq '{選択分野}')
-  ↓
-AI Search 内部: （同上）
-  ↓
-Adaptive Card (top N件, 類似度スコア順)
-```
+> **注:** Semantic Ranker（3段階目の再ランキング）は PoC 評価で精度向上が確認されなかったため廃止。
+> 上位50件制約が解除され、ユーザーが選択した件数（最大150件）をそのまま使用可能になった。
 
 ---
 
@@ -200,7 +190,7 @@ weighted_score = sum(
 
 - **クエリ側:** ユーザー入力をそのまま AI Search に送信。トークン化は ja.microsoft が内部で実行
 - **ドキュメント側:** `keywords` フィールドに事前格納済み（シナリオ: 階層テキスト、FAQ: タグから抽出）
-- **マッチング:** BM25 が keywords フィールドを searchable として検索 + Semantic Ranker が prioritizedKeywordsFields として利用
+- **マッチング:** BM25 が keywords フィールドを searchable として検索（キーワード検索時は searchFields に明示指定）
 
 **Phase 2 の keywords フィールドの中身:**
 
@@ -214,7 +204,7 @@ weighted_score = sum(
 - Phase 1 は **クエリ側** からキーワードを抽出して Jaccard で比較（クエリ主導）
 - Phase 2 は **ドキュメント側** に事前格納したキーワードを BM25 で検索（ドキュメント主導）
 - Phase 1 の品詞フィルタ（名詞のみ）と位置重み付けは Phase 2 にはない → **銀行固有名詞の重み付けが弱化**
-- ただし Semantic Ranker が文脈理解で補完するため、全体的な精度低下は限定的
+- BM25 の IDF 重み付けが部分的に補完するが、銀行固有名詞に対する明示的な重み付けは Phase 1 の方が優れている
 
 ---
 
@@ -238,9 +228,9 @@ combined_score = 0.9 × vector_similarity + 0.1 × keyword_similarity
 - weight を変えて A/B テスト可能
 - 値域: 0.0〜1.0（コサイン類似度ベース）
 
-### 4-B. Phase 2: RRF + Semantic Ranker（2段階）
+### 4-B. Phase 2: RRF のみ（Semantic Ranker 廃止）
 
-**第1段階: RRF (Reciprocal Rank Fusion)**
+**RRF (Reciprocal Rank Fusion)**
 
 ```
 RRF_score(doc) = 1/(k + rank_BM25) + 1/(k + rank_vector)
@@ -250,43 +240,25 @@ k = 60（固定、変更不可）
 - BM25 での順位と HNSW ベクトル検索での順位を **順位ベース** で統合
 - スコア値の絶対値ではなく相対順位を使うため、スケールの異なるスコアを安全に統合できる
 - AI Search の `@search.score` として返却される
+- Bot では `result.score` として取得し、小数点以下4桁で表示
 
-**第2段階: Semantic Ranker (再ランキング)**
+**Semantic Ranker 廃止の経緯:**
 
-```
-入力:  RRF 上位 50件のドキュメント
-処理:  Microsoft の多言語言語モデルが以下を読解
-       - titleField: title
-       - prioritizedContentFields: content, combinedContent
-       - prioritizedKeywordsFields: keywords
-出力:  rerankerScore (0.0〜4.0)
-```
+| 項目 | 内容 |
+|------|------|
+| 廃止理由 | PoC 評価で rerankerScore による精度向上が確認されなかった |
+| 上位50件制約 | Semantic Ranker は RRF 上位50件のみ再ランキング（固定制約）→ 大量取得時にスコア混在の問題 |
+| 廃止による利点 | top の50件制約が解除され、ユーザー選択値（最大150件）をそのまま使用可能 |
+| 変更内容 | `queryType: "semantic"` → `queryType: "simple"` + `vectorSearchOptions`（ハイブリッド検索維持） |
 
-| 項目 | 値 |
-|------|-----|
-| 値域 | 0.0〜4.0 |
-| 0.0〜1.0 | ほぼ無関係 |
-| 1.0〜2.0 | 部分的に関連 |
-| 2.0〜3.0 | 強い関連 |
-| 3.0〜4.0 | ほぼ完全一致（稀） |
-| 現在のフィルタ閾値 | >= 1.5 |
+### 4-C. Phase 2 のランキング構成（現行）
 
-### 4-C. rerankerScore とコサイン類似度の概念的違い
+Phase 2 は **2段階のランキング** を行っている:
 
-| 観点 | cosine similarity (Phase 1) | rerankerScore (Phase 2) |
-|------|---------------------------|------------------------|
-| 何を計算しているか | 2つのベクトル間の角度の余弦 | 言語モデルによるクエリ−ドキュメント間の意味的関連度 |
-| 入力 | Embedding ベクトル 2本 | クエリ文字列 + ドキュメントの生テキスト（title/content/keywords） |
-| 表現力 | ベクトル空間上の幾何学的距離 | 自然言語理解に基づく関連性判定 |
-| 値域 | 0.0〜1.0 | 0.0〜4.0 |
-| 同義語理解 | Embedding 学習に依存 | 言語モデルが動的に判断 |
-| 語順・文脈 | Embedding で暗黙的に考慮 | 言語モデルが明示的に考慮 |
-
-**重要:** Semantic Ranker は Embedding とは **別の言語モデル** を使用している。Phase 2 は実質 **3段階のランキング** を行っている:
-
-1. BM25（テキスト一致）
+1. BM25（テキスト一致）← ja.microsoft アナライザ
 2. HNSW cosine（ベクトル類似度）← Phase 1 と同等
-3. Semantic Ranker（言語モデル再評価）← **Phase 1 にはない**
+
+上記2つの結果を RRF で順位ベース統合 → `@search.score` として返却
 
 ---
 
@@ -311,8 +283,8 @@ k = 60（固定、変更不可）
 
 | 項目 | Phase 1 | Phase 2 (現行) | Phase 2 (改善後) |
 |------|---------|---------------|-----------------|
-| 件数 | top_k=4（固定） | top 20（セマンティック）/ 50（キーワード） | **ユーザーが選択**（5/10/20） |
-| oversampling | 2×top_k=8 件取得 → 4件に絞り込み | AI Search 内部で自動 | 同左 |
+| 件数 | top_k=4（固定） | — | **ユーザーが選択**（10〜150、11段階） |
+| oversampling | 2×top_k=8 件取得 → 4件に絞り込み | — | AI Search 内部で自動 |
 
 ---
 
@@ -325,7 +297,7 @@ k = 60（固定、変更不可）
 | MultiStage OR マージ | Original結果 ∪ LLM結果 → 3分類（Both/Original_Only/LLM_Only） | — |
 | 閾値 | multi_stage_threshold = 0.45 | — |
 
-**Phase 2 で非採用の理由:** Phase 1 での評価結果、クエリ拡張による精度向上が確認されなかったため。Semantic Ranker が文脈理解で同等の効果を提供する。
+**Phase 2 で非採用の理由:** Phase 1 での評価結果、クエリ拡張による精度向上が確認されなかったため。
 
 ---
 
@@ -338,12 +310,12 @@ k = 60（固定、変更不可）
 | 1 | ベクトル化対象 | combined_text | combinedContent | **同等**（同一フォーマット） |
 | 2 | Embedding モデル | Gemini or Azure OpenAI | Azure OpenAI のみ | **同等**（同一モデル使用時） |
 | 3 | テキスト検索 | Sudachi + Jaccard（1フィールド） | BM25 + ja.microsoft（5フィールド） | **同等〜改善** |
-| 4 | スコア統合 | 加重平均 (0.9v+0.1k) | RRF + Semantic Ranker | **改善**（3段階ランキング） |
-| 5 | キーワード重み付け | Sudachi 品詞重み + 位置重み | BM25 IDF + Semantic Ranker | **やや変化**（方式が異なるが同等効果） |
-| 6 | 業務分野スコープ | 分野別 DB（自動） | **分野別 filter（ユーザー選択）** | **同等**（改善後） |
+| 4 | スコア統合 | 加重平均 (0.9v+0.1k) | RRF のみ（Semantic Ranker 廃止） | **方式変更**（2段階ランキング） |
+| 5 | キーワード重み付け | Sudachi 品詞重み + 位置重み | BM25 IDF + keywords フィールド | **やや変化**（方式が異なるが同等効果） |
+| 6 | 業務分野スコープ | 分野別 DB（自動） | **分野別 filter（ユーザー選択）** | **同等**（実装済み） |
 | 7 | LLM クエリ拡張 | あり | なし | **影響なし**（精度向上未確認のため非採用） |
-| 8 | 再ランキング | oversampling + keyword boost | Semantic Ranker | **改善** |
-| 9 | 結果件数 | 固定 (top_k=4) | **ユーザー選択 (5/10/20)** | **改善**（柔軟性向上） |
+| 8 | 再ランキング | oversampling + keyword boost | RRF（Semantic Ranker は精度未向上のため廃止） | **方式変更** |
+| 9 | 結果件数 | 固定 (top_k=4) | **ユーザー選択 (10〜150、11段階)** | **改善**（柔軟性向上） |
 
 ### 運用面の差分
 
@@ -352,38 +324,47 @@ k = 60（固定、変更不可）
 | 1 | 実行形式 | Python バッチ（Excel入出力） | Teams Bot（リアルタイム） |
 | 2 | インフラ | ローカル PC | Azure (AI Search + Cosmos DB) |
 | 3 | Embedding 更新 | スクリプト手動実行 | Indexer 自動実行（1時間ごと） |
-| 4 | チューニング | settings.yaml で weight/threshold 変更可 | RRF k=60 固定、rerankerScore 閾値のみ変更可 |
+| 4 | チューニング | settings.yaml で weight/threshold 変更可 | RRF k=60 固定（チューニング不可） |
 | 5 | 分野追加 | DB パスとコレクション追加 | Cosmos DB にデータ追加 → Indexer 自動反映 |
 
 ---
 
-## 8. 改善後の検索パラメータ設計
+## 8. 実装済みの検索パラメータ
 
-### セマンティック検索（改善版）
+### ハイブリッド検索（searchHybrid）— Semantic Ranker 廃止済み
 
 ```typescript
 const results = await searchClient.search(query, {
-  queryType: "semantic",
-  semanticSearchOptions: { configurationName: "semantic-config" },
+  queryType: "simple",                                // ← "semantic" から変更
+  // semanticSearchOptions 削除（Semantic Ranker 廃止）
   vectorSearchOptions: {
     queries: [{ kind: "text", text: query, fields: ["contentVector"] }],
   },
   select: ["id", "dataType", "categoryName", "title", "content"],
-  top: userSelectedTopN,                              // ← ユーザー選択 (5/10/20)
-  filter: `isDeleted eq false and categoryId eq '${selectedCategory}'`,  // ← 分野フィルタ
+  top: safeTopN,                                      // ← ユーザー選択 (10〜150)
+  filter,                                             // ← "isDeleted eq false" + categoryId filter
 });
+// rerankerScore フィルタ削除 → RRFスコア（@search.score）で自然に順位付け
 ```
 
-### キーワード検索（改善版）
+### キーワード検索（searchKeyword）
 
 ```typescript
 const results = await searchClient.search(query, {
   queryType: "full",
   searchFields: ["title", "content", "keywords"],     // ← keywords 追加
   select: ["id", "dataType", "categoryName", "title", "content"],
-  top: userSelectedTopN,                              // ← ユーザー選択
-  filter: `isDeleted eq false and categoryId eq '${selectedCategory}'`,  // ← 分野フィルタ
+  top: safeTopN,                                      // ← ユーザー選択 (10〜150)
+  filter,                                             // ← "isDeleted eq false" + categoryId filter
 });
+```
+
+### バリデーション（共通）
+
+```typescript
+const validCategories = CATEGORIES.map((c) => c.id);  // ホワイトリスト
+const safeCategoryId = validCategories.includes(categoryId) ? categoryId : "all";
+const safeTopN = Number.isNaN(rawTopN) ? 30 : Math.min(Math.max(rawTopN, 10), 150);
 ```
 
 ### カテゴリ一覧（UI 選択肢）
@@ -397,3 +378,9 @@ const results = await searchClient.search(query, {
 | sousoku | 総則 | faq | 4,000 |
 | yokin | 預金 | faq | 6,055 |
 | (全分野) | すべて | scenario + faq | 21,047 |
+
+### 表示件数選択肢（TOP_N_OPTIONS）
+
+`[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150]` — 11項目（Teams ChoiceSet 15件制限に収まる）
+
+デフォルト: 30件

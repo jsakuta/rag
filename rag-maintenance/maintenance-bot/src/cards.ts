@@ -3,6 +3,7 @@
  * 要件定義書 FR-001〜FR-005, FR-013, FR-014 準拠
  */
 import type { AdaptiveCard } from "@microsoft/agents-hosting";
+import { CATEGORIES, TOP_N_OPTIONS } from "./config";
 
 // --- 型定義 ---
 export interface SearchResultItem {
@@ -36,14 +37,49 @@ export function buildModeSelectCard(queryText: string): AdaptiveCard {
       },
       {
         type: "TextBlock",
+        text: "業務分野",
+        weight: "Bolder",
+        size: "Small",
+        spacing: "Medium",
+      },
+      {
+        type: "Input.ChoiceSet",
+        id: "categoryId",
+        value: "all",
+        style: "compact",
+        choices: CATEGORIES.map((c) => ({
+          title: `${c.name}（${c.description}）`,
+          value: c.id,
+        })),
+      },
+      {
+        type: "TextBlock",
+        text: "表示件数",
+        weight: "Bolder",
+        size: "Small",
+        spacing: "Medium",
+      },
+      {
+        type: "Input.ChoiceSet",
+        id: "topN",
+        value: "30",
+        style: "compact",
+        choices: TOP_N_OPTIONS.map((n) => ({
+          title: `${n} 件`,
+          value: String(n),
+        })),
+      },
+      {
+        type: "TextBlock",
         text: "検索モードを選択してください",
         wrap: true,
+        spacing: "Medium",
       },
     ],
     actions: [
       {
         type: "Action.Execute",
-        title: "意味検索",
+        title: "ハイブリッド検索",
         verb: "searchSemantic",
         data: { query: queryText },
       },
@@ -62,67 +98,53 @@ export function buildResultCard(
   queryText: string,
   searchMode: string,
   items: SearchResultItem[],
-  page: number = 1
+  page: number = 1,
+  categoryId: string = "all",
+  topN: number = 30
 ): AdaptiveCard {
   const allScenarios = items.filter((i) => i.dataType === "scenario");
   const allFaqs = items.filter((i) => i.dataType === "faq");
-  const modeLabel = searchMode === "semantic" ? "意味検索" : "キーワード一致検索";
+  const modeLabel = searchMode === "semantic" ? "ハイブリッド検索" : "キーワード一致検索";
 
-  // カードサイズ28KB超過チェック（簡易計算）
-  const estimatedSize = JSON.stringify(items).length;
-  const needsSplit = estimatedSize > 24000; // 24KBで安全マージン
-  const totalPages = needsSplit ? 2 : 1;
+  // N ページ対応: 10件/ページ
+  const ITEMS_PER_PAGE = 10;
+  const totalItems = items.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const safeCurrentPage = Math.max(1, Math.min(page, totalPages));
 
-  // ページネーション: シナリオ・FAQそれぞれ件数均等分割
-  let pageScenarios: SearchResultItem[];
-  let pageFaqs: SearchResultItem[];
-
-  if (needsSplit) {
-    const halfS = Math.ceil(allScenarios.length / 2);
-    const halfF = Math.ceil(allFaqs.length / 2);
-
-    if (page === 1) {
-      pageScenarios = allScenarios.slice(0, halfS);
-      pageFaqs = allFaqs.slice(0, halfF);
-    } else {
-      pageScenarios = allScenarios.slice(halfS);
-      pageFaqs = allFaqs.slice(halfF);
-    }
-  } else {
-    pageScenarios = allScenarios;
-    pageFaqs = allFaqs;
-  }
+  // ページ内のアイテムを抽出
+  const startIdx = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+  const endIdx = startIdx + ITEMS_PER_PAGE;
+  const pageItems = items.slice(startIdx, endIdx);
+  const pageScenarios = pageItems.filter((i) => i.dataType === "scenario");
+  const pageFaqs = pageItems.filter((i) => i.dataType === "faq");
 
   // ページ情報テキスト
   const pageInfo = totalPages > 1
-    ? ` (${page}/${totalPages}ページ)`
+    ? ` (${safeCurrentPage}/${totalPages}ページ)`
     : "";
 
-  // 件数表示: 分割時はページ内/全体を表示
-  const scenarioLabel = totalPages > 1
-    ? `シナリオ (${pageScenarios.length}/${allScenarios.length}件)`
-    : `シナリオ (${allScenarios.length}件)`;
-  const faqLabel = totalPages > 1
-    ? `FAQ (${pageFaqs.length}/${allFaqs.length}件)`
-    : `FAQ (${allFaqs.length}件)`;
+  // 件数表示
+  const scenarioLabel = `シナリオ (${pageScenarios.length}件 / 全${allScenarios.length}件)`;
+  const faqLabel = `FAQ (${pageFaqs.length}件 / 全${allFaqs.length}件)`;
 
   // ページ遷移アクション
   const pageActions: Record<string, unknown>[] = [];
   if (totalPages > 1) {
-    if (page > 1) {
+    if (safeCurrentPage > 1) {
       pageActions.push({
         type: "Action.Execute",
         title: "← 前のページ",
         verb: "searchPage",
-        data: { query: queryText, mode: searchMode, page: page - 1 },
+        data: { query: queryText, mode: searchMode, page: safeCurrentPage - 1, categoryId, topN },
       });
     }
-    if (page < totalPages) {
+    if (safeCurrentPage < totalPages) {
       pageActions.push({
         type: "Action.Execute",
         title: "次のページ →",
         verb: "searchPage",
-        data: { query: queryText, mode: searchMode, page: page + 1 },
+        data: { query: queryText, mode: searchMode, page: safeCurrentPage + 1, categoryId, topN },
       });
     }
   }
@@ -147,7 +169,7 @@ export function buildResultCard(
       },
       {
         type: "TextBlock",
-        text: `検索モード: ${modeLabel}`,
+        text: `検索モード: ${modeLabel} | 取得件数: ${totalItems}件`,
         size: "Small",
         isSubtle: true,
       },
@@ -217,7 +239,7 @@ function buildScenarioContainer(
             items: [
               {
                 type: "TextBlock",
-                text: `スコア: ${s.score.toFixed(2)}`,
+                text: `スコア: ${s.score.toFixed(4)}`,
                 size: "Small",
                 horizontalAlignment: "Right",
                 isSubtle: true,
@@ -298,7 +320,7 @@ function buildFaqContainer(faqs: SearchResultItem[]) {
     items.push({
       type: "Input.Toggle",
       id: `faq_${f.id}`,
-      title: `${f.id} | ${f.categoryName} | ${f.title} | スコア: ${f.score.toFixed(2)}`,
+      title: `${f.id} | ${f.categoryName} | ${f.title} | スコア: ${f.score.toFixed(4)}`,
       value: "false",
     });
     items.push({

@@ -10,7 +10,7 @@ import {
 } from "@microsoft/agents-hosting";
 import { SearchClient } from "@azure/search-documents";
 import { DefaultAzureCredential } from "@azure/identity";
-import config from "./config";
+import config, { CATEGORIES } from "./config";
 import {
   buildModeSelectCard,
   buildResultCard,
@@ -68,14 +68,15 @@ agentApp.onActivity(ActivityTypes.Message, async (context: TurnContext) => {
   await context.sendActivity(activity);
 });
 
-// --- FR-003: 意味検索 (Action.Execute verb: searchSemantic) ---
+// --- FR-003: ハイブリッド検索 (Action.Execute verb: searchSemantic) ---
 agentApp.adaptiveCards.actionExecute(
   "searchSemantic",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const query = extractQuery(data, context);
-    console.log("[searchSemantic] data:", JSON.stringify(data));
-    console.log("[searchSemantic] query:", query);
-    return await executeSearch(query, "semantic");
+    const categoryId = String(data.categoryId || "all");
+    const topN = Number(data.topN) || 30;
+    console.log(`[searchSemantic] query: ${query}, categoryId: ${categoryId}, topN: ${topN}`);
+    return await executeSearch(query, "semantic", categoryId, topN);
   }
 );
 
@@ -84,9 +85,10 @@ agentApp.adaptiveCards.actionExecute(
   "searchKeyword",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const query = extractQuery(data, context);
-    console.log("[searchKeyword] data:", JSON.stringify(data));
-    console.log("[searchKeyword] query:", query);
-    return await executeSearch(query, "keyword");
+    const categoryId = String(data.categoryId || "all");
+    const topN = Number(data.topN) || 30;
+    console.log(`[searchKeyword] query: ${query}, categoryId: ${categoryId}, topN: ${topN}`);
+    return await executeSearch(query, "keyword", categoryId, topN);
   }
 );
 
@@ -97,8 +99,10 @@ agentApp.adaptiveCards.actionExecute(
     const query = extractQuery(data, context);
     const mode = (data.mode as string) === "keyword" ? "keyword" : "semantic";
     const page = Number(data.page) || 1;
-    console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}`);
-    return await executeSearchPaged(query, mode, page);
+    const categoryId = String(data.categoryId || "all");
+    const topN = Number(data.topN) || 30;
+    console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}, categoryId: ${categoryId}, topN: ${topN}`);
+    return await executeSearchPaged(query, mode, page, categoryId, topN);
   }
 );
 
@@ -158,7 +162,9 @@ agentApp.adaptiveCards.actionExecute(
 // --- 検索実行ロジック ---
 async function executeSearch(
   query: string,
-  mode: "semantic" | "keyword"
+  mode: "semantic" | "keyword",
+  categoryId: string,
+  topN: number
 ): Promise<AdaptiveCard> {
   if (!query) {
     return {
@@ -172,9 +178,9 @@ async function executeSearch(
     let items: SearchResultItem[];
 
     if (mode === "semantic") {
-      items = await searchSemantic(query);
+      items = await searchHybrid(query, categoryId, topN);
     } else {
-      items = await searchKeyword(query);
+      items = await searchKeyword(query, categoryId, topN);
     }
 
     if (items.length === 0) {
@@ -186,7 +192,7 @@ async function executeSearch(
       } as AdaptiveCard;
     }
 
-    return buildResultCard(query, mode, items);
+    return buildResultCard(query, mode, items, 1, categoryId, topN);
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
@@ -196,7 +202,9 @@ async function executeSearch(
 async function executeSearchPaged(
   query: string,
   mode: "semantic" | "keyword",
-  page: number
+  page: number,
+  categoryId: string,
+  topN: number
 ): Promise<AdaptiveCard> {
   if (!query) {
     return {
@@ -208,8 +216,8 @@ async function executeSearchPaged(
   }
   try {
     const items = mode === "semantic"
-      ? await searchSemantic(query)
-      : await searchKeyword(query);
+      ? await searchHybrid(query, categoryId, topN)
+      : await searchKeyword(query, categoryId, topN);
 
     if (items.length === 0) {
       return {
@@ -220,7 +228,7 @@ async function executeSearchPaged(
       } as AdaptiveCard;
     }
 
-    return buildResultCard(query, mode, items, page);
+    return buildResultCard(query, mode, items, page, categoryId, topN);
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
@@ -245,13 +253,24 @@ function buildSearchErrorCard(err: unknown): AdaptiveCard {
   } as AdaptiveCard;
 }
 
-// --- FR-003: 意味検索（ハイブリッド + Semantic Ranker） ---
-async function searchSemantic(query: string): Promise<SearchResultItem[]> {
+// --- FR-003: ハイブリッド検索（BM25 + Vector RRF、Semantic Ranker 廃止） ---
+async function searchHybrid(
+  query: string,
+  categoryId: string,
+  topN: number
+): Promise<SearchResultItem[]> {
+  const validCategories = CATEGORIES.map((c): string => c.id);
+  const safeCategoryId = validCategories.includes(categoryId) ? categoryId : "all";
+  const rawTopN = parseInt(String(topN), 10);
+  const safeTopN = Number.isNaN(rawTopN) ? 30 : Math.min(Math.max(rawTopN, 10), 150);
+
+  let filter = "isDeleted eq false";
+  if (safeCategoryId !== "all") {
+    filter += ` and categoryId eq '${safeCategoryId}'`;
+  }
+
   const results = await getSearchClient().search(query, {
-    queryType: "semantic",
-    semanticSearchOptions: {
-      configurationName: "semantic-config",
-    },
+    queryType: "simple",
     vectorSearchOptions: {
       queries: [
         {
@@ -262,27 +281,20 @@ async function searchSemantic(query: string): Promise<SearchResultItem[]> {
       ],
     },
     select: ["id", "dataType", "categoryName", "title", "content"],
-    top: 20,
-    filter: "isDeleted eq false",
+    top: safeTopN,
+    filter,
   });
 
   const items: SearchResultItem[] = [];
   for await (const result of results.results) {
     const doc = result.document as Record<string, unknown>;
-    const score = result.rerankerScore ?? result.score ?? 0;
-
-    // rerankerScore >= 1.5 でフィルタ (FR-003)
-    if (result.rerankerScore !== undefined && result.rerankerScore < 1.5) {
-      continue;
-    }
-
     items.push({
       id: String(doc.id),
       dataType: doc.dataType as "scenario" | "faq",
       categoryName: String(doc.categoryName),
       title: String(doc.title),
       content: String(doc.content),
-      score,
+      score: result.score ?? 0,
     });
   }
 
@@ -290,14 +302,27 @@ async function searchSemantic(query: string): Promise<SearchResultItem[]> {
 }
 
 // --- FR-004: キーワード一致検索 ---
-async function searchKeyword(query: string): Promise<SearchResultItem[]> {
-  // search.ismatchscoring で title, content を全文検索
+async function searchKeyword(
+  query: string,
+  categoryId: string,
+  topN: number
+): Promise<SearchResultItem[]> {
+  const validCategories = CATEGORIES.map((c): string => c.id);
+  const safeCategoryId = validCategories.includes(categoryId) ? categoryId : "all";
+  const rawTopN = parseInt(String(topN), 10);
+  const safeTopN = Number.isNaN(rawTopN) ? 30 : Math.min(Math.max(rawTopN, 10), 150);
+
+  let filter = "isDeleted eq false";
+  if (safeCategoryId !== "all") {
+    filter += ` and categoryId eq '${safeCategoryId}'`;
+  }
+
   const results = await getSearchClient().search(query, {
     queryType: "full",
-    searchFields: ["title", "content"],
+    searchFields: ["title", "content", "keywords"],
     select: ["id", "dataType", "categoryName", "title", "content"],
-    top: 50,
-    filter: "isDeleted eq false",
+    top: safeTopN,
+    filter,
   });
 
   const items: SearchResultItem[] = [];
