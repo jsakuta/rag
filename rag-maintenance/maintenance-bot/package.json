@@ -23,6 +23,7 @@
         "url": "https://github.com"
     },
     "dependencies": {
+        "@azure/cosmos": "^4.9.1",
         "@azure/identity": "^4.8.0",
         "@azure/search-documents": "^12.2.0",
         "@microsoft/agents-hosting-express": "^1.0.0"

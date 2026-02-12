@@ -92,6 +92,7 @@ deploy:
         clientId: ${{BOT_ID}}
         clientSecret: ${{SECRET_BOT_PASSWORD}}
         tenantId: ${{TEAMS_APP_TENANT_ID}}
-        AZURE_OPENAI_API_KEY: ${{SECRET_AZURE_OPENAI_API_KEY}}
-        AZURE_OPENAI_ENDPOINT: ${{AZURE_OPENAI_ENDPOINT}}
-        AZURE_OPENAI_DEPLOYMENT_NAME: ${{AZURE_OPENAI_DEPLOYMENT_NAME}}
+        AI_SEARCH_ENDPOINT: https://srch-maintenance-poc.search.windows.net
+        AI_SEARCH_INDEX_NAME: maintenance-search-index
+        COSMOS_DB_ENDPOINT: https://cosmos-maintenance-poc.documents.azure.com:443/
+        COSMOS_DB_DATABASE: maintenance-db
