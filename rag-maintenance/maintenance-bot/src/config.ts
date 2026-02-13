@@ -22,4 +22,4 @@ export const FAQ_CATEGORIES = [
 
 export const TOP_N_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
 export const DEFAULT_TOP_N = 30;
-export const ITEMS_PER_PAGE = 25;
+export const ITEMS_PER_PAGE = 5;

@@ -20,7 +20,7 @@ export interface CategorySelection {
   faqs: string[];       // 例: ["smile", "sousoku"]
 }
 
-// --- FR-001/FR-002: 検索モード選択カード（チェックボックス化） ---
+// --- FR-001/FR-002: 検索モード選択カード ---
 export function buildModeSelectCard(queryText: string): AdaptiveCard {
   return {
     type: "AdaptiveCard",
@@ -40,10 +40,10 @@ export function buildModeSelectCard(queryText: string): AdaptiveCard {
         size: "Small",
         color: "Accent",
       },
-      // --- シナリオ検索対象 ---
+      // --- シナリオ ---
       {
         type: "TextBlock",
-        text: "シナリオ検索対象",
+        text: "シナリオ",
         weight: "Bolder",
         size: "Small",
         spacing: "Medium",
@@ -55,10 +55,10 @@ export function buildModeSelectCard(queryText: string): AdaptiveCard {
         value: "true",
         spacing: "None",
       })),
-      // --- FAQ検索対象 ---
+      // --- FAQ ---
       {
         type: "TextBlock",
-        text: "FAQ検索対象",
+        text: "FAQ",
         weight: "Bolder",
         size: "Small",
         spacing: "Medium",
@@ -112,37 +112,83 @@ export function buildModeSelectCard(queryText: string): AdaptiveCard {
   };
 }
 
-// --- FR-005: 検索結果カード（セクション表示・タブ廃止） ---
+// --- FR-005: 検索結果カード（統一ページネーション） ---
 export function buildResultCard(
   queryText: string,
   searchMode: string,
   scenarios: SearchResultItem[],
   faqs: SearchResultItem[],
-  sPage: number = 1,
-  fPage: number = 1,
+  page: number = 1,
   selectedCategories: CategorySelection,
-  topN: number = 30
+  topN: number = 30,
+  fixedPerPage?: number
+): AdaptiveCard {
+  const CARD_LIMIT = 28 * 1024;
+
+  // ページ遷移時は前回確定した perPage を使用、初回は ITEMS_PER_PAGE から開始
+  let perPage = fixedPerPage ?? ITEMS_PER_PAGE;
+  let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage);
+  let cardSize = JSON.stringify(card).length;
+  console.log(`[buildResultCard] perPage=${perPage}, size=${cardSize} bytes`);
+
+  // 超過時は1件ずつ減らして再構築（最低1件は表示）
+  while (cardSize > CARD_LIMIT && perPage > 1) {
+    perPage--;
+    card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage);
+    cardSize = JSON.stringify(card).length;
+    console.log(`[buildResultCard] reduced perPage=${perPage}, size=${cardSize} bytes`);
+  }
+
+  // perPage=1 でも超過する場合はコンテンツを段階的に切り詰めて再構築
+  if (cardSize > CARD_LIMIT) {
+    console.warn(`[buildResultCard] Card still ${cardSize} bytes with perPage=1 — truncating content`);
+    const truncLimits = [500, 300, 150, 80];
+    for (const limit of truncLimits) {
+      const ts = scenarios.map((s) => ({ ...s, content: truncate(s.content, limit) }));
+      const tf = faqs.map((f) => ({ ...f, content: truncate(f.content, limit) }));
+      card = buildResultCardInner(queryText, searchMode, ts, tf, page, selectedCategories, topN, 1);
+      cardSize = JSON.stringify(card).length;
+      if (cardSize <= CARD_LIMIT) {
+        console.log(`[buildResultCard] Rebuilt with truncate=${limit}, size=${cardSize} bytes`);
+        return card;
+      }
+    }
+    console.error(`[buildResultCard] Card still ${cardSize} bytes after max truncation`);
+  }
+
+  return card;
+}
+
+function buildResultCardInner(
+  queryText: string,
+  searchMode: string,
+  scenarios: SearchResultItem[],
+  faqs: SearchResultItem[],
+  page: number,
+  selectedCategories: CategorySelection,
+  topN: number,
+  perPage: number
 ): AdaptiveCard {
   const modeLabel = searchMode === "semantic" ? "ハイブリッド検索" : "キーワード一致検索";
 
-  // シナリオ ページネーション
-  const sTotalPages = Math.max(1, Math.ceil(scenarios.length / ITEMS_PER_PAGE));
-  const sSafePage = Math.max(1, Math.min(sPage, sTotalPages));
-  const sStart = (sSafePage - 1) * ITEMS_PER_PAGE;
-  const pageScenarios = scenarios.slice(sStart, sStart + ITEMS_PER_PAGE);
+  // 全結果をスコア順にマージ → 統一ページネーション
+  const allItems = [...scenarios, ...faqs].sort((a, b) => b.score - a.score);
+  const totalPages = Math.max(1, Math.ceil(allItems.length / perPage));
+  const safePage = Math.max(1, Math.min(page, totalPages));
+  const start = (safePage - 1) * perPage;
+  const pageItems = allItems.slice(start, start + perPage);
 
-  // FAQ ページネーション
-  const fTotalPages = Math.max(1, Math.ceil(faqs.length / ITEMS_PER_PAGE));
-  const fSafePage = Math.max(1, Math.min(fPage, fTotalPages));
-  const fStart = (fSafePage - 1) * ITEMS_PER_PAGE;
-  const pageFaqs = faqs.slice(fStart, fStart + ITEMS_PER_PAGE);
+  // ページ内のアイテムをタイプ別に分離
+  const pageScenarios = pageItems.filter((i) => i.dataType === "scenario");
+  const pageFaqs = pageItems.filter((i) => i.dataType === "faq");
 
-  // ページ遷移用の共通データ
+  // ページ遷移用データ（perPage を含めてページ間の整合性を維持）
   const pageData = {
     query: queryText,
     mode: searchMode,
     selectedCategories,
     topN,
+    perPage,
   };
 
   // body 構築
@@ -168,21 +214,37 @@ export function buildResultCard(
     },
   ];
 
-  // --- シナリオセクション ---
-  if (scenarios.length > 0) {
-    const sPageInfo = sTotalPages > 1 ? ` [${sSafePage}/${sTotalPages}ページ]` : "";
+  // 全体ヘッダー
+  if (allItems.length > 0) {
+    const pageInfo = totalPages > 1 ? ` [${safePage}/${totalPages}ページ]` : "";
     body.push({
       type: "TextBlock",
-      text: `━━ シナリオ検索結果 (${pageScenarios.length}件/全${scenarios.length}件)${sPageInfo} ━━`,
+      text: `━━ 検索結果 (${pageItems.length}件/全${allItems.length}件)${pageInfo} ━━`,
       weight: "Bolder",
       size: "Small",
       spacing: "Large",
       separator: true,
     });
+  }
+
+  // 両タイプ混在フラグ
+  const hasBothTypes = pageScenarios.length > 0 && pageFaqs.length > 0;
+
+  // --- シナリオセクション ---
+  if (pageScenarios.length > 0) {
+    if (hasBothTypes) {
+      body.push({
+        type: "TextBlock",
+        text: "▼ シナリオ",
+        weight: "Bolder",
+        size: "Small",
+        spacing: "Medium",
+      });
+    }
 
     for (let i = 0; i < pageScenarios.length; i++) {
       const s = pageScenarios[i];
-      const globalIndex = sStart + i + 1;
+      const globalRank = start + pageItems.indexOf(s) + 1;
       body.push(
         {
           type: "ColumnSet",
@@ -193,7 +255,7 @@ export function buildResultCard(
               items: [
                 {
                   type: "TextBlock",
-                  text: `${numEmoji(globalIndex)} ${s.categoryName}`,
+                  text: `${numEmoji(globalRank)} ${s.categoryName}`,
                   weight: "Bolder",
                   size: "Small",
                 },
@@ -222,7 +284,7 @@ export function buildResultCard(
         },
         {
           type: "TextBlock",
-          text: `「${truncate(s.content, 150)}」`,
+          text: `「${s.content}」`,
           wrap: true,
           size: "Small",
           isSubtle: true,
@@ -243,16 +305,16 @@ export function buildResultCard(
   }
 
   // --- FAQセクション ---
-  if (faqs.length > 0) {
-    const fPageInfo = fTotalPages > 1 ? ` [${fSafePage}/${fTotalPages}ページ]` : "";
-    body.push({
-      type: "TextBlock",
-      text: `━━ FAQ検索結果 (${pageFaqs.length}件/全${faqs.length}件)${fPageInfo} ━━`,
-      weight: "Bolder",
-      size: "Small",
-      spacing: "Large",
-      separator: true,
-    });
+  if (pageFaqs.length > 0) {
+    if (hasBothTypes) {
+      body.push({
+        type: "TextBlock",
+        text: "▼ FAQ",
+        weight: "Bolder",
+        size: "Small",
+        spacing: "Medium",
+      });
+    }
 
     for (let i = 0; i < pageFaqs.length; i++) {
       const f = pageFaqs[i];
@@ -265,7 +327,7 @@ export function buildResultCard(
         },
         {
           type: "TextBlock",
-          text: `「${truncate(f.content, 150)}」`,
+          text: `「${f.content}」`,
           wrap: true,
           size: "Small",
           isSubtle: true,
@@ -278,7 +340,7 @@ export function buildResultCard(
   // --- アクションボタン ---
   const actions: Record<string, unknown>[] = [];
 
-  // 要修正を保存（シナリオがある場合のみ）
+  // 要修正を保存（シナリオがある場合）
   if (pageScenarios.length > 0) {
     actions.push({
       type: "Action.Execute",
@@ -289,7 +351,7 @@ export function buildResultCard(
     });
   }
 
-  // FAQ削除（FAQがある場合のみ）
+  // FAQ削除（FAQがある場合）
   if (pageFaqs.length > 0) {
     actions.push({
       type: "Action.Execute",
@@ -300,54 +362,30 @@ export function buildResultCard(
   }
 
   // ページ遷移ボタン
-  if (sSafePage > 1) {
+  if (safePage > 1) {
     actions.push({
       type: "Action.Execute",
-      title: "シナリオ ← 前",
+      title: "← 前ページへ",
       verb: "searchPage",
-      data: { ...pageData, scenarioPage: sSafePage - 1, faqPage: fSafePage },
+      data: { ...pageData, page: safePage - 1 },
     });
   }
-  if (sSafePage < sTotalPages) {
+  if (safePage < totalPages) {
     actions.push({
       type: "Action.Execute",
-      title: "シナリオ 次 →",
+      title: "次ページへ →",
       verb: "searchPage",
-      data: { ...pageData, scenarioPage: sSafePage + 1, faqPage: fSafePage },
-    });
-  }
-  if (fSafePage > 1) {
-    actions.push({
-      type: "Action.Execute",
-      title: "FAQ ← 前",
-      verb: "searchPage",
-      data: { ...pageData, scenarioPage: sSafePage, faqPage: fSafePage - 1 },
-    });
-  }
-  if (fSafePage < fTotalPages) {
-    actions.push({
-      type: "Action.Execute",
-      title: "FAQ 次 →",
-      verb: "searchPage",
-      data: { ...pageData, scenarioPage: sSafePage, faqPage: fSafePage + 1 },
+      data: { ...pageData, page: safePage + 1 },
     });
   }
 
-  const card: AdaptiveCard = {
+  return {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
     version: "1.5",
     body,
     ...(actions.length > 0 ? { actions } : {}),
   };
-
-  // 28KB制限チェック（ITEMS_PER_PAGE=25で通常は~18KB以内）
-  const cardSize = JSON.stringify(card).length;
-  if (cardSize > 28 * 1024) {
-    console.warn(`[buildResultCard] Card size ${cardSize} bytes exceeds 28KB limit`);
-  }
-
-  return card;
 }
 
 // --- FR-013: FAQ削除確認カード ---

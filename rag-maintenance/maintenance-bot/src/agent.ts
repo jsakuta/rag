@@ -99,14 +99,14 @@ agentApp.adaptiveCards.actionExecute(
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const query = extractQuery(data, context);
     const mode = extractField(data, "mode", "semantic") === "keyword" ? "keyword" : "semantic";
-    const scenarioPage = extractNumber(data, "scenarioPage", 1);
-    const faqPage = extractNumber(data, "faqPage", 1);
+    const page = extractNumber(data, "page", 1);
     const topN = extractSafeTopN(data);
+    const perPage = extractNumber(data, "perPage", -1);
 
     // ページ遷移時は data に埋め込み済みの selectedCategories を使用
     const categories = extractCategorySelectionsFromPageData(data);
-    console.log(`[searchPage] query: ${query}, mode: ${mode}, sPage: ${scenarioPage}, fPage: ${faqPage}, topN: ${topN}`);
-    return await executeSearchPaged(query, mode, scenarioPage, faqPage, categories, topN);
+    console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}, topN: ${topN}, perPage: ${perPage}`);
+    return await executeSearchPaged(query, mode, page, categories, topN, perPage > 0 ? perPage : undefined);
   }
 );
 
@@ -188,7 +188,7 @@ async function executeSearch(
       type: "AdaptiveCard",
       $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
       version: "1.5",
-      body: [{ type: "TextBlock", text: "検索対象が選択されていません。シナリオまたはFAQのカテゴリを1つ以上選択してください。", wrap: true, color: "Attention" }],
+      body: [{ type: "TextBlock", text: "カテゴリを1つ以上選択してください。", wrap: true, color: "Attention" }],
     } as AdaptiveCard;
   }
 
@@ -204,9 +204,7 @@ async function executeSearch(
       } as AdaptiveCard;
     }
 
-    const card = buildResultCard(query, mode, results.scenarios, results.faqs, 1, 1, categories, topN);
-    console.log(`[executeSearch] card size: ${JSON.stringify(card).length} bytes, body elements: ${(card as Record<string, unknown[]>).body?.length}`);
-    return card;
+    return buildResultCard(query, mode, results.scenarios, results.faqs, 1, categories, topN);
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
@@ -216,10 +214,10 @@ async function executeSearch(
 async function executeSearchPaged(
   query: string,
   mode: "semantic" | "keyword",
-  scenarioPage: number,
-  faqPage: number,
+  page: number,
   categories: CategorySelection,
-  topN: number
+  topN: number,
+  perPage?: number
 ): Promise<AdaptiveCard> {
   if (!query) {
     return {
@@ -241,7 +239,7 @@ async function executeSearchPaged(
       } as AdaptiveCard;
     }
 
-    return buildResultCard(query, mode, results.scenarios, results.faqs, scenarioPage, faqPage, categories, topN);
+    return buildResultCard(query, mode, results.scenarios, results.faqs, page, categories, topN, perPage);
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
