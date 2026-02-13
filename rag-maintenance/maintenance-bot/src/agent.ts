@@ -204,7 +204,9 @@ async function executeSearch(
       } as AdaptiveCard;
     }
 
-    return buildResultCard(query, mode, results.scenarios, results.faqs, 1, 1, categories, topN);
+    const card = buildResultCard(query, mode, results.scenarios, results.faqs, 1, 1, categories, topN);
+    console.log(`[executeSearch] card size: ${JSON.stringify(card).length} bytes, body elements: ${(card as Record<string, unknown[]>).body?.length}`);
+    return card;
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
@@ -436,13 +438,20 @@ function isToggleOn(value: unknown): boolean {
   return value === "true" || value === true;
 }
 
-/** 初回検索時: チェックボックスから CategorySelection を抽出 */
+/** 初回検索時: チェックボックスから CategorySelection を抽出（data.X ?? data.data.X フォールバック） */
 function extractCategorySelections(data: Record<string, unknown>): CategorySelection {
+  const nested = data?.data as Record<string, unknown> | undefined;
   const scenarios = SCENARIO_CATEGORIES
-    .filter((c) => isToggleOn(data[`cat_s_${c.id}`]))
+    .filter((c) => {
+      const key = `cat_s_${c.id}`;
+      return isToggleOn(data[key]) || isToggleOn(nested?.[key]);
+    })
     .map((c) => c.id);
   const faqs = FAQ_CATEGORIES
-    .filter((c) => isToggleOn(data[`cat_f_${c.id}`]))
+    .filter((c) => {
+      const key = `cat_f_${c.id}`;
+      return isToggleOn(data[key]) || isToggleOn(nested?.[key]);
+    })
     .map((c) => c.id);
   return { scenarios, faqs };
 }
