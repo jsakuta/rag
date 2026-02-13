@@ -10,6 +10,7 @@ import chromadb
 from chromadb.config import Settings
 from chromadb.errors import NotFoundError as ChromaNotFoundError
 from config import SearchConfig
+from src.utils.business_area_translator import BusinessAreaTranslator
 from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -26,6 +27,7 @@ class DynamicDBManager:
         self.base_db_path = os.path.join(config.base_dir, "data", "vector_db")
         self.reference_faq_path = os.path.join(config.base_dir, "data", "source", "faq", "latest")
         self.reference_scenario_path = os.path.join(config.base_dir, "data", "source", "scenarios", "revisions")
+        self._translator = BusinessAreaTranslator()
 
         # ディレクトリの作成
         os.makedirs(self.base_db_path, exist_ok=True)
@@ -281,38 +283,49 @@ class DynamicDBManager:
 
         logger.info(f"プロバイダー '{self.embedding_provider}' 用のDB初期化（階層構造）")
     
+    def _normalize_business_name(self, raw_name: str) -> str:
+        """ファイル名から抽出した業務分野名をDB互換名に正規化
+
+        日本語名（スマイル等）はDBディレクトリ名（smile等）に変換。
+        rev系（rev01_smile等）はそのまま返す。
+        """
+        translated = self._translator.translate(raw_name)
+        return translated
+
     def analyze_reference_files(self) -> Dict[str, Dict[str, List[Tuple[str, str]]]]:
-        """参照ファイルを業務分野ごとに分類"""
+        """参照ファイルを業務分野ごとに分類（DB互換名をキーとして返す）"""
         logger.info("参照ファイルの分析を開始...")
-        
+
         business_areas = {}
-        
+
         # 履歴データの分析
         faq_files = self._get_files_in_directory(self.reference_faq_path)
         for file in faq_files:
             match = re.match(self.config.REFERENCE_FILE_PATTERN, file)
             if match:
-                business, data_type, date = match.groups()
+                raw_business, data_type, date = match.groups()
+                business = self._normalize_business_name(raw_business)
                 if business not in business_areas:
                     business_areas[business] = {"faq": [], "scenario": []}
                 business_areas[business]["faq"].append((file, date))
                 logger.info(f"履歴データ検出: {business} - {file}")
             else:
                 logger.warning(f"不正な履歴データファイル名: {file}")
-        
+
         # シナリオデータの分析
         scenario_files = self._get_files_in_directory(self.reference_scenario_path)
         for file in scenario_files:
             match = re.match(self.config.REFERENCE_FILE_PATTERN, file)
             if match:
-                business, data_type, date = match.groups()
+                raw_business, data_type, date = match.groups()
+                business = self._normalize_business_name(raw_business)
                 if business not in business_areas:
                     business_areas[business] = {"faq": [], "scenario": []}
                 business_areas[business]["scenario"].append((file, date))
                 logger.info(f"シナリオデータ検出: {business} - {file}")
             else:
                 logger.warning(f"不正なシナリオデータファイル名: {file}")
-        
+
         logger.info(f"業務分野検出: {list(business_areas.keys())}")
         return business_areas
     
