@@ -1023,11 +1023,11 @@ class RevisionEvaluator:
         else:
             # 複数エリアの場合はエリアごとにシートを作成
             for area in areas:
-                # エリア名から短縮名を抽出（例: rev03naibujimu → naibujimu）
+                # エリア名から短縮名を抽出（例: rev03_naibujimu → naibujimu）
                 area_short = area
                 for prefix in ["rev01", "rev02", "rev03", "rev04", "rev05", "rev06"]:
                     if area.startswith(prefix):
-                        area_short = area[len(prefix):]
+                        area_short = area[len(prefix):].lstrip("_")
                         break
 
                 sheet_name = f"{revision}_{area_short}"

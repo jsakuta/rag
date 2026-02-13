@@ -33,15 +33,15 @@ from src.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 REVISION_AREAS = [
-    "rev01smile",
-    "rev02souzoku",
-    "rev03smile",
-    "rev03naibujimu",
-    "rev03souzoku",
-    "rev03torikaku",
-    "rev04naibujimu",
-    "rev05smile",
-    "rev06smile",
+    "rev01_smile",
+    "rev02_souzoku",
+    "rev03_smile",
+    "rev03_naibujimu",
+    "rev03_souzoku",
+    "rev03_torikaku",
+    "rev04_naibujimu",
+    "rev05_smile",
+    "rev06_smile",
 ]
 
 PROVIDERS = ["azure_openai", "vertex_ai"]

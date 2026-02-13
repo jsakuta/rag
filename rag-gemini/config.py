@@ -139,7 +139,7 @@ class SearchConfig:
     PRINCIPLE_MARKER: str = "以下の選択肢から選んでください"
 
     # ファイル名パターン（既存ファイル対応版）
-    REFERENCE_FILE_PATTERN: str = r".*?([^_]+).*?(履歴データ|シナリオデータ).*?(\d{8})?.*?\.xlsx$"
+    REFERENCE_FILE_PATTERN: str = r"(.+?)_(履歴データ|シナリオデータ)_?(\d{8})?.*?\.xlsx$"
     INPUT_FILE_PATTERN: str = r"^([^_]+)_(\d{8})\.xlsx$"
 
     top_k: int = DEFAULT_TOP_K

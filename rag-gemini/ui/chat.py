@@ -102,7 +102,7 @@ def extract_bot_name_from_area(area: str) -> str:
     """エリア名（rev01smile等）からボット名を抽出
 
     Args:
-        area: エリア名（例: rev01smile, rev02souzoku）
+        area: エリア名（例: rev01_smile, rev02_souzoku）
 
     Returns:
         ボット名（例: smile-bot, souzoku-bot）
@@ -143,7 +143,7 @@ def build_scenario_id_from_area(result: Dict, area: str) -> str:
 
     Args:
         result: 検索結果辞書
-        area: エリア名（例: rev01smile）
+        area: エリア名（例: rev01_smile）
 
     Returns:
         シナリオID（例: smile-bot_129）

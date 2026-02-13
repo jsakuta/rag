@@ -17,20 +17,20 @@ mappings:
 # 事務改定用マッピング
 revision_mappings:
   # ①スマイル機能変更（台帳No.20）
-  rev01smile: rev01smile
+  rev01_smile: rev01_smile
   # ②相続少額払い（台帳No.21）
-  rev02souzoku: rev02souzoku
+  rev02_souzoku: rev02_souzoku
   # ③保険証→資格確認証（台帳No.25-30, 35-36）
-  rev03smile: rev03smile
-  rev03naibujimu: rev03naibujimu
-  rev03souzoku: rev03souzoku
-  rev03torikaku: rev03torikaku
+  rev03_smile: rev03_smile
+  rev03_naibujimu: rev03_naibujimu
+  rev03_souzoku: rev03_souzoku
+  rev03_torikaku: rev03_torikaku
   # ④0円新規開設可能（台帳No.37）
-  rev04naibujimu: rev04naibujimu
+  rev04_naibujimu: rev04_naibujimu
   # ⑤AML→GPLEX（台帳No.41-42）
-  rev05smile: rev05smile
+  rev05_smile: rev05_smile
   # ⑥DC→MDC（台帳No.43-45）
-  rev06smile: rev06smile
+  rev06_smile: rev06_smile
 
 # ChromaDBコレクション名の制約
 collection_constraints:

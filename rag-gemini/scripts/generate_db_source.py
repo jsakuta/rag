@@ -227,15 +227,15 @@ REVISION_CONFIGS = [
 
 # 期待行数（検証用）
 EXPECTED_ROWS = {
-    "rev01smile": 555,
-    "rev02souzoku": 262,
-    "rev03smile": 555,
-    "rev03torikaku": 105,
-    "rev03souzoku": 269,
-    "rev03naibujimu": 1384,
-    "rev04naibujimu": 1384,
-    "rev05smile": 555,
-    "rev06smile": 555,
+    "rev01_smile": 555,
+    "rev02_souzoku": 262,
+    "rev03_smile": 555,
+    "rev03_torikaku": 105,
+    "rev03_souzoku": 269,
+    "rev03_naibujimu": 1384,
+    "rev04_naibujimu": 1384,
+    "rev05_smile": 555,
+    "rev06_smile": 555,
 }
 
 
