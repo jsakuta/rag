@@ -3,7 +3,7 @@
  * 要件定義書 FR-001〜FR-005, FR-013, FR-014 準拠
  */
 import type { AdaptiveCard } from "@microsoft/agents-hosting";
-import { CATEGORIES, TOP_N_OPTIONS } from "./config";
+import { SCENARIO_CATEGORIES, FAQ_CATEGORIES, TOP_N_OPTIONS, ITEMS_PER_PAGE } from "./config";
 
 // --- 型定義 ---
 export interface SearchResultItem {
@@ -15,7 +15,12 @@ export interface SearchResultItem {
   score: number;
 }
 
-// --- FR-001/FR-002: 検索モード選択カード ---
+export interface CategorySelection {
+  scenarios: string[];  // 例: ["smile", "souzoku"]
+  faqs: string[];       // 例: ["smile", "sousoku"]
+}
+
+// --- FR-001/FR-002: 検索モード選択カード（チェックボックス化） ---
 export function buildModeSelectCard(queryText: string): AdaptiveCard {
   return {
     type: "AdaptiveCard",
@@ -35,26 +40,40 @@ export function buildModeSelectCard(queryText: string): AdaptiveCard {
         size: "Small",
         color: "Accent",
       },
+      // --- シナリオ検索対象 ---
       {
         type: "TextBlock",
-        text: "業務分野",
+        text: "シナリオ検索対象",
         weight: "Bolder",
         size: "Small",
         spacing: "Medium",
       },
-      {
-        type: "Input.ChoiceSet",
-        id: "categoryId",
-        value: "all",
-        style: "compact",
-        choices: CATEGORIES.map((c) => ({
-          title: `${c.name}（${c.description}）`,
-          value: c.id,
-        })),
-      },
+      ...SCENARIO_CATEGORIES.map((c) => ({
+        type: "Input.Toggle",
+        id: `cat_s_${c.id}`,
+        title: c.name,
+        value: "true",
+        spacing: "None",
+      })),
+      // --- FAQ検索対象 ---
       {
         type: "TextBlock",
-        text: "表示件数",
+        text: "FAQ検索対象",
+        weight: "Bolder",
+        size: "Small",
+        spacing: "Medium",
+      },
+      ...FAQ_CATEGORIES.map((c) => ({
+        type: "Input.Toggle",
+        id: `cat_f_${c.id}`,
+        title: c.name,
+        value: "true",
+        spacing: "None",
+      })),
+      // --- 表示件数 ---
+      {
+        type: "TextBlock",
+        text: "各分野の表示件数",
         weight: "Bolder",
         size: "Small",
         spacing: "Medium",
@@ -93,280 +112,242 @@ export function buildModeSelectCard(queryText: string): AdaptiveCard {
   };
 }
 
-// --- FR-005: 検索結果カード（タブ切り替え + ページネーション） ---
+// --- FR-005: 検索結果カード（セクション表示・タブ廃止） ---
 export function buildResultCard(
   queryText: string,
   searchMode: string,
-  items: SearchResultItem[],
-  page: number = 1,
-  categoryId: string = "all",
+  scenarios: SearchResultItem[],
+  faqs: SearchResultItem[],
+  sPage: number = 1,
+  fPage: number = 1,
+  selectedCategories: CategorySelection,
   topN: number = 30
 ): AdaptiveCard {
-  const allScenarios = items.filter((i) => i.dataType === "scenario");
-  const allFaqs = items.filter((i) => i.dataType === "faq");
   const modeLabel = searchMode === "semantic" ? "ハイブリッド検索" : "キーワード一致検索";
 
-  // N ページ対応: 10件/ページ
-  const ITEMS_PER_PAGE = 10;
-  const totalItems = items.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const safeCurrentPage = Math.max(1, Math.min(page, totalPages));
+  // シナリオ ページネーション
+  const sTotalPages = Math.max(1, Math.ceil(scenarios.length / ITEMS_PER_PAGE));
+  const sSafePage = Math.max(1, Math.min(sPage, sTotalPages));
+  const sStart = (sSafePage - 1) * ITEMS_PER_PAGE;
+  const pageScenarios = scenarios.slice(sStart, sStart + ITEMS_PER_PAGE);
 
-  // ページ内のアイテムを抽出
-  const startIdx = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
-  const endIdx = startIdx + ITEMS_PER_PAGE;
-  const pageItems = items.slice(startIdx, endIdx);
-  const pageScenarios = pageItems.filter((i) => i.dataType === "scenario");
-  const pageFaqs = pageItems.filter((i) => i.dataType === "faq");
+  // FAQ ページネーション
+  const fTotalPages = Math.max(1, Math.ceil(faqs.length / ITEMS_PER_PAGE));
+  const fSafePage = Math.max(1, Math.min(fPage, fTotalPages));
+  const fStart = (fSafePage - 1) * ITEMS_PER_PAGE;
+  const pageFaqs = faqs.slice(fStart, fStart + ITEMS_PER_PAGE);
 
-  // ページ情報テキスト
-  const pageInfo = totalPages > 1
-    ? ` (${safeCurrentPage}/${totalPages}ページ)`
-    : "";
+  // ページ遷移用の共通データ
+  const pageData = {
+    query: queryText,
+    mode: searchMode,
+    selectedCategories,
+    topN,
+  };
 
-  // 件数表示
-  const scenarioLabel = `シナリオ (${pageScenarios.length}件 / 全${allScenarios.length}件)`;
-  const faqLabel = `FAQ (${pageFaqs.length}件 / 全${allFaqs.length}件)`;
+  // body 構築
+  const body: Record<string, unknown>[] = [
+    {
+      type: "TextBlock",
+      text: "事務改定 影響候補検出結果",
+      weight: "Bolder",
+      size: "Medium",
+    },
+    {
+      type: "TextBlock",
+      text: `入力: 「${truncate(queryText, 60)}」`,
+      wrap: true,
+      size: "Small",
+      color: "Accent",
+    },
+    {
+      type: "TextBlock",
+      text: `検索モード: ${modeLabel}`,
+      size: "Small",
+      isSubtle: true,
+    },
+  ];
 
-  // ページ遷移アクション
-  const pageActions: Record<string, unknown>[] = [];
-  if (totalPages > 1) {
-    if (safeCurrentPage > 1) {
-      pageActions.push({
-        type: "Action.Execute",
-        title: "← 前のページ",
-        verb: "searchPage",
-        data: { query: queryText, mode: searchMode, page: safeCurrentPage - 1, categoryId, topN },
-      });
+  // --- シナリオセクション ---
+  if (scenarios.length > 0) {
+    const sPageInfo = sTotalPages > 1 ? ` [${sSafePage}/${sTotalPages}ページ]` : "";
+    body.push({
+      type: "TextBlock",
+      text: `━━ シナリオ検索結果 (${pageScenarios.length}件/全${scenarios.length}件)${sPageInfo} ━━`,
+      weight: "Bolder",
+      size: "Small",
+      spacing: "Large",
+      separator: true,
+    });
+
+    for (let i = 0; i < pageScenarios.length; i++) {
+      const s = pageScenarios[i];
+      const globalIndex = sStart + i + 1;
+      body.push(
+        {
+          type: "ColumnSet",
+          columns: [
+            {
+              type: "Column",
+              width: "auto",
+              items: [
+                {
+                  type: "TextBlock",
+                  text: `${numEmoji(globalIndex)} ${s.categoryName}`,
+                  weight: "Bolder",
+                  size: "Small",
+                },
+              ],
+            },
+            {
+              type: "Column",
+              width: "stretch",
+              items: [
+                {
+                  type: "TextBlock",
+                  text: `スコア: ${s.score.toFixed(4)}`,
+                  size: "Small",
+                  horizontalAlignment: "Right",
+                  isSubtle: true,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "TextBlock",
+          text: s.title,
+          weight: "Bolder",
+          wrap: true,
+        },
+        {
+          type: "TextBlock",
+          text: `「${truncate(s.content, 150)}」`,
+          wrap: true,
+          size: "Small",
+          isSubtle: true,
+        },
+        {
+          type: "Input.Toggle",
+          id: `scenario_${s.id}`,
+          title: "要修正",
+          value: "false",
+        },
+        {
+          type: "TextBlock",
+          text: "---",
+          separator: true,
+        }
+      );
     }
-    if (safeCurrentPage < totalPages) {
-      pageActions.push({
-        type: "Action.Execute",
-        title: "次のページ →",
-        verb: "searchPage",
-        data: { query: queryText, mode: searchMode, page: safeCurrentPage + 1, categoryId, topN },
-      });
+  }
+
+  // --- FAQセクション ---
+  if (faqs.length > 0) {
+    const fPageInfo = fTotalPages > 1 ? ` [${fSafePage}/${fTotalPages}ページ]` : "";
+    body.push({
+      type: "TextBlock",
+      text: `━━ FAQ検索結果 (${pageFaqs.length}件/全${faqs.length}件)${fPageInfo} ━━`,
+      weight: "Bolder",
+      size: "Small",
+      spacing: "Large",
+      separator: true,
+    });
+
+    for (let i = 0; i < pageFaqs.length; i++) {
+      const f = pageFaqs[i];
+      body.push(
+        {
+          type: "Input.Toggle",
+          id: `faq_${f.id}`,
+          title: `${f.id} | ${f.categoryName} | ${f.title} | スコア: ${f.score.toFixed(4)}`,
+          value: "false",
+        },
+        {
+          type: "TextBlock",
+          text: `「${truncate(f.content, 150)}」`,
+          wrap: true,
+          size: "Small",
+          isSubtle: true,
+          spacing: "None",
+        }
+      );
     }
+  }
+
+  // --- アクションボタン ---
+  const actions: Record<string, unknown>[] = [];
+
+  // 要修正を保存（シナリオがある場合のみ）
+  if (pageScenarios.length > 0) {
+    actions.push({
+      type: "Action.Execute",
+      title: "要修正を保存",
+      verb: "saveNeedsUpdate",
+      data: { query: queryText },
+      style: "positive",
+    });
+  }
+
+  // FAQ削除（FAQがある場合のみ）
+  if (pageFaqs.length > 0) {
+    actions.push({
+      type: "Action.Execute",
+      title: "選択したFAQを削除",
+      verb: "confirmDeleteFaqs",
+      style: "destructive",
+    });
+  }
+
+  // ページ遷移ボタン
+  if (sSafePage > 1) {
+    actions.push({
+      type: "Action.Execute",
+      title: "シナリオ ← 前",
+      verb: "searchPage",
+      data: { ...pageData, scenarioPage: sSafePage - 1, faqPage: fSafePage },
+    });
+  }
+  if (sSafePage < sTotalPages) {
+    actions.push({
+      type: "Action.Execute",
+      title: "シナリオ 次 →",
+      verb: "searchPage",
+      data: { ...pageData, scenarioPage: sSafePage + 1, faqPage: fSafePage },
+    });
+  }
+  if (fSafePage > 1) {
+    actions.push({
+      type: "Action.Execute",
+      title: "FAQ ← 前",
+      verb: "searchPage",
+      data: { ...pageData, scenarioPage: sSafePage, faqPage: fSafePage - 1 },
+    });
+  }
+  if (fSafePage < fTotalPages) {
+    actions.push({
+      type: "Action.Execute",
+      title: "FAQ 次 →",
+      verb: "searchPage",
+      data: { ...pageData, scenarioPage: sSafePage, faqPage: fSafePage + 1 },
+    });
   }
 
   const card: AdaptiveCard = {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
     version: "1.5",
-    body: [
-      {
-        type: "TextBlock",
-        text: `事務改定 影響候補検出結果${pageInfo}`,
-        weight: "Bolder",
-        size: "Medium",
-      },
-      {
-        type: "TextBlock",
-        text: `入力: 「${truncate(queryText, 60)}」`,
-        wrap: true,
-        size: "Small",
-        color: "Accent",
-      },
-      {
-        type: "TextBlock",
-        text: `検索モード: ${modeLabel} | 取得件数: ${totalItems}件`,
-        size: "Small",
-        isSubtle: true,
-      },
-      // --- タブ切り替えボタン ---
-      {
-        type: "ActionSet",
-        actions: [
-          {
-            type: "Action.ToggleVisibility",
-            title: scenarioLabel,
-            targetElements: [
-              { elementId: "scenarioContainer", isVisible: true },
-              { elementId: "faqContainer", isVisible: false },
-            ],
-          },
-          {
-            type: "Action.ToggleVisibility",
-            title: faqLabel,
-            targetElements: [
-              { elementId: "scenarioContainer", isVisible: false },
-              { elementId: "faqContainer", isVisible: true },
-            ],
-          },
-        ],
-      },
-      // --- シナリオタブ ---
-      buildScenarioContainer(pageScenarios, queryText),
-      // --- FAQタブ ---
-      buildFaqContainer(pageFaqs),
-      // --- ページ遷移 ---
-      ...(pageActions.length > 0
-        ? [{ type: "ActionSet", actions: pageActions }]
-        : []),
-    ],
+    body,
+    ...(actions.length > 0 ? { actions } : {}),
   };
+
+  // 28KB制限チェック（ITEMS_PER_PAGE=25で通常は~18KB以内）
+  const cardSize = JSON.stringify(card).length;
+  if (cardSize > 28 * 1024) {
+    console.warn(`[buildResultCard] Card size ${cardSize} bytes exceeds 28KB limit`);
+  }
 
   return card;
-}
-
-function buildScenarioContainer(
-  scenarios: SearchResultItem[],
-  queryText: string
-) {
-  const items: Record<string, unknown>[] = [];
-
-  for (let i = 0; i < scenarios.length; i++) {
-    const s = scenarios[i];
-    items.push(
-      {
-        type: "ColumnSet",
-        columns: [
-          {
-            type: "Column",
-            width: "auto",
-            items: [
-              {
-                type: "TextBlock",
-                text: `${numEmoji(i + 1)} ${s.categoryName}`,
-                weight: "Bolder",
-                size: "Small",
-              },
-            ],
-          },
-          {
-            type: "Column",
-            width: "stretch",
-            items: [
-              {
-                type: "TextBlock",
-                text: `スコア: ${s.score.toFixed(4)}`,
-                size: "Small",
-                horizontalAlignment: "Right",
-                isSubtle: true,
-              },
-            ],
-          },
-        ],
-      },
-      {
-        type: "TextBlock",
-        text: s.title,
-        weight: "Bolder",
-        wrap: true,
-      },
-      {
-        type: "TextBlock",
-        text: `「${truncate(s.content, 150)}」`,
-        wrap: true,
-        size: "Small",
-        isSubtle: true,
-      },
-      {
-        type: "Input.Toggle",
-        id: `scenario_${s.id}`,
-        title: "要修正",
-        value: "false",
-      },
-      {
-        type: "TextBlock",
-        text: "---",
-        separator: true,
-      }
-    );
-  }
-
-  if (scenarios.length === 0) {
-    items.push({
-      type: "TextBlock",
-      text: "該当するシナリオはありません",
-      isSubtle: true,
-      wrap: true,
-    });
-  }
-
-  return {
-    type: "Container",
-    id: "scenarioContainer",
-    isVisible: true,
-    style: "default",
-    maxHeight: "400px",
-    items: [
-      ...items,
-      ...(scenarios.length > 0
-        ? [
-            {
-              type: "ActionSet",
-              actions: [
-                {
-                  type: "Action.Execute",
-                  title: "要修正を保存",
-                  verb: "saveNeedsUpdate",
-                  data: { query: queryText },
-                  style: "positive",
-                },
-              ],
-            },
-          ]
-        : []),
-    ],
-  };
-}
-
-function buildFaqContainer(faqs: SearchResultItem[]) {
-  const items: Record<string, unknown>[] = [];
-
-  for (let i = 0; i < faqs.length; i++) {
-    const f = faqs[i];
-    items.push({
-      type: "Input.Toggle",
-      id: `faq_${f.id}`,
-      title: `${f.id} | ${f.categoryName} | ${f.title} | スコア: ${f.score.toFixed(4)}`,
-      value: "false",
-    });
-    items.push({
-      type: "TextBlock",
-      text: `「${truncate(f.content, 150)}」`,
-      wrap: true,
-      size: "Small",
-      isSubtle: true,
-      spacing: "None",
-    });
-  }
-
-  if (faqs.length === 0) {
-    items.push({
-      type: "TextBlock",
-      text: "該当するFAQはありません",
-      isSubtle: true,
-      wrap: true,
-    });
-  }
-
-  return {
-    type: "Container",
-    id: "faqContainer",
-    isVisible: false,
-    style: "default",
-    maxHeight: "400px",
-    items: [
-      ...items,
-      ...(faqs.length > 0
-        ? [
-            {
-              type: "ActionSet",
-              actions: [
-                {
-                  type: "Action.Execute",
-                  title: "選択したFAQを削除",
-                  verb: "confirmDeleteFaqs",
-                  style: "destructive",
-                },
-              ],
-            },
-          ]
-        : []),
-    ],
-  };
 }
 
 // --- FR-013: FAQ削除確認カード ---
@@ -499,7 +480,10 @@ function truncate(s: string, max: number): string {
 }
 
 function numEmoji(n: number): string {
-  const emojis = ["", "❶", "❷", "❸", "❹", "❺", "❻", "❼", "❽", "❾", "❿"];
+  const emojis: Record<number, string> = {
+    1: "❶", 2: "❷", 3: "❸", 4: "❹", 5: "❺",
+    6: "❻", 7: "❼", 8: "❽", 9: "❾", 10: "❿",
+  };
   return emojis[n] ?? `(${n})`;
 }
 

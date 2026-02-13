@@ -10,7 +10,7 @@ import {
 } from "@microsoft/agents-hosting";
 import { SearchClient } from "@azure/search-documents";
 import { DefaultAzureCredential } from "@azure/identity";
-import config, { CATEGORIES } from "./config";
+import config, { SCENARIO_CATEGORIES, FAQ_CATEGORIES, DEFAULT_TOP_N } from "./config";
 import {
   buildModeSelectCard,
   buildResultCard,
@@ -19,6 +19,7 @@ import {
   buildNeedsUpdateCompleteCard,
   buildCancelCard,
   SearchResultItem,
+  CategorySelection,
 } from "./cards";
 import { deleteFaqs, saveNeedsUpdate } from "./cosmos";
 
@@ -73,10 +74,10 @@ agentApp.adaptiveCards.actionExecute(
   "searchSemantic",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const query = extractQuery(data, context);
-    const categoryId = String(data.categoryId || "all");
-    const topN = Number(data.topN) || 30;
-    console.log(`[searchSemantic] query: ${query}, categoryId: ${categoryId}, topN: ${topN}`);
-    return await executeSearch(query, "semantic", categoryId, topN);
+    const categories = extractCategorySelections(data);
+    const topN = extractSafeTopN(data);
+    console.log(`[searchSemantic] query: ${query}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
+    return await executeSearch(query, "semantic", categories, topN);
   }
 );
 
@@ -85,10 +86,10 @@ agentApp.adaptiveCards.actionExecute(
   "searchKeyword",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const query = extractQuery(data, context);
-    const categoryId = String(data.categoryId || "all");
-    const topN = Number(data.topN) || 30;
-    console.log(`[searchKeyword] query: ${query}, categoryId: ${categoryId}, topN: ${topN}`);
-    return await executeSearch(query, "keyword", categoryId, topN);
+    const categories = extractCategorySelections(data);
+    const topN = extractSafeTopN(data);
+    console.log(`[searchKeyword] query: ${query}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
+    return await executeSearch(query, "keyword", categories, topN);
   }
 );
 
@@ -97,12 +98,15 @@ agentApp.adaptiveCards.actionExecute(
   "searchPage",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const query = extractQuery(data, context);
-    const mode = (data.mode as string) === "keyword" ? "keyword" : "semantic";
-    const page = Number(data.page) || 1;
-    const categoryId = String(data.categoryId || "all");
-    const topN = Number(data.topN) || 30;
-    console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}, categoryId: ${categoryId}, topN: ${topN}`);
-    return await executeSearchPaged(query, mode, page, categoryId, topN);
+    const mode = extractField(data, "mode", "semantic") === "keyword" ? "keyword" : "semantic";
+    const scenarioPage = extractNumber(data, "scenarioPage", 1);
+    const faqPage = extractNumber(data, "faqPage", 1);
+    const topN = extractSafeTopN(data);
+
+    // ページ遷移時は data に埋め込み済みの selectedCategories を使用
+    const categories = extractCategorySelectionsFromPageData(data);
+    console.log(`[searchPage] query: ${query}, mode: ${mode}, sPage: ${scenarioPage}, fPage: ${faqPage}, topN: ${topN}`);
+    return await executeSearchPaged(query, mode, scenarioPage, faqPage, categories, topN);
   }
 );
 
@@ -110,16 +114,14 @@ agentApp.adaptiveCards.actionExecute(
 agentApp.adaptiveCards.actionExecute(
   "confirmDeleteFaqs",
   async (_context: TurnContext, _state: TurnState, data: Record<string, string>) => {
-    // Input.Toggle の値は "faq_{id}" = "true"/"false" で送られてくる
     const selectedIds = extractSelectedIds(data, "faq_");
     if (selectedIds.length === 0) {
       return { type: "AdaptiveCard", body: [{ type: "TextBlock", text: "削除対象が選択されていません。" }], version: "1.5", $schema: "http://adaptivecards.io/schemas/adaptive-card.json" } as AdaptiveCard;
     }
 
-    // FAQ情報を取得して確認カードを生成
     const faqInfos = selectedIds.map((id) => ({
       id,
-      title: id, // 簡易版: IDのみ表示
+      title: id,
     }));
     return buildDeleteConfirmCard(faqInfos);
   }
@@ -159,11 +161,17 @@ agentApp.adaptiveCards.actionExecute(
   }
 );
 
+// --- 検索結果型 ---
+interface SearchResults {
+  scenarios: SearchResultItem[];
+  faqs: SearchResultItem[];
+}
+
 // --- 検索実行ロジック ---
 async function executeSearch(
   query: string,
   mode: "semantic" | "keyword",
-  categoryId: string,
+  categories: CategorySelection,
   topN: number
 ): Promise<AdaptiveCard> {
   if (!query) {
@@ -174,16 +182,20 @@ async function executeSearch(
       body: [{ type: "TextBlock", text: "検索クエリが取得できませんでした。もう一度テキストを入力してください。", wrap: true, color: "Attention" }],
     } as AdaptiveCard;
   }
+
+  if (categories.scenarios.length === 0 && categories.faqs.length === 0) {
+    return {
+      type: "AdaptiveCard",
+      $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+      version: "1.5",
+      body: [{ type: "TextBlock", text: "検索対象が選択されていません。シナリオまたはFAQのカテゴリを1つ以上選択してください。", wrap: true, color: "Attention" }],
+    } as AdaptiveCard;
+  }
+
   try {
-    let items: SearchResultItem[];
+    const results = await searchByCategories(query, mode, categories, topN);
 
-    if (mode === "semantic") {
-      items = await searchHybrid(query, categoryId, topN);
-    } else {
-      items = await searchKeyword(query, categoryId, topN);
-    }
-
-    if (items.length === 0) {
+    if (results.scenarios.length === 0 && results.faqs.length === 0) {
       return {
         type: "AdaptiveCard",
         $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -192,7 +204,7 @@ async function executeSearch(
       } as AdaptiveCard;
     }
 
-    return buildResultCard(query, mode, items, 1, categoryId, topN);
+    return buildResultCard(query, mode, results.scenarios, results.faqs, 1, 1, categories, topN);
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
@@ -202,8 +214,9 @@ async function executeSearch(
 async function executeSearchPaged(
   query: string,
   mode: "semantic" | "keyword",
-  page: number,
-  categoryId: string,
+  scenarioPage: number,
+  faqPage: number,
+  categories: CategorySelection,
   topN: number
 ): Promise<AdaptiveCard> {
   if (!query) {
@@ -215,11 +228,9 @@ async function executeSearchPaged(
     } as AdaptiveCard;
   }
   try {
-    const items = mode === "semantic"
-      ? await searchHybrid(query, categoryId, topN)
-      : await searchKeyword(query, categoryId, topN);
+    const results = await searchByCategories(query, mode, categories, topN);
 
-    if (items.length === 0) {
+    if (results.scenarios.length === 0 && results.faqs.length === 0) {
       return {
         type: "AdaptiveCard",
         $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -228,7 +239,7 @@ async function executeSearchPaged(
       } as AdaptiveCard;
     }
 
-    return buildResultCard(query, mode, items, page, categoryId, topN);
+    return buildResultCard(query, mode, results.scenarios, results.faqs, scenarioPage, faqPage, categories, topN);
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
@@ -238,12 +249,14 @@ function buildSearchErrorCard(err: unknown): AdaptiveCard {
   console.error("[executeSearch] Error:", err);
   let message: string;
   if (err instanceof Error) {
-    const e = err as unknown as Record<string, unknown>;
-    message = [err.message, e.statusCode, e.code, e.details]
-      .filter(Boolean)
-      .join(" | ");
-  } else {
+    message = err.message;
+    // Azure SDK固有のエラープロパティを安全に取得
+    if ("statusCode" in err) message += ` | Status: ${(err as { statusCode: unknown }).statusCode}`;
+    if ("code" in err) message += ` | Code: ${(err as { code: unknown }).code}`;
+  } else if (typeof err === "object" && err !== null) {
     message = JSON.stringify(err);
+  } else {
+    message = String(err);
   }
   return {
     type: "AdaptiveCard",
@@ -253,84 +266,111 @@ function buildSearchErrorCard(err: unknown): AdaptiveCard {
   } as AdaptiveCard;
 }
 
-// --- FR-003: ハイブリッド検索（BM25 + Vector RRF、Semantic Ranker 廃止） ---
-async function searchHybrid(
-  query: string,
-  categoryId: string,
-  topN: number
-): Promise<SearchResultItem[]> {
-  const validCategories = CATEGORIES.map((c): string => c.id);
-  const safeCategoryId = validCategories.includes(categoryId) ? categoryId : "all";
-  const rawTopN = parseInt(String(topN), 10);
-  const safeTopN = Number.isNaN(rawTopN) ? 30 : Math.min(Math.max(rawTopN, 10), 150);
+// --- ホワイトリスト ---
+const VALID_SCENARIO_IDS: Set<string> = new Set(SCENARIO_CATEGORIES.map((c) => c.id));
+const VALID_FAQ_IDS: Set<string> = new Set(FAQ_CATEGORIES.map((c) => c.id));
 
-  let filter = "isDeleted eq false";
-  if (safeCategoryId !== "all") {
-    filter += ` and categoryId eq '${safeCategoryId}'`;
-  }
-
-  const results = await getSearchClient().search(query, {
-    queryType: "simple",
-    vectorSearchOptions: {
-      queries: [
-        {
-          kind: "text",
-          text: query,
-          fields: ["contentVector"],
-        },
-      ],
-    },
-    select: ["id", "dataType", "categoryName", "title", "content"],
-    top: safeTopN,
-    filter,
+function deduplicateById(items: SearchResultItem[]): SearchResultItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
   });
-
-  const items: SearchResultItem[] = [];
-  for await (const result of results.results) {
-    const doc = result.document as Record<string, unknown>;
-    items.push({
-      id: String(doc.id),
-      dataType: doc.dataType as "scenario" | "faq",
-      categoryName: String(doc.categoryName),
-      title: String(doc.title),
-      content: String(doc.content),
-      score: result.score ?? 0,
-    });
-  }
-
-  return items;
 }
 
-// --- FR-004: キーワード一致検索 ---
-async function searchKeyword(
+// --- カテゴリ別並列検索 ---
+async function searchByCategories(
   query: string,
+  mode: "semantic" | "keyword",
+  categories: CategorySelection,
+  topN: number
+): Promise<SearchResults> {
+  // ホワイトリスト検証済みのカテゴリIDのみ使用
+  const validScenarioIds = categories.scenarios.filter((catId) => VALID_SCENARIO_IDS.has(catId));
+  const validFaqIds = categories.faqs.filter((catId) => VALID_FAQ_IDS.has(catId));
+
+  // シナリオ: 選択カテゴリ分を並列検索
+  const scenarioPromises = validScenarioIds.map((catId) =>
+    searchSingle(query, mode, "scenario", catId, topN)
+  );
+  // FAQ: 選択カテゴリ分を並列検索
+  const faqPromises = validFaqIds.map((catId) =>
+    searchSingle(query, mode, "faq", catId, topN)
+  );
+
+  const [scenarioResults, faqResults] = await Promise.all([
+    Promise.allSettled(scenarioPromises),
+    Promise.allSettled(faqPromises),
+  ]);
+
+  // 成功した結果のみ取得、失敗はログ出力
+  const scenarios = scenarioResults
+    .filter((r): r is PromiseFulfilledResult<SearchResultItem[]> => r.status === "fulfilled")
+    .flatMap((r) => r.value);
+  const faqs = faqResults
+    .filter((r): r is PromiseFulfilledResult<SearchResultItem[]> => r.status === "fulfilled")
+    .flatMap((r) => r.value);
+
+  scenarioResults.forEach((r, i) => {
+    if (r.status === "rejected") {
+      console.error(`[searchByCategories] scenario/${validScenarioIds[i]} failed:`, r.reason);
+    }
+  });
+  faqResults.forEach((r, i) => {
+    if (r.status === "rejected") {
+      console.error(`[searchByCategories] faq/${validFaqIds[i]} failed:`, r.reason);
+    }
+  });
+
+  return {
+    scenarios: deduplicateById(scenarios).sort((a, b) => b.score - a.score),
+    faqs: deduplicateById(faqs).sort((a, b) => b.score - a.score),
+  };
+}
+
+// --- 単一カテゴリ検索 ---
+async function searchSingle(
+  query: string,
+  mode: "semantic" | "keyword",
+  dataType: "scenario" | "faq",
   categoryId: string,
   topN: number
 ): Promise<SearchResultItem[]> {
-  const validCategories = CATEGORIES.map((c): string => c.id);
-  const safeCategoryId = validCategories.includes(categoryId) ? categoryId : "all";
-  const rawTopN = parseInt(String(topN), 10);
-  const safeTopN = Number.isNaN(rawTopN) ? 30 : Math.min(Math.max(rawTopN, 10), 150);
+  // categoryId は searchByCategories でホワイトリスト検証済み
+  const filter = `isDeleted eq false and dataType eq '${dataType}' and categoryId eq '${categoryId}'`;
 
-  let filter = "isDeleted eq false";
-  if (safeCategoryId !== "all") {
-    filter += ` and categoryId eq '${safeCategoryId}'`;
-  }
+  const options = mode === "semantic"
+    ? {
+        queryType: "simple" as const,
+        vectorSearchOptions: {
+          queries: [
+            {
+              kind: "text" as const,
+              text: query,
+              fields: ["contentVector"],
+            },
+          ],
+        },
+        select: ["id", "dataType", "categoryName", "title", "content"] as string[],
+        top: topN,
+        filter,
+      }
+    : {
+        queryType: "full" as const,
+        searchFields: ["title", "content", "keywords"] as string[],
+        select: ["id", "dataType", "categoryName", "title", "content"] as string[],
+        top: topN,
+        filter,
+      };
 
-  const results = await getSearchClient().search(query, {
-    queryType: "full",
-    searchFields: ["title", "content", "keywords"],
-    select: ["id", "dataType", "categoryName", "title", "content"],
-    top: safeTopN,
-    filter,
-  });
-
+  const searchResults = await getSearchClient().search(query, options);
   const items: SearchResultItem[] = [];
-  for await (const result of results.results) {
+  for await (const result of searchResults.results) {
     const doc = result.document as Record<string, unknown>;
     items.push({
       id: String(doc.id),
-      dataType: doc.dataType as "scenario" | "faq",
+      dataType,
       categoryName: String(doc.categoryName),
       title: String(doc.title),
       content: String(doc.content),
@@ -338,6 +378,7 @@ async function searchKeyword(
     });
   }
 
+  console.log(`[searchSingle] ${dataType}/${categoryId}: ${items.length} results`);
   return items;
 }
 
@@ -347,16 +388,82 @@ async function searchKeyword(
 function extractQuery(data: Record<string, unknown>, context: TurnContext): string {
   // 1. data.query（直接渡し）
   if (typeof data?.query === "string" && data.query) return data.query;
-  // 2. activity.value.action.data.query（Bot Framework標準構造）
+  // 2. data.data.query（M365 Agents SDK: dataがAction全体の場合）
+  const nested = data?.data as Record<string, unknown> | undefined;
+  if (typeof nested?.query === "string" && nested.query) return nested.query;
+  // 3. activity.value.action.data.query（Bot Framework標準構造）
   const val = context.activity.value as Record<string, unknown> | undefined;
   const actionData = (val?.action as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
   if (typeof actionData?.query === "string" && actionData.query) return actionData.query;
-  // 3. activity.value.data.query
+  // 4. activity.value.data.query
   const valData = val?.data as Record<string, unknown> | undefined;
   if (typeof valData?.query === "string" && valData.query) return valData.query;
-  // 4. activity.value.query
+  // 5. activity.value.query
   if (typeof val?.query === "string" && val.query) return val.query;
   return "";
+}
+
+/** Action.Execute の data からフィールドを取得（data.X ?? data.data.X フォールバック） */
+function extractField(data: Record<string, unknown>, field: string, defaultValue: string): string {
+  if (typeof data?.[field] === "string" && data[field]) return data[field] as string;
+  const nested = data?.data as Record<string, unknown> | undefined;
+  if (typeof nested?.[field] === "string" && nested[field]) return nested[field] as string;
+  return defaultValue;
+}
+
+/** Action.Execute の data から数値フィールドを取得 */
+function extractNumber(data: Record<string, unknown>, field: string, defaultValue: number): number {
+  if (data?.[field] !== undefined && data[field] !== null) {
+    const v = Number(data[field]);
+    if (!isNaN(v)) return v;
+  }
+  const nested = data?.data as Record<string, unknown> | undefined;
+  if (nested?.[field] !== undefined && nested[field] !== null) {
+    const v = Number(nested[field]);
+    if (!isNaN(v)) return v;
+  }
+  return defaultValue;
+}
+
+/** topN をバリデーション付きで取得（10〜100に制限） */
+function extractSafeTopN(data: Record<string, unknown>): number {
+  const raw = extractNumber(data, "topN", DEFAULT_TOP_N);
+  return Math.min(Math.max(raw, 10), 100);
+}
+
+/** Input.Toggle の値を boolean として判定（SDK差異を吸収） */
+function isToggleOn(value: unknown): boolean {
+  return value === "true" || value === true;
+}
+
+/** 初回検索時: チェックボックスから CategorySelection を抽出 */
+function extractCategorySelections(data: Record<string, unknown>): CategorySelection {
+  const scenarios = SCENARIO_CATEGORIES
+    .filter((c) => isToggleOn(data[`cat_s_${c.id}`]))
+    .map((c) => c.id);
+  const faqs = FAQ_CATEGORIES
+    .filter((c) => isToggleOn(data[`cat_f_${c.id}`]))
+    .map((c) => c.id);
+  return { scenarios, faqs };
+}
+
+/** ページ遷移時: data.selectedCategories から CategorySelection を取得 */
+function extractCategorySelectionsFromPageData(data: Record<string, unknown>): CategorySelection {
+  // data.selectedCategories ?? data.data.selectedCategories フォールバック
+  const sel = data?.selectedCategories as CategorySelection | undefined;
+  if (sel && Array.isArray(sel.scenarios) && Array.isArray(sel.faqs)) {
+    return sel;
+  }
+  const nested = data?.data as Record<string, unknown> | undefined;
+  const nestedSel = nested?.selectedCategories as CategorySelection | undefined;
+  if (nestedSel && Array.isArray(nestedSel.scenarios) && Array.isArray(nestedSel.faqs)) {
+    return nestedSel;
+  }
+  // フォールバック: 全カテゴリ
+  return {
+    scenarios: SCENARIO_CATEGORIES.map((c) => c.id),
+    faqs: FAQ_CATEGORIES.map((c) => c.id),
+  };
 }
 
 function extractSelectedIds(
@@ -365,7 +472,7 @@ function extractSelectedIds(
 ): string[] {
   const ids: string[] = [];
   for (const [key, value] of Object.entries(data)) {
-    if (key.startsWith(prefix) && value === "true") {
+    if (key.startsWith(prefix) && isToggleOn(value)) {
       ids.push(key.replace(prefix, ""));
     }
   }
