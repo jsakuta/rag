@@ -157,30 +157,6 @@ class DBVersionManager:
         """
         return self._cache.get(business_area, DBVersionInfo())
 
-    def get_faq_mtime(self, business_area: str) -> float:
-        """FAQファイルの最終更新時刻を取得
-
-        Args:
-            business_area: 業務分野名
-
-        Returns:
-            float: Unix timestamp（未設定の場合は0.0）
-        """
-        version = self.get_version(business_area)
-        return version.faq_mtime or 0.0
-
-    def get_scenario_mtime(self, business_area: str) -> float:
-        """シナリオファイルの最終更新時刻を取得
-
-        Args:
-            business_area: 業務分野名
-
-        Returns:
-            float: Unix timestamp（未設定の場合は0.0）
-        """
-        version = self.get_version(business_area)
-        return version.scenario_mtime or 0.0
-
     def update_faq_mtime(self, business_area: str, mtime: float) -> None:
         """FAQファイルの最終更新時刻を更新
 
@@ -214,29 +190,6 @@ class DBVersionManager:
             last_updated=datetime.utcnow().isoformat(),
         )
         self._dirty = True
-
-    def update_after_success(
-        self,
-        business_area: str,
-        faq_path: Optional[str] = None,
-        scenario_path: Optional[str] = None
-    ) -> None:
-        """DB更新成功後にタイムスタンプを記録
-
-        Args:
-            business_area: 業務分野名
-            faq_path: FAQファイルのパス（存在する場合のみ更新）
-            scenario_path: シナリオファイルのパス（存在する場合のみ更新）
-        """
-        if faq_path and os.path.exists(faq_path):
-            self.update_faq_mtime(business_area, os.path.getmtime(faq_path))
-
-        if scenario_path and os.path.exists(scenario_path):
-            self.update_scenario_mtime(business_area, os.path.getmtime(scenario_path))
-
-        # 即時永続化
-        self.save()
-        logger.info(f"業務分野 '{business_area}' のタイムスタンプを更新しました")
 
     def needs_update(
         self,
@@ -273,14 +226,6 @@ class DBVersionManager:
                 return True
 
         return False
-
-    def list_business_areas(self) -> list:
-        """管理している業務分野の一覧を取得
-
-        Returns:
-            list: 業務分野名のリスト
-        """
-        return list(self._cache.keys())
 
     def clear(self) -> None:
         """キャッシュをクリア"""

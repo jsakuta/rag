@@ -118,28 +118,3 @@ class JudgmentSupport:
 
         return result
 
-    def evaluate_batch(
-        self, results: List[Dict[str, Any]], revision_content: str
-    ) -> List[Dict[str, Any]]:
-        """バッチで関連性評価を実行"""
-        if not self.config.multi_stage_enable_judgment_support:
-            logger.info("LLM判断支援は無効です。スキップします。")
-            for result in results:
-                result['Relevance_Judgment'] = ""
-                result['Judgment_Reason'] = ""
-            return results
-
-        logger.info(f"=== LLM判断支援開始 ({len(results)}件) ===")
-
-        for i, result in enumerate(results):
-            logger.debug(f"  評価中: {i+1}/{len(results)}")
-            evaluation = self.evaluate(
-                revision_content,
-                result.get('Search_Result_Q', ''),
-                result.get('Search_Result_A', '')
-            )
-            result['Relevance_Judgment'] = evaluation['relevance_judgment']
-            result['Judgment_Reason'] = evaluation['judgment_reason']
-
-        logger.info("=== LLM判断支援完了 ===")
-        return results

@@ -51,17 +51,6 @@ class InputHandler:
         ids = [id_str.strip() for id_str in str(value).split(',')]
         return [id_str for id_str in ids if id_str]
 
-    def _build_combined_text(self, hierarchy: str, query: str, answer: str) -> str:
-        """結合テキストを生成"""
-        text_parts = []
-        if hierarchy and hierarchy.strip():
-            text_parts.append(f"分類: {hierarchy}")
-        if query and query.strip():
-            text_parts.append(f"質問: {query}")
-        if answer and answer.strip():
-            text_parts.append(f"回答: {answer}")
-        return " | ".join(text_parts) if text_parts else ""
-
     def _get_latest_file(self, directory: str, file_pattern: str, name_regex: Optional[str] = None) -> str:
         """指定ディレクトリ内の最新ファイルを検索（パストラバーサル防止）
 
@@ -112,7 +101,7 @@ class InputHandler:
 
 class ExcelInputHandler(InputHandler):
     def load_data(self) -> list:
-        input_file = self._get_latest_file(self.input_dir, "*.xlsx")
+        input_file = self._get_latest_file(self.input_dir, "*.xlsx", name_regex=self.config.INPUT_FILE_PATTERN)
         self.current_file = os.path.basename(input_file)  # DB選択用
         logger.info(f"Processing input file: {self.current_file}")
         input_df = pd.read_excel(input_file)
@@ -408,7 +397,7 @@ class MultiFolderInputHandler(InputHandler):
 
     def load_data(self) -> list:
         # 入力データの読み込み（従来通り）
-        input_file = self._get_latest_file(self.input_dir, "*.xlsx")
+        input_file = self._get_latest_file(self.input_dir, "*.xlsx", name_regex=self.config.INPUT_FILE_PATTERN)
         self.current_file = os.path.basename(input_file)  # DB選択用
         logger.info(f"Processing input file: {self.current_file}")
         input_df = pd.read_excel(input_file)

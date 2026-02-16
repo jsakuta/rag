@@ -32,11 +32,14 @@ class Processor:
         else:
             self.judgment_support = None
 
-    def process_data(self, mode: str = "batch"):
+    def process_data(self, mode: str = "batch", limit: int = None):
         """データ処理のメイン関数"""
         try:
             # 入力データの読み込み
             input_data = self.input_handler.load_data()
+            if limit is not None:
+                input_data = input_data[:limit]
+                logger.info(f"--limit {limit}: 先頭{len(input_data)}件のみ処理")
             # 参照データの読み込み（新しいハンドラーを使用）
             reference_data = self.reference_handler.load_reference_data()
 

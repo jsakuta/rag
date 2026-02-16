@@ -61,7 +61,6 @@ class Searcher:
         self.current_business_area = None
 
         # プロンプトファイルのキャッシュ（パフォーマンス向上）
-        self._latest_prompt_cache: Optional[str] = None
         self._summarize_prompt_cache: Optional[str] = None
 
         # パフォーマンス: キーワードキャッシュ（N+1問題解消）
@@ -111,44 +110,6 @@ class Searcher:
                 position_weight=self.config.POSITION_WEIGHT
             )
         return self._keyword_engine.calculate_similarity(query_keywords, reference_text)
-
-    def _load_latest_prompt(self) -> str:
-        """最新のプロンプトファイルを読み込む（キャッシュ対応・パストラバーサル防止）"""
-        if self._latest_prompt_cache is not None:
-            return self._latest_prompt_cache
-
-        from pathlib import Path
-
-        prompt_dir = os.path.join(self.config.base_dir, "prompt")
-        prompt_dir_resolved = Path(prompt_dir).resolve()
-
-        # セキュリティ: 許可された拡張子のみ
-        ALLOWED_EXTENSIONS = {'.txt', '.md'}
-
-        prompt_files = []
-        for f in os.listdir(prompt_dir):
-            # パス結合時にPathを使用（Windowsのパス区切り問題を回避）
-            file_path = (prompt_dir_resolved / f).resolve()
-
-            # セキュリティ: パストラバーサル防止（Path.relative_to() で検証）
-            try:
-                file_path.relative_to(prompt_dir_resolved)  # 親ディレクトリ外なら ValueError
-            except ValueError:
-                logger.warning(f"Path traversal attempt blocked: {f}")
-                continue
-
-            if file_path.is_file() and file_path.suffix.lower() in ALLOWED_EXTENSIONS:
-                prompt_files.append(str(file_path))
-
-        if not prompt_files:
-            raise FileNotFoundError(f"No prompt files found in {prompt_dir}")
-
-        latest_prompt_file = max(prompt_files, key=os.path.getctime)
-        logger.info(f"Using prompt file: {Path(latest_prompt_file).name}")
-
-        with open(latest_prompt_file, 'r', encoding='utf-8') as f:
-            self._latest_prompt_cache = f.read()
-        return self._latest_prompt_cache
 
     def _load_summarize_prompt(self) -> str:
         """検索クエリ生成用のプロンプトファイルを読み込む（キャッシュ対応・パストラバーサル防止）"""

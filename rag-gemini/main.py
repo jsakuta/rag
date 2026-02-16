@@ -41,6 +41,7 @@ def parse_args():
 
     # メイン（バッチ）モードのオプション
     parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（例: 総則）。未指定時は全業務分野")
+    parser.add_argument("--limit", dest="limit", type=int, default=None, help="処理する入力データの件数上限（例: --limit 5 で先頭5件のみ）")
 
     return parser.parse_args()
 
@@ -187,7 +188,8 @@ def main():
 
         logger.info("Starting in batch mode")
         processor = Processor(config)
-        processor.process_data(mode="batch")
+        limit = getattr(args, 'limit', None)
+        processor.process_data(mode="batch", limit=limit)
 
 if __name__ == "__main__":
     main()

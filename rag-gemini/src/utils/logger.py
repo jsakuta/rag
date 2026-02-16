@@ -10,7 +10,7 @@
 import logging
 import os
 import sys
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List
 
 # richがインストールされているか確認
 try:
@@ -20,10 +20,7 @@ try:
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
-    from rich.columns import Columns
-    from rich.box import ROUNDED, HEAVY, SIMPLE, MINIMAL, DOUBLE
-    from rich.style import Style
-    from rich.padding import Padding
+    from rich.box import ROUNDED
     from rich import box
     RICH_AVAILABLE = True
 
@@ -313,49 +310,6 @@ def print_search_result(
         console.print(result_text)
     else:
         print(f"  {provider}: {result_count}件 ({', '.join(areas)})")
-
-
-def print_summary_table(results: List[Tuple[str, int, int, float, int, int, float]]):
-    """評価結果サマリーをテーブル表示
-
-    results: [(revision, azure_count, azure_found, azure_rate, vertex_count, vertex_found, vertex_rate), ...]
-    """
-    if RICH_AVAILABLE:
-        console = get_console()
-        table = Table(
-            title="[bold #00BCD4]評価結果サマリー[/bold #00BCD4]",
-            show_header=True,
-            header_style="bold #90A4AE",
-            border_style="#546E7A",
-            box=box.ROUNDED,
-        )
-
-        table.add_column("改定", style="#FF9800 bold", justify="center", width=6)
-        table.add_column("Azure件数", style="#64B5F6", justify="right")
-        table.add_column("Azure正解", style="#64B5F6", justify="right")
-        table.add_column("Azure率", style="#64B5F6", justify="right")
-        table.add_column("Vertex件数", style="#81C784", justify="right")
-        table.add_column("Vertex正解", style="#81C784", justify="right")
-        table.add_column("Vertex率", style="#81C784", justify="right")
-
-        for row in results:
-            revision, az_cnt, az_found, az_rate, vx_cnt, vx_found, vx_rate = row
-            table.add_row(
-                str(revision),
-                str(az_cnt),
-                str(az_found),
-                f"{az_rate:.1%}" if az_rate > 0 else "-",
-                str(vx_cnt),
-                str(vx_found),
-                f"{vx_rate:.1%}" if vx_rate > 0 else "-",
-            )
-
-        console.print()
-        console.print(table)
-    else:
-        print("\n評価結果サマリー")
-        for row in results:
-            print(f"  {row[0]}: Azure={row[1]}件, Vertex={row[4]}件")
 
 
 def print_completion(output_file: str, elapsed_time: float = 0):

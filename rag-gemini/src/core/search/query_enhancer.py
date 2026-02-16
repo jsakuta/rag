@@ -132,7 +132,3 @@ class QueryEnhancer:
                 logger.info("LLM API error - stopping processing as configured")
                 raise
 
-    def clear_cache(self) -> None:
-        """プロンプトキャッシュをクリア"""
-        self._prompt_cache = None
-        logger.info("プロンプトキャッシュをクリアしました")

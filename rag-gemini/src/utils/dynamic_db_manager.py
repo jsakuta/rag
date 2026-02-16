@@ -864,21 +864,6 @@ class DynamicDBManager:
 
         return db_path
     
-    def validate_file_name(self, filename: str, pattern: str, file_type: str):
-        """ファイル名の妥当性チェック"""
-        if not re.match(pattern, filename):
-            raise DynamicDBError(
-                f"不正な{file_type}ファイル名: {filename}\n"
-                f"期待される形式: {pattern}"
-            )
-    
-    def check_db_creation_permission(self, db_path: str):
-        """DB作成権限のチェック"""
-        try:
-            os.makedirs(db_path, exist_ok=True)
-        except PermissionError:
-            raise DynamicDBError(f"DB作成権限がありません: {db_path}")
-    
     def get_all_business_areas(self) -> List[str]:
         """全業務分野の一覧を取得（新旧両構造対応）
 

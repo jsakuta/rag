@@ -275,18 +275,3 @@ class MetadataVectorDB:
         self.client.delete_collection(name=self.collection_name)
         logger.info(f"Collection '{self.collection_name}' deleted")
     
-    def reset_collection(self) -> None:
-        """コレクションをリセット（削除して再作成）"""
-        try:
-            self.delete_collection()
-        except ValueError:
-            # コレクションが存在しない場合は無視
-            logger.debug(f"Collection '{self.collection_name}' did not exist, creating new one")
-        except Exception as e:
-            logger.warning(f"Error deleting collection '{self.collection_name}': {e}")
-
-        self.collection = self.client.create_collection(
-            name=self.collection_name,
-            metadata={"description": "RAG system vector database with metadata"}
-        )
-        logger.info(f"Collection '{self.collection_name}' reset") 

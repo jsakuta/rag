@@ -40,15 +40,6 @@ class VectorSearchEngine:
 
         logger.info("VectorSearchEngineを初期化しました")
 
-    def set_vector_db(self, vector_db: MetadataVectorDB) -> None:
-        """ベクトルDBを設定
-
-        Args:
-            vector_db: 設定するベクトルデータベース
-        """
-        self.vector_db = vector_db
-        logger.info("VectorDBを設定しました")
-
     def encode_query(self, query: str) -> List[float]:
         """クエリをベクトルに変換
 
@@ -102,36 +93,6 @@ class VectorSearchEngine:
             source = result['metadata'].get('source', 'unknown')
             source_counts[source] = source_counts.get(source, 0) + 1
         logger.info(f"  Search results by source: {source_counts}")
-
-        return search_results
-
-    def search_with_vector(
-        self,
-        query_vector: List[float],
-        n_results: int,
-        filter_metadata: Optional[Dict[str, str]] = None
-    ) -> List[VectorSearchResultDict]:
-        """ベクトルを直接使用して検索
-
-        Args:
-            query_vector: 検索クエリベクトル
-            n_results: 返す結果の数
-            filter_metadata: メタデータフィルタ（オプション）
-
-        Returns:
-            List[VectorSearchResultDict]: 検索結果のリスト
-
-        Raises:
-            RuntimeError: VectorDBが設定されていない場合
-        """
-        if self.vector_db is None:
-            raise RuntimeError("VectorDBが設定されていません。set_vector_db()を呼び出してください。")
-
-        search_results = self.vector_db.search(
-            query_embedding=query_vector,
-            n_results=n_results,
-            filter_metadata=filter_metadata
-        )
 
         return search_results
 

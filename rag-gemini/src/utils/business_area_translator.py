@@ -153,34 +153,6 @@ class BusinessAreaTranslator:
 
         return sanitized if sanitized else self.defaults.get('collection_name', 'default')
 
-    def get_all_mappings(self) -> Dict[str, str]:
-        """全マッピングを取得
-
-        Returns:
-            Dict[str, str]: 基本マッピング + 事務改定マッピング
-        """
-        return {**self.mappings, **self.revision_mappings}
-
-    def add_mapping(self, japanese: str, english: str) -> None:
-        """マッピングを追加（実行時のみ）
-
-        Args:
-            japanese: 日本語名
-            english: 英語名
-        """
-        self.mappings[japanese] = english
-        logger.info(f"マッピングを追加: {japanese} -> {english}")
-
-    def is_revision_area(self, business_area: str) -> bool:
-        """事務改定用の業務分野かどうかを判定
-
-        Args:
-            business_area: 業務分野名
-
-        Returns:
-            bool: 事務改定用の場合True
-        """
-        return business_area.startswith('rev') or business_area in self.revision_mappings.values()
 
 
 # グローバルインスタンス（シングルトンパターン）

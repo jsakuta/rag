@@ -7,7 +7,7 @@ DRY原則に従い、同じロジックの重複を排除。
 
 from dataclasses import dataclass
 from typing import Optional
-from src.types.search_types import ParsedCombinedText, ParsedCombinedTextDict
+from src.types.search_types import ParsedCombinedText
 
 
 @dataclass
@@ -28,39 +28,6 @@ class TextCombiner:
     LABEL_HIERARCHY = "分類"
     LABEL_QUERY = "質問"
     LABEL_ANSWER = "回答"
-
-    def combine(
-        self,
-        query: str,
-        answer: str,
-        hierarchy: Optional[str] = None
-    ) -> str:
-        """質問・回答・階層情報を結合テキストに変換
-
-        Args:
-            query: 質問テキスト
-            answer: 回答テキスト
-            hierarchy: 階層情報（オプション）
-
-        Returns:
-            str: 結合テキスト
-
-        Examples:
-            >>> combiner = TextCombiner()
-            >>> combiner.combine("質問", "回答", "Lv1 > Lv2")
-            '分類: Lv1 > Lv2 | 質問: 質問 | 回答: 回答'
-            >>> combiner.combine("質問", "回答")
-            '質問: 質問 | 回答: 回答'
-        """
-        parts = []
-
-        if hierarchy:
-            parts.append(f"{self.LABEL_HIERARCHY}: {hierarchy}")
-
-        parts.append(f"{self.LABEL_QUERY}: {query}")
-        parts.append(f"{self.LABEL_ANSWER}: {answer}")
-
-        return self.separator.join(parts)
 
     def parse(self, combined_text: str) -> ParsedCombinedText:
         """結合テキストを解析して構造化データに変換
@@ -102,17 +69,6 @@ class TextCombiner:
             query=query,
             answer=answer
         )
-
-    def parse_to_dict(self, combined_text: str) -> ParsedCombinedTextDict:
-        """結合テキストを解析して辞書形式で返す（後方互換性用）
-
-        Args:
-            combined_text: 結合テキスト
-
-        Returns:
-            ParsedCombinedTextDict: 解析結果の辞書
-        """
-        return self.parse(combined_text).to_dict()
 
     def build_display_query(
         self,
