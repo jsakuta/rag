@@ -53,7 +53,7 @@
 rag-maintenance/
 ├── CLAUDE.md                 ← このファイル
 ├── docs/
-│   ├── 要件定義書.md                            # 要件定義書 v3.2
+│   ├── 要件定義書.md                            # 要件定義書 v3.3
 │   ├── 導入手順書.md                            # 導入手順書 v1.4
 │   └── screenshots/                            # スクリーンショット
 ├── scripts/                  # AI Search設定用JSON（index, datasource, skillset, indexer）
@@ -61,14 +61,16 @@ rag-maintenance/
 └── (今後追加)
 ```
 
-## 要件定義書（v3.2）概要
+## 要件定義書（v3.3）概要
 
 - 文書番号: REQ-FAQ-IMPACT-002
 - Azure リソース: OpenAI (S0) / AI Search (Basic) / Cosmos DB (Serverless) / Bot Service (F0, Single-Tenant) / Web App (B1)
 - 検索方式: ハイブリッド検索（テキスト + ベクトル 3,072次元） + Semantic Ranker
 - SDK: **M365 Agents SDK**（`@microsoft/agents-hosting`）が基本方針
 - Cosmos DB コンテナ: `scenarios`、`faqs`（別コンテナ、パーティションキー `/categoryId`）、`impactAssessments`
-- UI: Adaptive Card（ToggleVisibility でタブ切替、ScrollArea でスクロール）
+- UI: Adaptive Card（ToggleVisibility でタブ切替、ページネーション）
+- FR-015: シナリオ要修正Excel出力（要修正行を黄色ハイライト、ExcelJS + インライン添付）
+- FR-006: 差分ベクトル化（High Water Mark方式で変更分のみ自動再ベクトル化）
 - 8.4節: **BotアプリからAzure OpenAIを直接呼び出さない**。EmbeddingはすべてAI Search経由（Skillset/Vectorizer）
 
 ## 導入手順書（v1.4）概要
@@ -133,13 +135,16 @@ rag-maintenance/
 - **F5ローカルデバッグ起動**: ✅ 完了（遅延初期化修正、AZURE_OPENAI_*削除、.localConfigs設定済み）
 - **Bot基本通信（カード表示）**: ✅ 完了（モード選択カード表示まで動作確認）
 - **検索機能**: 🔧 403→開発者にSearch Index Data Readerロール付与済み（反映待ち）
-- **Cosmos DBテストデータ投入**: ⬜ 未着手（`scripts/seed-cosmos.ts`作成済み）
+- **Cosmos DBテストデータ投入**: ✅ 投入済み（scenarios 2,318件 + faqs 18,744件 = 計21,062件、AI Searchインデックス反映済み）
+- **想定外データ**: `cat-yokin`/`cat-kawase`/`cat-yushi` の15件が初期テスト残骸として残存（要削除）
 - **Adaptive Card UIテスト**: ⬜ 未着手
+- **FR-015 Excel出力**: ⬜ 未実装
 
 ### ⬜ 未完了
 
-1. **Step 13残タスク**: 検索テスト + テストデータ投入 + UI確認
-2. **手順書 v2.0 完成**（スクショ付き、最終Word化）
+1. **Step 13残タスク**: 想定外データ削除 + 検索テスト + UI確認
+2. **FR-015実装**: シナリオ要修正Excel出力（ExcelJS + インライン添付）
+3. **手順書 v2.0 完成**（スクショ付き、最終Word化）
 
 ## コーディング規約・ドキュメント規約
 
