@@ -12,7 +12,7 @@ import { SearchClient } from "@azure/search-documents";
 import { DefaultAzureCredential } from "@azure/identity";
 import config, { SCENARIO_CATEGORIES, FAQ_CATEGORIES, DEFAULT_TOP_N } from "./config";
 import {
-  buildModeSelectCard,
+  buildSearchCard,
   buildResultCard,
   buildDeleteConfirmCard,
   buildDeleteCompleteCard,
@@ -46,7 +46,7 @@ agentApp.onConversationUpdate("membersAdded", async (context: TurnContext) => {
   );
 });
 
-// --- FR-001: テキスト入力 → 検索モード選択カード ---
+// --- FR-001: テキスト入力 → 統合検索カード ---
 agentApp.onActivity(ActivityTypes.Message, async (context: TurnContext) => {
   const query = context.activity.text?.trim();
   if (!query) {
@@ -62,33 +62,35 @@ agentApp.onActivity(ActivityTypes.Message, async (context: TurnContext) => {
     return;
   }
 
-  const card = buildModeSelectCard(query);
+  const card = buildSearchCard(query);
   const activity = MessageFactory.attachment(
     CardFactory.adaptiveCard(card)
   );
   await context.sendActivity(activity);
 });
 
-// --- FR-003: ハイブリッド検索 (Action.Execute verb: searchSemantic) ---
+// --- FR-003: 意味検索 (Action.Execute verb: searchSemantic) ---
 agentApp.adaptiveCards.actionExecute(
   "searchSemantic",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const query = extractQuery(data, context);
-    const categories = extractCategorySelections(data);
+    const targetType = extractTargetType(data);
+    const categories = extractCategorySelections(data, targetType);
     const topN = extractSafeTopN(data);
-    console.log(`[searchSemantic] query: ${query}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
+    console.log(`[searchSemantic] query: ${query}, targetType: ${targetType}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
     return await executeSearch(query, "semantic", categories, topN);
   }
 );
 
-// --- FR-004: キーワード一致検索 (Action.Execute verb: searchKeyword) ---
+// --- FR-004: キーワード検索 (Action.Execute verb: searchKeyword) ---
 agentApp.adaptiveCards.actionExecute(
   "searchKeyword",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const query = extractQuery(data, context);
-    const categories = extractCategorySelections(data);
+    const targetType = extractTargetType(data);
+    const categories = extractCategorySelections(data, targetType);
     const topN = extractSafeTopN(data);
-    console.log(`[searchKeyword] query: ${query}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
+    console.log(`[searchKeyword] query: ${query}, targetType: ${targetType}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
     return await executeSearch(query, "keyword", categories, topN);
   }
 );
@@ -384,6 +386,8 @@ async function searchSingle(
 
 // --- ユーティリティ ---
 
+type SearchTargetType = "scenario" | "faq";
+
 /** Action.Execute の data から query を取得（SDKのデータ構造差異を吸収） */
 function extractQuery(data: Record<string, unknown>, context: TurnContext): string {
   // 1. data.query（直接渡し）
@@ -427,8 +431,17 @@ function extractNumber(data: Record<string, unknown>, field: string, defaultValu
 
 /** topN をバリデーション付きで取得（10〜100に制限） */
 function extractSafeTopN(data: Record<string, unknown>): number {
-  const raw = extractNumber(data, "topN", DEFAULT_TOP_N);
+  // シナリオタブは "topN"、FAQタブは "topN_faq" のIDを使用
+  let raw = extractNumber(data, "topN", -1);
+  if (raw < 0) raw = extractNumber(data, "topN_faq", DEFAULT_TOP_N);
+  if (raw < 0) raw = DEFAULT_TOP_N;
   return Math.min(Math.max(raw, 10), 100);
+}
+
+/** data から targetType を取得（"scenario" | "faq"、デフォルト "scenario"） */
+function extractTargetType(data: Record<string, unknown>): SearchTargetType {
+  const raw = extractField(data, "targetType", "scenario");
+  return raw === "faq" ? "faq" : "scenario";
 }
 
 /** Input.Toggle の値を boolean として判定（SDK差異を吸収） */
@@ -436,22 +449,25 @@ function isToggleOn(value: unknown): boolean {
   return value === "true" || value === true;
 }
 
-/** 初回検索時: チェックボックスから CategorySelection を抽出（data.X ?? data.data.X フォールバック） */
-function extractCategorySelections(data: Record<string, unknown>): CategorySelection {
+/** 初回検索時: チェックボックスから CategorySelection を抽出（scat_ / fcat_ プレフィックス） */
+function extractCategorySelections(
+  data: Record<string, unknown>,
+  targetType: SearchTargetType
+): CategorySelection {
   const nested = data?.data as Record<string, unknown> | undefined;
-  const scenarios = SCENARIO_CATEGORIES
+  const prefix = targetType === "scenario" ? "scat_" : "fcat_";
+  const categories = targetType === "scenario" ? SCENARIO_CATEGORIES : FAQ_CATEGORIES;
+
+  const selectedIds = categories
     .filter((c) => {
-      const key = `cat_s_${c.id}`;
+      const key = `${prefix}${c.id}`;
       return isToggleOn(data[key]) || isToggleOn(nested?.[key]);
     })
     .map((c) => c.id);
-  const faqs = FAQ_CATEGORIES
-    .filter((c) => {
-      const key = `cat_f_${c.id}`;
-      return isToggleOn(data[key]) || isToggleOn(nested?.[key]);
-    })
-    .map((c) => c.id);
-  return { scenarios, faqs };
+
+  return targetType === "scenario"
+    ? { scenarios: selectedIds, faqs: [] }
+    : { scenarios: [], faqs: selectedIds };
 }
 
 /** ページ遷移時: data.selectedCategories から CategorySelection を取得 */

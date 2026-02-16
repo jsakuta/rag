@@ -20,13 +20,33 @@ export interface CategorySelection {
   faqs: string[];       // 例: ["smile", "sousoku"]
 }
 
-// --- FR-001/FR-002: 検索モード選択カード ---
-export function buildModeSelectCard(queryText: string): AdaptiveCard {
+// --- ToggleVisibility ターゲット定義 ---
+const TOGGLE_SHOW_SCENARIO = [
+  { elementId: "tabScenarioActive", isVisible: true },
+  { elementId: "tabScenarioInactive", isVisible: false },
+  { elementId: "tabFaqActive", isVisible: false },
+  { elementId: "tabFaqInactive", isVisible: true },
+  { elementId: "sectionScenario", isVisible: true },
+  { elementId: "sectionFaq", isVisible: false },
+];
+
+const TOGGLE_SHOW_FAQ = [
+  { elementId: "tabScenarioActive", isVisible: false },
+  { elementId: "tabScenarioInactive", isVisible: true },
+  { elementId: "tabFaqActive", isVisible: true },
+  { elementId: "tabFaqInactive", isVisible: false },
+  { elementId: "sectionScenario", isVisible: false },
+  { elementId: "sectionFaq", isVisible: true },
+];
+
+// --- FR-001/FR-002: 統合検索カード（タブUI） ---
+export function buildSearchCard(queryText: string): AdaptiveCard {
   return {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
     version: "1.5",
     body: [
+      // --- ヘッダー ---
       {
         type: "TextBlock",
         text: "事務改定 影響候補検出",
@@ -40,73 +60,251 @@ export function buildModeSelectCard(queryText: string): AdaptiveCard {
         size: "Small",
         color: "Accent",
       },
-      // --- シナリオ ---
+      // --- タブバー（カード幅2等分、上下中央揃え） ---
       {
-        type: "TextBlock",
-        text: "シナリオ",
-        weight: "Bolder",
-        size: "Small",
+        type: "ColumnSet",
         spacing: "Medium",
+        separator: true,
+        columns: [
+          // シナリオタブ（アクティブ状態、初期表示）
+          {
+            type: "Column",
+            id: "tabScenarioActive",
+            isVisible: true,
+            width: "stretch",
+            verticalContentAlignment: "Center",
+            selectAction: {
+              type: "Action.ToggleVisibility",
+              targetElements: TOGGLE_SHOW_SCENARIO,
+            },
+            items: [
+              {
+                type: "TextBlock",
+                text: "シナリオ",
+                weight: "Bolder",
+                color: "Accent",
+                horizontalAlignment: "Center",
+              },
+              {
+                type: "TextBlock",
+                text: "━━━━━━━━━━━━━━",
+                color: "Accent",
+                size: "Small",
+                spacing: "None",
+                horizontalAlignment: "Center",
+              },
+            ],
+          },
+          // シナリオタブ（非アクティブ状態、初期非表示）
+          {
+            type: "Column",
+            id: "tabScenarioInactive",
+            isVisible: false,
+            width: "stretch",
+            verticalContentAlignment: "Center",
+            selectAction: {
+              type: "Action.ToggleVisibility",
+              targetElements: TOGGLE_SHOW_SCENARIO,
+            },
+            items: [
+              {
+                type: "TextBlock",
+                text: "シナリオ",
+                isSubtle: true,
+                horizontalAlignment: "Center",
+              },
+              // アクティブタブの下線と同じ高さを確保するスペーサー
+              {
+                type: "TextBlock",
+                text: " ",
+                size: "Small",
+                spacing: "None",
+              },
+            ],
+          },
+          // FAQタブ（アクティブ状態、初期非表示・緑系）
+          {
+            type: "Column",
+            id: "tabFaqActive",
+            isVisible: false,
+            width: "stretch",
+            verticalContentAlignment: "Center",
+            selectAction: {
+              type: "Action.ToggleVisibility",
+              targetElements: TOGGLE_SHOW_FAQ,
+            },
+            items: [
+              {
+                type: "TextBlock",
+                text: "FAQ",
+                weight: "Bolder",
+                color: "Good",
+                horizontalAlignment: "Center",
+              },
+              {
+                type: "TextBlock",
+                text: "━━━━━━━━━━━━━━",
+                color: "Good",
+                size: "Small",
+                spacing: "None",
+                horizontalAlignment: "Center",
+              },
+            ],
+          },
+          // FAQタブ（非アクティブ状態、初期表示）
+          {
+            type: "Column",
+            id: "tabFaqInactive",
+            isVisible: true,
+            width: "stretch",
+            verticalContentAlignment: "Center",
+            selectAction: {
+              type: "Action.ToggleVisibility",
+              targetElements: TOGGLE_SHOW_FAQ,
+            },
+            items: [
+              {
+                type: "TextBlock",
+                text: "FAQ",
+                isSubtle: true,
+                horizontalAlignment: "Center",
+              },
+              // アクティブタブの下線と同じ高さを確保するスペーサー
+              {
+                type: "TextBlock",
+                text: " ",
+                size: "Small",
+                spacing: "None",
+              },
+            ],
+          },
+        ],
       },
-      ...SCENARIO_CATEGORIES.map((c) => ({
-        type: "Input.Toggle",
-        id: `cat_s_${c.id}`,
-        title: c.name,
-        value: "true",
-        spacing: "None",
-      })),
-      // --- FAQ ---
+      // --- シナリオカテゴリ（初期表示） ---
       {
-        type: "TextBlock",
-        text: "FAQ",
-        weight: "Bolder",
-        size: "Small",
-        spacing: "Medium",
+        type: "Container",
+        id: "sectionScenario",
+        isVisible: true,
+        items: [
+          {
+            type: "TextBlock",
+            text: "シナリオカテゴリ",
+            weight: "Bolder",
+            size: "Small",
+          },
+          ...SCENARIO_CATEGORIES.map((c) => ({
+            type: "Input.Toggle" as const,
+            id: `scat_${c.id}`,
+            title: c.name,
+            value: "true",
+            spacing: "None" as const,
+          })),
+          // 表示件数
+          {
+            type: "TextBlock",
+            text: "各分野の表示件数",
+            weight: "Bolder",
+            size: "Small",
+            spacing: "Medium",
+          },
+          {
+            type: "Input.ChoiceSet",
+            id: "topN",
+            value: "30",
+            style: "compact",
+            choices: TOP_N_OPTIONS.map((n) => ({
+              title: `${n} 件`,
+              value: String(n),
+            })),
+          },
+          // 検索ボタン
+          {
+            type: "TextBlock",
+            text: "検索モードを選択してください",
+            wrap: true,
+            spacing: "Medium",
+          },
+          {
+            type: "ActionSet",
+            actions: [
+              {
+                type: "Action.Execute",
+                title: "意味検索",
+                verb: "searchSemantic",
+                data: { query: queryText, targetType: "scenario" },
+              },
+              {
+                type: "Action.Execute",
+                title: "キーワード検索",
+                verb: "searchKeyword",
+                data: { query: queryText, targetType: "scenario" },
+              },
+            ],
+          },
+        ],
       },
-      ...FAQ_CATEGORIES.map((c) => ({
-        type: "Input.Toggle",
-        id: `cat_f_${c.id}`,
-        title: c.name,
-        value: "true",
-        spacing: "None",
-      })),
-      // --- 表示件数 ---
+      // --- FAQカテゴリ（初期非表示） ---
       {
-        type: "TextBlock",
-        text: "各分野の表示件数",
-        weight: "Bolder",
-        size: "Small",
-        spacing: "Medium",
-      },
-      {
-        type: "Input.ChoiceSet",
-        id: "topN",
-        value: "30",
-        style: "compact",
-        choices: TOP_N_OPTIONS.map((n) => ({
-          title: `${n} 件`,
-          value: String(n),
-        })),
-      },
-      {
-        type: "TextBlock",
-        text: "検索モードを選択してください",
-        wrap: true,
-        spacing: "Medium",
-      },
-    ],
-    actions: [
-      {
-        type: "Action.Execute",
-        title: "ハイブリッド検索",
-        verb: "searchSemantic",
-        data: { query: queryText },
-      },
-      {
-        type: "Action.Execute",
-        title: "キーワード一致検索",
-        verb: "searchKeyword",
-        data: { query: queryText },
+        type: "Container",
+        id: "sectionFaq",
+        isVisible: false,
+        items: [
+          {
+            type: "TextBlock",
+            text: "FAQカテゴリ",
+            weight: "Bolder",
+            size: "Small",
+          },
+          ...FAQ_CATEGORIES.map((c) => ({
+            type: "Input.Toggle" as const,
+            id: `fcat_${c.id}`,
+            title: c.name,
+            value: "true",
+            spacing: "None" as const,
+          })),
+          // 表示件数
+          {
+            type: "TextBlock",
+            text: "各分野の表示件数",
+            weight: "Bolder",
+            size: "Small",
+            spacing: "Medium",
+          },
+          {
+            type: "Input.ChoiceSet",
+            id: "topN_faq",
+            value: "30",
+            style: "compact",
+            choices: TOP_N_OPTIONS.map((n) => ({
+              title: `${n} 件`,
+              value: String(n),
+            })),
+          },
+          // 検索ボタン
+          {
+            type: "TextBlock",
+            text: "検索モードを選択してください",
+            wrap: true,
+            spacing: "Medium",
+          },
+          {
+            type: "ActionSet",
+            actions: [
+              {
+                type: "Action.Execute",
+                title: "意味検索",
+                verb: "searchSemantic",
+                data: { query: queryText, targetType: "faq" },
+              },
+              {
+                type: "Action.Execute",
+                title: "キーワード検索",
+                verb: "searchKeyword",
+                data: { query: queryText, targetType: "faq" },
+              },
+            ],
+          },
+        ],
       },
     ],
   };
@@ -123,20 +321,33 @@ export function buildResultCard(
   topN: number = 30,
   fixedPerPage?: number
 ): AdaptiveCard {
-  const CARD_LIMIT = 28 * 1024;
+  const CARD_LIMIT = 25 * 1024;
 
-  // ページ遷移時は前回確定した perPage を使用、初回は ITEMS_PER_PAGE から開始
-  let perPage = fixedPerPage ?? ITEMS_PER_PAGE;
+  // ページ遷移時は前回確定した perPage を使用、初回は実アイテム数から開始
+  const totalItems = scenarios.length + faqs.length;
+  let perPage = Math.min(fixedPerPage ?? ITEMS_PER_PAGE, totalItems || 1);
   let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage);
   let cardSize = JSON.stringify(card).length;
   console.log(`[buildResultCard] perPage=${perPage}, size=${cardSize} bytes`);
 
-  // 超過時は1件ずつ減らして再構築（最低1件は表示）
-  while (cardSize > CARD_LIMIT && perPage > 1) {
-    perPage--;
+  // 超過時は二分探索で最大表示件数を特定（O(log n)）
+  if (cardSize > CARD_LIMIT && perPage > 1) {
+    let lo = 1;
+    let hi = perPage - 1;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, mid);
+      cardSize = JSON.stringify(card).length;
+      if (cardSize <= CARD_LIMIT) {
+        lo = mid; // mid件は収まる → もっと増やせるか試す
+      } else {
+        hi = mid - 1; // mid件は超過 → 減らす
+      }
+    }
+    perPage = lo;
     card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage);
     cardSize = JSON.stringify(card).length;
-    console.log(`[buildResultCard] reduced perPage=${perPage}, size=${cardSize} bytes`);
+    console.log(`[buildResultCard] binary search → perPage=${perPage}, size=${cardSize} bytes`);
   }
 
   // perPage=1 でも超過する場合はコンテンツを段階的に切り詰めて再構築
@@ -169,7 +380,7 @@ function buildResultCardInner(
   topN: number,
   perPage: number
 ): AdaptiveCard {
-  const modeLabel = searchMode === "semantic" ? "ハイブリッド検索" : "キーワード一致検索";
+  const modeLabel = searchMode === "semantic" ? "意味検索" : "キーワード検索";
 
   // 全結果をスコア順にマージ → 統一ページネーション
   const allItems = [...scenarios, ...faqs].sort((a, b) => b.score - a.score);
@@ -318,12 +529,43 @@ function buildResultCardInner(
 
     for (let i = 0; i < pageFaqs.length; i++) {
       const f = pageFaqs[i];
+      const globalRank = start + pageItems.indexOf(f) + 1;
       body.push(
         {
-          type: "Input.Toggle",
-          id: `faq_${f.id}`,
-          title: `${f.id} | ${f.categoryName} | ${f.title} | スコア: ${f.score.toFixed(4)}`,
-          value: "false",
+          type: "ColumnSet",
+          columns: [
+            {
+              type: "Column",
+              width: "auto",
+              items: [
+                {
+                  type: "TextBlock",
+                  text: `${numEmoji(globalRank)} ${f.categoryName}`,
+                  weight: "Bolder",
+                  size: "Small",
+                },
+              ],
+            },
+            {
+              type: "Column",
+              width: "stretch",
+              items: [
+                {
+                  type: "TextBlock",
+                  text: `スコア: ${f.score.toFixed(4)}`,
+                  size: "Small",
+                  horizontalAlignment: "Right",
+                  isSubtle: true,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "TextBlock",
+          text: f.title,
+          weight: "Bolder",
+          wrap: true,
         },
         {
           type: "TextBlock",
@@ -331,7 +573,17 @@ function buildResultCardInner(
           wrap: true,
           size: "Small",
           isSubtle: true,
-          spacing: "None",
+        },
+        {
+          type: "Input.Toggle",
+          id: `faq_${f.id}`,
+          title: "削除対象",
+          value: "false",
+        },
+        {
+          type: "TextBlock",
+          text: "---",
+          separator: true,
         }
       );
     }
