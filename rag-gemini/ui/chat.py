@@ -322,21 +322,18 @@ def _is_valid_llm_judgment(relevance_judgment: Optional[str]) -> bool:
 
 def _create_llm_analysis_section(
     relevance_judgment: Optional[str],
-    judgment_reason: Optional[str],
-    modification_suggestion: Optional[str]
+    judgment_reason: Optional[str]
 ) -> str:
     """LLM分析セクションのHTMLを生成"""
     if not _is_valid_llm_judgment(relevance_judgment):
         return ""
 
     reason_text = html.escape(str(judgment_reason)) if judgment_reason else "-"
-    suggestion_raw = html.escape(str(modification_suggestion)) if modification_suggestion else ""
-    suggestion_text = "なし" if not suggestion_raw or suggestion_raw.strip() in ['-', 'なし', ''] else suggestion_raw
 
-    return f"""<div style="background-color: #f0f7ff; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">LLM分析</div><div>関連性: {html.escape(str(relevance_judgment))}</div><div>根拠: {reason_text}</div><div>修正案: {suggestion_text}</div></div>"""
+    return f"""<div style="background-color: #f0f7ff; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">LLM分析</div><div>関連性: {html.escape(str(relevance_judgment))}</div><div>根拠: {reason_text}</div></div>"""
 
 def format_response_card(number, similarity, query, answer, category=None,
-                         relevance_judgment=None, judgment_reason=None, modification_suggestion=None,
+                         relevance_judgment=None, judgment_reason=None,
                          scenario_id=None, is_correct=False):
     # XSS対策: ユーザー入力をエスケープ
     query = html.escape(str(query))
@@ -356,7 +353,7 @@ def format_response_card(number, similarity, query, answer, category=None,
     base_card = f"""<div class="response-card" style="border: 2px solid {card_border_color}; border-radius: 10px; padding: 15px; margin: 10px 0; background-color: {card_bg_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><div style="color: #666; margin-bottom: 10px; font-size: 0.95em; padding-bottom: 8px; border-bottom: 1px solid #eee;">候補 {number} (類似度: <strong>{similarity:.4f}</strong>){correct_badge}{scenario_id_badge}{category_badge}{relevance_badge}</div><div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">類似質問内容:</div><div style="white-space: pre-wrap;">{query}</div></div><div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">回答:</div><div style="white-space: pre-wrap;">{answer}</div></div>"""
 
     # LLM分析セクション（有効な値がある場合のみ追加）
-    llm_section = _create_llm_analysis_section(relevance_judgment, judgment_reason, modification_suggestion)
+    llm_section = _create_llm_analysis_section(relevance_judgment, judgment_reason)
     return base_card + llm_section + "</div>"
 
 def _needs_processor_reinit() -> bool:
@@ -728,13 +725,11 @@ def run_llm_analysis():
             )
             result['Relevance_Judgment'] = evaluation['relevance_judgment']
             result['Judgment_Reason'] = evaluation['judgment_reason']
-            result['Modification_Suggestion'] = evaluation['modification_suggestion']
             logger.info(f"  結果{i}: → LLM判定: {evaluation['relevance_judgment']}")
         except Exception as e:
             logger.error(f"  結果{i}: LLM分析エラー: {e}")
             result['Relevance_Judgment'] = "エラー"
             result['Judgment_Reason'] = f"分析エラー: {str(e)[:50]}"
-            result['Modification_Suggestion'] = ""
 
     # チャット履歴の最新の結果を更新
     if st.session_state.chat_history:
@@ -1085,13 +1080,12 @@ def run_streamlit_ui():
                         # LLM分析結果（多段階検索+LLM判断支援有効時のみ存在）
                         relevance_judgment = response.get("Relevance_Judgment")
                         judgment_reason = response.get("Judgment_Reason")
-                        modification_suggestion = response.get("Modification_Suggestion")
                         # 正解バッジ表示（改定番号選択時のみ）
                         scenario_id, is_correct = check_if_correct(response, correct_ids)
                         card_html = format_response_card(
                             idx, response["Similarity"],
                             response["Search_Result_Q"], response["Search_Result_A"],
-                            category, relevance_judgment, judgment_reason, modification_suggestion,
+                            category, relevance_judgment, judgment_reason,
                             scenario_id=scenario_id, is_correct=is_correct
                         )
                         st.markdown(card_html, unsafe_allow_html=True)

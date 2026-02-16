@@ -141,7 +141,6 @@ class Processor:
                 )
                 result['Relevance_Judgment'] = evaluation['relevance_judgment']
                 result['Judgment_Reason'] = evaluation['judgment_reason']
-                result['Modification_Suggestion'] = evaluation['modification_suggestion']
                 return result
 
             max_workers = min(10, len(results))  # 最大10並列、または結果数
@@ -157,14 +156,12 @@ class Processor:
                         result = futures[future]
                         result['Relevance_Judgment'] = "エラー"
                         result['Judgment_Reason'] = f"{type(e).__name__}: {str(e)[:200]}"
-                        result['Modification_Suggestion'] = ""
 
             logger.info("LLM判断支援完了（並列処理）")
         else:
             for result in results:
                 result['Relevance_Judgment'] = ""
                 result['Judgment_Reason'] = ""
-                result['Modification_Suggestion'] = ""
 
         # 3シート出力
         logger.info("3シートExcel出力を実行中...")

@@ -159,7 +159,6 @@ class ExcelOutputHandler(OutputHandler):
             'Scenario_ID',
             'Relevance_Judgment',
             'Judgment_Reason',
-            'Modification_Suggestion',
             'Vector_Weight',
             'Top_K'
         ]
@@ -199,7 +198,7 @@ class ExcelOutputHandler(OutputHandler):
             'Input_Number': '#', 'Original_Query': '改定内容', 'Original_Answer': '元回答',
             'Search_Query': '検索クエリ', 'Search_Result_Q': '検索結果Q', 'Search_Result_A': '検索結果A',
             'Similarity': '類似度', 'Scenario_ID': 'シナリオID', 'Relevance_Judgment': '関連性判定',
-            'Judgment_Reason': '判定根拠', 'Modification_Suggestion': '修正案（参考）',
+            'Judgment_Reason': '判定根拠',
             'Vector_Weight': 'ベクトル重み', 'Top_K': '候補数'
         }
 
