@@ -319,14 +319,15 @@ export function buildResultCard(
   page: number = 1,
   selectedCategories: CategorySelection,
   topN: number = 30,
-  fixedPerPage?: number
+  fixedPerPage?: number,
+  searchSessionId?: string
 ): AdaptiveCard {
   const CARD_LIMIT = 25 * 1024;
 
   // ページ遷移時は前回確定した perPage を使用、初回は実アイテム数から開始
   const totalItems = scenarios.length + faqs.length;
   let perPage = Math.min(fixedPerPage ?? ITEMS_PER_PAGE, totalItems || 1);
-  let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage);
+  let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId);
   let cardSize = JSON.stringify(card).length;
   console.log(`[buildResultCard] perPage=${perPage}, size=${cardSize} bytes`);
 
@@ -336,7 +337,7 @@ export function buildResultCard(
     let hi = perPage - 1;
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
-      card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, mid);
+      card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, mid, searchSessionId);
       cardSize = JSON.stringify(card).length;
       if (cardSize <= CARD_LIMIT) {
         lo = mid; // mid件は収まる → もっと増やせるか試す
@@ -345,7 +346,7 @@ export function buildResultCard(
       }
     }
     perPage = lo;
-    card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage);
+    card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId);
     cardSize = JSON.stringify(card).length;
     console.log(`[buildResultCard] binary search → perPage=${perPage}, size=${cardSize} bytes`);
   }
@@ -357,7 +358,7 @@ export function buildResultCard(
     for (const limit of truncLimits) {
       const ts = scenarios.map((s) => ({ ...s, content: truncate(s.content, limit) }));
       const tf = faqs.map((f) => ({ ...f, content: truncate(f.content, limit) }));
-      card = buildResultCardInner(queryText, searchMode, ts, tf, page, selectedCategories, topN, 1);
+      card = buildResultCardInner(queryText, searchMode, ts, tf, page, selectedCategories, topN, 1, searchSessionId);
       cardSize = JSON.stringify(card).length;
       if (cardSize <= CARD_LIMIT) {
         console.log(`[buildResultCard] Rebuilt with truncate=${limit}, size=${cardSize} bytes`);
@@ -378,7 +379,8 @@ function buildResultCardInner(
   page: number,
   selectedCategories: CategorySelection,
   topN: number,
-  perPage: number
+  perPage: number,
+  searchSessionId?: string
 ): AdaptiveCard {
   const modeLabel = searchMode === "semantic" ? "意味検索" : "キーワード検索";
 
@@ -400,6 +402,7 @@ function buildResultCardInner(
     selectedCategories,
     topN,
     perPage,
+    searchSessionId,
   };
 
   // body 構築
@@ -598,7 +601,7 @@ function buildResultCardInner(
       type: "Action.Execute",
       title: "要修正を保存",
       verb: "saveNeedsUpdate",
-      data: { query: queryText },
+      data: { query: queryText, searchSessionId },
       style: "positive",
     });
   }
@@ -717,9 +720,22 @@ export function buildDeleteCompleteCard(
 // --- FR-014: 要修正フラグ保存完了カード ---
 export function buildNeedsUpdateCompleteCard(
   saved: { id: string; title: string }[],
-  user: string
+  user: string,
+  searchSessionId?: string
 ): AdaptiveCard {
   const now = formatJST(new Date());
+  const actions: Record<string, unknown>[] = [];
+
+  // FR-015: Excel出力ボタン
+  if (searchSessionId) {
+    actions.push({
+      type: "Action.Execute",
+      title: "Excelで出力",
+      verb: "exportExcel",
+      data: { searchSessionId },
+    });
+  }
+
   return {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -743,6 +759,63 @@ export function buildNeedsUpdateCompleteCard(
         text: `記録者: ${user}  ${now}`,
         size: "Small",
         isSubtle: true,
+      },
+    ],
+    ...(actions.length > 0 ? { actions } : {}),
+  };
+}
+
+// --- FR-015: Excel出力完了カード ---
+export function buildExcelExportCompleteCard(
+  filename: string,
+  totalCount: number,
+  needsUpdateCount: number,
+  spoUrl: string
+): AdaptiveCard {
+  const now = formatJST(new Date());
+  return {
+    type: "AdaptiveCard",
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    version: "1.5",
+    body: [
+      {
+        type: "TextBlock",
+        text: "Excel出力完了",
+        weight: "Bolder",
+        size: "Medium",
+        color: "Good",
+      },
+      {
+        type: "FactSet",
+        facts: [
+          { title: "ファイル名", value: filename },
+          { title: "シナリオ数", value: `${totalCount}件（うち要修正: ${needsUpdateCount}件）` },
+          { title: "出力日時", value: now },
+        ],
+      },
+    ],
+    actions: [
+      {
+        type: "Action.OpenUrl",
+        title: "SharePointで開く",
+        url: spoUrl,
+      },
+    ],
+  };
+}
+
+// --- FR-015: Excel出力エラーカード ---
+export function buildExcelExportErrorCard(message: string): AdaptiveCard {
+  return {
+    type: "AdaptiveCard",
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    version: "1.5",
+    body: [
+      {
+        type: "TextBlock",
+        text: message,
+        wrap: true,
+        color: "Attention",
       },
     ],
   };

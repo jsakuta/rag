@@ -26,7 +26,9 @@
         "@azure/cosmos": "^4.9.1",
         "@azure/identity": "^4.8.0",
         "@azure/search-documents": "^12.2.0",
-        "@microsoft/agents-hosting-express": "^1.0.0"
+        "@microsoft/agents-hosting-express": "^1.0.0",
+        "@microsoft/microsoft-graph-client": "^3.0.7",
+        "exceljs": "^4.4.0"
     },
     "devDependencies": {
         "@types/express": "^5.0.0",

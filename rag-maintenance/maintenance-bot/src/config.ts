@@ -3,6 +3,9 @@ const config = {
   aiSearchIndexName: process.env.AI_SEARCH_INDEX_NAME || "maintenance-search-index",
   cosmosDbEndpoint: process.env.COSMOS_DB_ENDPOINT || "",
   cosmosDbDatabase: process.env.COSMOS_DB_DATABASE || "maintenance-db",
+  spoSiteId: process.env.SPO_SITE_ID || "",
+  spoDriveId: process.env.SPO_DRIVE_ID || "",
+  spoUploadFolder: process.env.SPO_UPLOAD_FOLDER || "影響候補シナリオ",
 };
 
 export default config;

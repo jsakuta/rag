@@ -11,6 +11,7 @@ import {
 import { SearchClient } from "@azure/search-documents";
 import { DefaultAzureCredential } from "@azure/identity";
 import config, { SCENARIO_CATEGORIES, FAQ_CATEGORIES, DEFAULT_TOP_N } from "./config";
+import { randomUUID } from "crypto";
 import {
   buildSearchCard,
   buildResultCard,
@@ -18,10 +19,14 @@ import {
   buildDeleteCompleteCard,
   buildNeedsUpdateCompleteCard,
   buildCancelCard,
+  buildExcelExportCompleteCard,
+  buildExcelExportErrorCard,
   SearchResultItem,
   CategorySelection,
 } from "./cards";
 import { deleteFaqs, saveNeedsUpdate } from "./cosmos";
+import { generateImpactExcel, generateExcelFilename } from "./excel";
+import { uploadExcelToSharePoint } from "./sharepoint";
 
 // --- クライアント遅延初期化 ---
 let _searchClient: SearchClient<Record<string, unknown>> | null = null;
@@ -38,6 +43,34 @@ function getSearchClient() {
 
 const storage = new MemoryStorage();
 export const agentApp = new AgentApplication({ storage });
+
+// --- FR-015: 検索結果インメモリキャッシュ ---
+interface CachedSearchResult {
+  scenarios: SearchResultItem[];
+  faqs: SearchResultItem[];
+  needsUpdateIds: Set<string>;
+  timestamp: number;
+}
+const searchResultCache = new Map<string, CachedSearchResult>();
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30分
+const MAX_CACHE_SIZE = 50;
+
+function cleanExpiredCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of searchResultCache) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      searchResultCache.delete(key);
+    }
+  }
+  // サイズ超過時は古い順に削除
+  if (searchResultCache.size > MAX_CACHE_SIZE) {
+    const sorted = [...searchResultCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const deleteCount = searchResultCache.size - MAX_CACHE_SIZE;
+    for (let i = 0; i < deleteCount; i++) {
+      searchResultCache.delete(sorted[i][0]);
+    }
+  }
+}
 
 // --- ウェルカムメッセージ ---
 agentApp.onConversationUpdate("membersAdded", async (context: TurnContext) => {
@@ -107,8 +140,9 @@ agentApp.adaptiveCards.actionExecute(
 
     // ページ遷移時は data に埋め込み済みの selectedCategories を使用
     const categories = extractCategorySelectionsFromPageData(data);
-    console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}, topN: ${topN}, perPage: ${perPage}`);
-    return await executeSearchPaged(query, mode, page, categories, topN, perPage > 0 ? perPage : undefined);
+    const searchSessionId = extractField(data, "searchSessionId", "");
+    console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}, topN: ${topN}, perPage: ${perPage}, session: ${searchSessionId}`);
+    return await executeSearchPaged(query, mode, page, categories, topN, perPage > 0 ? perPage : undefined, searchSessionId || undefined);
   }
 );
 
@@ -150,8 +184,53 @@ agentApp.adaptiveCards.actionExecute(
 
     const user = context.activity.from?.name ?? "不明";
     const query = (data as Record<string, string>).query ?? "";
+    const searchSessionId = extractField(data as Record<string, unknown>, "searchSessionId", "");
+
     const saved = await saveNeedsUpdate(selectedIds, query, user);
-    return buildNeedsUpdateCompleteCard(saved, user);
+
+    // FR-015: キャッシュの needsUpdateIds にマージ（複数ページ対応）
+    cleanExpiredCache();
+    if (searchSessionId && searchResultCache.has(searchSessionId)) {
+      const cached = searchResultCache.get(searchSessionId)!;
+      for (const id of selectedIds) {
+        cached.needsUpdateIds.add(id);
+      }
+      cached.timestamp = Date.now(); // TTL リフレッシュ
+    }
+
+    return buildNeedsUpdateCompleteCard(saved, user, searchSessionId || undefined);
+  }
+);
+
+// --- FR-015: Excel出力 (Action.Execute verb: exportExcel) ---
+agentApp.adaptiveCards.actionExecute(
+  "exportExcel",
+  async (_context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
+    const searchSessionId = extractField(data, "searchSessionId", "");
+    cleanExpiredCache();
+
+    const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
+    if (!cached) {
+      console.warn(`[exportExcel] Cache miss for session: ${searchSessionId}`);
+      return buildExcelExportErrorCard("検索結果の有効期限が切れました。再度検索してください。");
+    }
+
+    try {
+      const filename = generateExcelFilename();
+      const buffer = await generateImpactExcel(cached.scenarios, cached.needsUpdateIds);
+      const result = await uploadExcelToSharePoint(buffer, filename);
+
+      return buildExcelExportCompleteCard(
+        filename,
+        cached.scenarios.length,
+        cached.needsUpdateIds.size,
+        result.webUrl
+      );
+    } catch (err: unknown) {
+      console.error("[exportExcel] Error:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      return buildExcelExportErrorCard(`SharePoint への保存に失敗しました: ${message}`);
+    }
   }
 );
 
@@ -206,20 +285,31 @@ async function executeSearch(
       } as AdaptiveCard;
     }
 
-    return buildResultCard(query, mode, results.scenarios, results.faqs, 1, categories, topN);
+    // FR-015: 検索結果をキャッシュ（ページネーション + Excel出力用）
+    cleanExpiredCache();
+    const searchSessionId = randomUUID();
+    searchResultCache.set(searchSessionId, {
+      scenarios: results.scenarios,
+      faqs: results.faqs,
+      needsUpdateIds: new Set(),
+      timestamp: Date.now(),
+    });
+
+    return buildResultCard(query, mode, results.scenarios, results.faqs, 1, categories, topN, undefined, searchSessionId);
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
 }
 
-// --- ページ遷移用の検索実行（再検索 + 指定ページ表示） ---
+// --- ページ遷移用の検索実行（キャッシュベース、フォールバックで再検索） ---
 async function executeSearchPaged(
   query: string,
   mode: "semantic" | "keyword",
   page: number,
   categories: CategorySelection,
   topN: number,
-  perPage?: number
+  perPage?: number,
+  searchSessionId?: string
 ): Promise<AdaptiveCard> {
   if (!query) {
     return {
@@ -229,6 +319,16 @@ async function executeSearchPaged(
       body: [{ type: "TextBlock", text: "検索クエリが取得できませんでした。", wrap: true, color: "Attention" }],
     } as AdaptiveCard;
   }
+
+  // キャッシュヒット時はキャッシュから提供（AI Search再クエリなし）
+  cleanExpiredCache();
+  const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
+  if (cached) {
+    return buildResultCard(query, mode, cached.scenarios, cached.faqs, page, categories, topN, perPage, searchSessionId);
+  }
+
+  // キャッシュミス時はフォールバックとして再検索
+  console.warn(`[executeSearchPaged] Cache miss for session ${searchSessionId ?? "(none)"}, re-querying AI Search`);
   try {
     const results = await searchByCategories(query, mode, categories, topN);
 
