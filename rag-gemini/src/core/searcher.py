@@ -326,7 +326,14 @@ class Searcher:
 
         try:
             business_area = self.db_manager.extract_business_area_from_input(input_file)
+
+            # 前回と同じ業務分野ならDB再選択をスキップ
+            if business_area == self.current_business_area and self.vector_db is not None:
+                logger.info(f"  Selected DB for business area: {business_area}")
+                return
+
             self._select_db_for_business(business_area)
+            self.current_business_area = business_area
             logger.info(f"  Selected DB for business area: {business_area}")
         except DynamicDBError as e:
             logger.error(f"  DB選択エラー: {e}")

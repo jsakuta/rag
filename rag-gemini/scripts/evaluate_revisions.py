@@ -96,7 +96,7 @@ for rev, config in _raw_revision_areas.items():
 INPUT_FILE = PROJECT_ROOT / "data" / "input" / "multi_stage_input.xlsx"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "output" / "latest"
 VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
-SCENARIO_DIR = PROJECT_ROOT / "data" / "source" / "scenarios"
+SCENARIO_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "revisions"
 
 
 class RevisionEvaluator:

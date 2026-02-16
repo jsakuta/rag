@@ -33,7 +33,7 @@ common:
   search_mode: original
 
   # 検索対象: scenario | history_data
-  search_source: scenario
+  search_source: history_data
 
   # -------------------------------------------
   # キーワード検索設定
