@@ -92,7 +92,7 @@ RAG-Gemini は、Google Vertex AI の Gemini Embedding API と ChromaDB を活�
 | **マルチ埋め込みモデル** | Gemini / Azure OpenAI 切り替え対応（3072次元） |
 | **ChromaDB 永続化** | メタデータ対応ベクトルデータベース |
 | **動的 DB 管理** | 業務領域別の自動 DB 管理 |
-| **複数フォルダ対応** | シナリオ + FAQ 履歴の統合処理 |
+| **複数フォルダ対応** | シナリオ / FAQ 履歴の個別管理 |
 | **マルチ LLM 対応** | Gemini / Claude / ChatGPT |
 | **多段階検索評価** | 事務改定の検索精度評価（Azure/VertexAI比較） |
 

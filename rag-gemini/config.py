@@ -77,8 +77,8 @@ class SearchConfig:
     DEFAULT_SEARCH_MODE: str = _common_settings.get("search_mode", "original")
 
     # 検索対象設定
-    DEFAULT_SEARCH_SOURCE: str = _common_settings.get("search_source", "all")
-    VALID_SEARCH_SOURCES: Tuple[str, ...] = ("all", "scenario", "history_data")
+    DEFAULT_SEARCH_SOURCE: str = _common_settings.get("search_source", "scenario")
+    VALID_SEARCH_SOURCES: Tuple[str, ...] = ("scenario", "history_data")
 
     # 多段階検索設定
     MULTI_STAGE_THRESHOLD: float = 0.45        # 統合スコアのしきい値

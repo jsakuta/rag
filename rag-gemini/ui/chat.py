@@ -656,7 +656,7 @@ def process_query(query: str):
             search_type_labels = {"hybrid": "意味検索", "keyword_filter": "キーワード検索"}
             search_type_label = search_type_labels.get(st.session_state.config.search_type, st.session_state.config.search_type)
             logger.info(f"検索タイプ: {search_type_label}")
-            source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
+            source_labels = {"scenario": "シナリオのみ", "history_data": "FAQのみ"}
             search_source_label = source_labels.get(st.session_state.config.search_source, st.session_state.config.search_source)
             if st.session_state.config.search_type == "hybrid":
                 logger.info(f"検索モード: {st.session_state.config.search_mode} (LLM判断支援: {'有効' if judgment_enabled else '無効'})")
@@ -989,8 +989,8 @@ def run_streamlit_ui():
                     st.session_state.config.search_mode = selected_mode
 
                     # 検索対象選択
-                    search_sources = ["all", "scenario", "history_data"]
-                    source_labels = {"all": "シナリオ+FAQ", "scenario": "シナリオのみ", "history_data": "FAQのみ"}
+                    search_sources = ["scenario", "history_data"]
+                    source_labels = {"scenario": "シナリオのみ", "history_data": "FAQのみ"}
                     current_source_index = search_sources.index(st.session_state.config.search_source) if st.session_state.config.search_source in search_sources else 0
                     selected_source = st.selectbox(
                         "検索対象",

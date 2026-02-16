@@ -371,14 +371,12 @@ class Searcher:
             logger.error(f"  DB選択エラー: {e}")
             raise
 
-    def _build_source_filter(self) -> Optional[Dict[str, str]]:
+    def _build_source_filter(self) -> Dict[str, str]:
         """検索対象設定に基づいてソースフィルタを構築
 
         Returns:
-            Optional[Dict]: ソースフィルタ（allの場合はNone）
+            Dict: ソースフィルタ
         """
-        if self.config.search_source == "all":
-            return None
         return {"source": self.config.search_source}
 
     def _execute_vector_search(self, query_for_vector: str) -> List[Dict[str, Any]]:
