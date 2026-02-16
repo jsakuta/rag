@@ -22,6 +22,7 @@ from src.utils.dynamic_db_manager import DynamicDBManager
 import datetime
 import os
 import html
+import re
 
 logger = setup_logger(__name__)
 
@@ -374,44 +375,69 @@ def _needs_processor_reinit() -> bool:
 
 
 def _load_reference_data_for_business(config, business_area: str) -> dict:
-    """業務分野に応じた参照データを読み込む"""
-    # rev系の業務分野かチェック
-    if business_area.startswith("rev"):
-        # rev系の場合は対応するシナリオファイルから読み込み
-        try:
-            with DynamicDBManager(config) as db_manager:
-                business_areas = db_manager.analyze_reference_files()
+    """業務分野に応じた参照データを読み込む（統一ロジック）
 
-                if business_area in business_areas:
-                    area_data = business_areas[business_area]
-                    # 構造: {'faq': [], 'scenario': [('filename.xlsx', timestamp), ...]}
-                    scenario_list = area_data.get("scenario", [])
+    rev系・非rev系を問わず、analyze_reference_files() で業務分野別に
+    参照ファイルを特定し、該当ファイルのみを読み込む。
+    """
+    try:
+        with DynamicDBManager(config) as db_manager:
+            business_areas = db_manager.analyze_reference_files()
 
-                    if scenario_list:
-                        # 最新のシナリオファイルを使用（タプルの最初の要素がファイル名）
-                        scenario_file = scenario_list[0][0]
-                        # db_managerからシナリオパスを取得
-                        scenario_path = os.path.join(db_manager.reference_scenario_path, scenario_file)
+            if business_area not in business_areas:
+                raise ValueError(f"業務分野 '{business_area}' の参照ファイルが見つかりません（検出済み: {list(business_areas.keys())}）")
 
-                        from src.handlers.input_handler import HierarchicalExcelInputHandler
-                        handler = HierarchicalExcelInputHandler(config, scenario_path)
-                        reference_data = handler.load_reference_data()
-                        logger.info(f"rev系業務分野 '{business_area}' の参照データ読み込み完了: {len(reference_data['combined_texts'])}件")
-                        return reference_data
-                    else:
-                        logger.warning(f"業務分野 '{business_area}' のシナリオファイルが見つかりません")
-                else:
-                    logger.warning(f"業務分野 '{business_area}' が参照ファイル分析結果に存在しません")
-        except Exception as e:
-            import traceback
-            logger.error(f"rev系参照データの読み込みエラー: {e}")
-            logger.error(traceback.format_exc())
-            # rev系でエラーの場合は空のデータを返さず例外を再送出
-            raise
+            area_data = business_areas[business_area]
+            faq_list = area_data.get("faq", [])
+            scenario_list = area_data.get("scenario", [])
 
-    # 従来の方法で読み込み（非rev系の業務分野のみ）
-    processor = Processor(config)
-    return processor.reference_handler.load_reference_data()
+            all_queries, all_answers, all_combined_texts, all_metadatas = [], [], [], []
+
+            # scenarioファイルの読み込み
+            if scenario_list:
+                scenario_file = db_manager.get_latest_file(scenario_list)
+                if scenario_file:
+                    scenario_path = os.path.join(db_manager.reference_scenario_path, scenario_file)
+                    from src.handlers.input_handler import HierarchicalExcelInputHandler
+                    handler = HierarchicalExcelInputHandler(config, scenario_path)
+                    data = handler.load_reference_data()
+                    all_queries.extend(data['queries'])
+                    all_answers.extend(data['answers'])
+                    all_combined_texts.extend(data['combined_texts'])
+                    all_metadatas.extend(data['metadatas'])
+
+            # faqファイルの読み込み
+            if faq_list:
+                faq_file = db_manager.get_latest_file(faq_list)
+                if faq_file:
+                    faq_path = os.path.join(db_manager.reference_faq_path, faq_file)
+                    import copy
+                    faq_config = copy.copy(config)
+                    faq_config.REFERENCE_FILE_PATTERN = re.escape(faq_file) + "$"
+                    from src.handlers.input_handler import ExcelInputHandler
+                    handler = ExcelInputHandler(faq_config)
+                    handler.reference_dir = db_manager.reference_faq_path
+                    data = handler.load_reference_data()
+                    all_queries.extend(data['queries'])
+                    all_answers.extend(data['answers'])
+                    all_combined_texts.extend(data['combined_texts'])
+                    all_metadatas.extend(data['metadatas'])
+
+            if not all_queries:
+                raise ValueError(f"業務分野 '{business_area}' の参照データが空です")
+
+            logger.info(f"業務分野 '{business_area}' の参照データ読み込み完了: {len(all_queries)}件")
+            return {
+                'queries': all_queries,
+                'answers': all_answers,
+                'combined_texts': all_combined_texts,
+                'metadatas': all_metadatas,
+            }
+    except Exception as e:
+        import traceback
+        logger.error(f"参照データの読み込みエラー ({business_area}): {e}")
+        logger.error(traceback.format_exc())
+        raise
 
 
 def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict], List[Dict], str]:

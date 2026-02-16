@@ -19,7 +19,9 @@ def mock_config():
         vector_weight=0.9,
         search_mode="original",
         embedding_provider="azure_openai",
-        embedding_model="text-embedding-3-large"
+        embedding_model="text-embedding-3-large",
+        llm_provider="gemini",
+        llm_model="gemini-2.5-flash-lite",
     )
 
 

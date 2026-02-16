@@ -457,14 +457,20 @@ class Searcher:
                     ref_query = self.reference_queries[original_idx]
                     keyword_sim = self._calculate_keyword_similarity(keywords, ref_query)
                 else:
-                    # データ整合性エラー: fail fast で問題を早期発見
-                    error_msg = (
-                        f"Vector DB contains document ID {doc_id} (index {original_idx}) "
-                        f"but reference data only has {len(self.reference_queries)} items. "
-                        f"DB and reference data are out of sync."
+                    # DB/参照データ不整合: ドキュメントテキストから直接キーワード抽出して類似度計算
+                    logger.warning(
+                        f"Vector DB document {doc_id} (index {original_idx}) exceeds "
+                        f"reference data ({len(self.reference_queries)} items). "
+                        f"Using document text for keyword matching."
                     )
-                    logger.error(error_msg)
-                    raise ValueError(error_msg)
+                    doc_text = search_result.get('document', '')
+                    if doc_text and query_keywords_set:
+                        doc_keywords = set(self._extract_keywords(doc_text))
+                        intersection = doc_keywords.intersection(query_keywords_set)
+                        union = doc_keywords.union(query_keywords_set)
+                        keyword_sim = len(intersection) / len(union) if union else 0.0
+                    else:
+                        keyword_sim = 0.0
 
             keyword_similarities.append(keyword_sim)
 

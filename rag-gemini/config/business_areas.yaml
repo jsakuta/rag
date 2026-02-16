@@ -13,6 +13,12 @@ mappings:
   カード: card
   保険: insurance
   年金: pension
+  # ボット系（_translate_business_area のハードコードと同一）
+  スマイル: smile
+  スマイルタブレット: smile_tablet
+  内部事務: naibujimu
+  相続: souzoku
+  取引時確認: torikaku
 
 # 事務改定用マッピング
 revision_mappings:

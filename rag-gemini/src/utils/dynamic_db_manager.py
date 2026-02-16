@@ -145,6 +145,9 @@ class DynamicDBManager:
                         logger.info("旧3階層形式を検出。次回保存時にフラット形式に移行します")
 
                 logger.info(f"更新日時記録を読み込み: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件 (プロバイダー: {self.embedding_provider})")
+
+                # 旧キー名を現行のDB名に移行
+                self._migrate_timestamp_keys()
             else:
                 self._last_faq_mtime = {}
                 self._last_scenario_mtime = {}
@@ -158,6 +161,103 @@ class DynamicDBManager:
             self._last_faq_mtime = {}
             self._last_scenario_mtime = {}
     
+    def _migrate_timestamp_keys(self):
+        """旧キー名を現行のDB名に移行（日本語→英語、rev系アンダースコア統一）
+
+        例:
+          "スマイル" → "smile"
+          "総則"    → "general"
+          "rev03smile" → "rev03_smile"
+        """
+        migrated = False
+
+        for mtime_dict in [self._last_faq_mtime, self._last_scenario_mtime]:
+            new_dict = {}
+            for area, timestamp in mtime_dict.items():
+                new_area = self._normalize_timestamp_key(area)
+                if new_area != area:
+                    migrated = True
+                    logger.info(f"タイムスタンプキー移行: '{area}' → '{new_area}'")
+                # 同一キーが複数の旧名から移行される場合は新しい方を優先
+                if new_area in new_dict:
+                    new_dict[new_area] = max(new_dict[new_area], timestamp)
+                else:
+                    new_dict[new_area] = timestamp
+            mtime_dict.clear()
+            mtime_dict.update(new_dict)
+
+        if migrated:
+            # JSONファイルからも旧キーを除去して書き直す
+            self._cleanup_stale_timestamp_file()
+            logger.info("タイムスタンプキーの移行が完了しました")
+
+    def _normalize_timestamp_key(self, area: str) -> str:
+        """タイムスタンプキーを現行のDB名に正規化"""
+        # 1. translatorで変換（日本語→英語、既知のrev系はパススルー）
+        translated = self._translator.translate(area)
+        if translated != area:
+            return translated
+
+        # 2. rev系のアンダースコア補完: "rev03smile" → "rev03_smile"
+        if area.startswith("rev") and area not in self._translator.revision_mappings:
+            area_stripped = area.replace("_", "")
+            for rev_key in self._translator.revision_mappings:
+                if rev_key.replace("_", "") == area_stripped:
+                    return rev_key
+
+        return area
+
+    def _cleanup_stale_timestamp_file(self):
+        """JSONファイル内の旧キーを正規化して書き直す"""
+        try:
+            if not os.path.exists(self.update_timestamp_file):
+                return
+
+            with open(self.update_timestamp_file, 'r', encoding='utf-8') as f:
+                raw_timestamps = json.load(f)
+
+            if not isinstance(raw_timestamps, dict):
+                return
+
+            # 各プロバイダー・タイプの組み合わせでサフィックスを検出し、エリア部分を正規化
+            normalized = {}
+            for key, value in raw_timestamps.items():
+                if not isinstance(value, (int, float)):
+                    normalized[key] = value
+                    continue
+
+                # "{area}_{provider}_{type}" 形式からエリア部分を抽出
+                new_key = key
+                for suffix in ["_faq", "_scenario"]:
+                    idx = key.rfind(suffix)
+                    if idx > 0:
+                        # suffix の前にプロバイダー名がある: "{area}_{provider}_faq"
+                        area_and_provider = key[:idx]
+                        type_part = key[idx:]
+                        # プロバイダー名を逆引き（末尾から探す）
+                        for provider in ["azure_openai", "vertex_ai", "gemini"]:
+                            prov_suffix = f"_{provider}"
+                            if area_and_provider.endswith(prov_suffix):
+                                area = area_and_provider[:-len(prov_suffix)]
+                                new_area = self._normalize_timestamp_key(area)
+                                new_key = f"{new_area}{prov_suffix}{type_part}"
+                                break
+                        break
+
+                # 重複キーは新しい方を優先
+                if new_key in normalized:
+                    normalized[new_key] = max(normalized[new_key], value)
+                else:
+                    normalized[new_key] = value
+
+            with open(self.update_timestamp_file, 'w', encoding='utf-8') as f:
+                json.dump(normalized, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"タイムスタンプファイルをクリーンアップ: {len(raw_timestamps)}件 → {len(normalized)}件")
+
+        except Exception as e:
+            logger.warning(f"タイムスタンプファイルのクリーンアップエラー: {e}")
+
     def _save_update_timestamps(self):
         """更新日時の記録を保存（フラット構造: "{area}_{provider}_{type}" → timestamp）"""
         try:
@@ -737,50 +837,8 @@ class DynamicDBManager:
         return business_area
     
     def _translate_business_area(self, business_area: str) -> str:
-        """業務分野名を英語に変換（ChromaDB制限対応・セキュリティ強化版）"""
-        # ChromaDB の制約: コレクション名は 3-512 文字
-        MAX_COLLECTION_NAME_LENGTH = 512
-        MIN_COLLECTION_NAME_LENGTH = 3
-
-        if len(business_area) > MAX_COLLECTION_NAME_LENGTH:
-            logger.warning(f"Business area name too long: {len(business_area)} chars, truncating")
-            business_area = business_area[:MAX_COLLECTION_NAME_LENGTH]
-
-        translation_map = {
-            "総則": "general",
-            "預金": "deposit",
-            "融資": "loan",
-            "スマイルタブレット": "smile_tablet",
-            "スマイル": "smile",
-            "内部事務": "naibujimu",
-            "相続": "souzoku",
-            "取引時確認": "torikaku"
-        }
-
-        # 完全一致を優先
-        if business_area in translation_map:
-            return translation_map[business_area]
-
-        # 部分一致で検索
-        for japanese, english in translation_map.items():
-            if japanese in business_area:
-                return english
-
-        # デフォルト: 英数字のみに変換（re はトップレベルでインポート済み）
-        sanitized = re.sub(r'[^a-zA-Z0-9._-]', '_', business_area)
-        sanitized = re.sub(r'_+', '_', sanitized).strip('_')
-
-        # ChromaDB の制約: 先頭末尾が英数字であること
-        if sanitized and not sanitized[0].isalnum():
-            sanitized = 'c' + sanitized
-        if sanitized and not sanitized[-1].isalnum():
-            sanitized = sanitized + 'c'
-
-        # 最小長チェック
-        if len(sanitized) < MIN_COLLECTION_NAME_LENGTH:
-            sanitized = 'default_collection'
-
-        return sanitized if sanitized else "default"
+        """業務分野名を英語に変換（BusinessAreaTranslatorに委譲）"""
+        return self._translator.translate(business_area)
     
     def get_db_path_for_business(self, business_area: str) -> str:
         """業務分野とプロバイダーに対応するDBパスを取得（階層構造対応）
