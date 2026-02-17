@@ -14,6 +14,7 @@ export interface SearchResultItem {
   title: string;
   content: string;
   score: number;
+  order?: number;
 }
 
 export interface CategorySelection {
@@ -321,14 +322,15 @@ export function buildResultCard(
   selectedCategories: CategorySelection,
   topN: number = 30,
   fixedPerPage?: number,
-  searchSessionId?: string
+  searchSessionId?: string,
+  needsUpdateIds?: Set<string>
 ): AdaptiveCard {
   const CARD_LIMIT = 25 * 1024;
 
   // ページ遷移時は前回確定した perPage を使用、初回は実アイテム数から開始
   const totalItems = scenarios.length + faqs.length;
   let perPage = Math.min(fixedPerPage ?? ITEMS_PER_PAGE, totalItems || 1);
-  let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId);
+  let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId, needsUpdateIds);
   let cardJson = JSON.stringify(card);
   let cardSize = Buffer.byteLength(cardJson, "utf8");
   console.log(`[buildResultCard] perPage=${perPage}, size=${cardSize} bytes (UTF-8)`);
@@ -339,7 +341,7 @@ export function buildResultCard(
     let hi = perPage - 1;
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
-      card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, mid, searchSessionId);
+      card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, mid, searchSessionId, needsUpdateIds);
       cardJson = JSON.stringify(card);
       cardSize = Buffer.byteLength(cardJson, "utf8");
       if (cardSize <= CARD_LIMIT) {
@@ -349,7 +351,7 @@ export function buildResultCard(
       }
     }
     perPage = lo;
-    card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId);
+    card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId, needsUpdateIds);
     cardJson = JSON.stringify(card);
     cardSize = Buffer.byteLength(cardJson, "utf8");
     console.log(`[buildResultCard] binary search → perPage=${perPage}, size=${cardSize} bytes (UTF-8)`);
@@ -362,7 +364,7 @@ export function buildResultCard(
     for (const limit of truncLimits) {
       const ts = scenarios.map((s) => ({ ...s, content: truncate(s.content, limit) }));
       const tf = faqs.map((f) => ({ ...f, content: truncate(f.content, limit) }));
-      card = buildResultCardInner(queryText, searchMode, ts, tf, page, selectedCategories, topN, 1, searchSessionId);
+      card = buildResultCardInner(queryText, searchMode, ts, tf, page, selectedCategories, topN, 1, searchSessionId, needsUpdateIds);
       cardJson = JSON.stringify(card);
       cardSize = Buffer.byteLength(cardJson, "utf8");
       if (cardSize <= CARD_LIMIT) {
@@ -385,7 +387,8 @@ function buildResultCardInner(
   selectedCategories: CategorySelection,
   topN: number,
   perPage: number,
-  searchSessionId?: string
+  searchSessionId?: string,
+  needsUpdateIds?: Set<string>
 ): AdaptiveCard {
   const modeLabel = searchMode === "semantic" ? "意味検索" : "キーワード検索";
 
@@ -512,7 +515,7 @@ function buildResultCardInner(
           type: "Input.Toggle",
           id: `scenario_${s.id}`,
           title: "要修正",
-          value: "false",
+          value: needsUpdateIds?.has(s.id) ? "true" : "false",
         },
         {
           type: "TextBlock",
@@ -586,7 +589,7 @@ function buildResultCardInner(
           type: "Input.Toggle",
           id: `faq_${f.id}`,
           title: "削除対象",
-          value: "false",
+          value: "false", // FAQ削除は1ページ内操作のみ（ページ間保持は設計スコープ外）
         },
         {
           type: "TextBlock",
@@ -741,6 +744,16 @@ export function buildNeedsUpdateCompleteCard(
     });
   }
 
+  // 検索結果に戻る
+  if (searchSessionId) {
+    actions.push({
+      type: "Action.Execute",
+      title: "検索結果に戻る",
+      verb: "searchPage",
+      data: { searchSessionId, page: 1 },
+    });
+  }
+
   return {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -881,9 +894,9 @@ export function buildExcelExportCompleteCard(
   if (searchSessionId) {
     actions.push({
       type: "Action.Execute",
-      title: "検索結果に戻る",
-      verb: "searchPage",
-      data: { verb: "searchPage", searchSessionId, page: 1 },
+      title: "モード選択に戻る",
+      verb: "showSearchCard",
+      data: { searchSessionId },
     });
   }
 
@@ -906,9 +919,9 @@ export function buildExcelExportErrorCard(
   if (searchSessionId) {
     actions.push({
       type: "Action.Execute",
-      title: "検索結果に戻る",
-      verb: "searchPage",
-      data: { verb: "searchPage", searchSessionId, page: 1 },
+      title: "モード選択に戻る",
+      verb: "showSearchCard",
+      data: { searchSessionId },
     });
   }
 

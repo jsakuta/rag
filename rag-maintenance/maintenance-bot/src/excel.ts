@@ -67,8 +67,8 @@ function sanitizeFilename(s: string): string {
 /**
  * シナリオ一覧をカテゴリ別に分割し、各カテゴリの Excel ファイルを生成する。
  *
- * 列構成: Lv1 | 文字数 | Lv2 | 文字数 | ... | LvN | 文字数 | 回答 | 文字数
- * - タイトルを "/" で分割して階層化
+ * 列構成: Lv1 | 文字数 | Lv2 | 文字数 | ... | LvN | 文字数（回答もLvカラムに統合）
+ * - タイトルを "/" で分割して階層化し、contentを末尾Lvに追加
  * - LEN 数式で文字数を自動算出
  * - 要修正行は黄色ハイライト（FFFFFF00）
  */
@@ -93,11 +93,15 @@ export async function generateCategoryExcels(
   for (const [categoryId, group] of grouped) {
     const { categoryName, items } = group;
 
-    // 全シナリオのタイトルを解析し、最大階層数を特定
-    const parsedRows = items.map((item) => ({
-      item,
-      levels: parseTitlePath(item.title),
-    }));
+    // orderでソート（元のExcel行順を復元）
+    const sorted = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    // タイトル解析 + contentをLvに統合（元のExcel構造を再現）
+    const parsedRows = sorted.map((item) => {
+      const pathLevels = parseTitlePath(item.title);
+      const levels = [...pathLevels, item.content]; // 回答もLvカラムに統合
+      return { item, levels };
+    });
     const maxDepth = Math.max(1, ...parsedRows.map((r) => r.levels.length));
 
     // ワークブック生成
@@ -105,12 +109,11 @@ export async function generateCategoryExcels(
     const sheetName = categoryName.length > 31 ? categoryName.substring(0, 31) : categoryName;
     const sheet = workbook.addWorksheet(sheetName);
 
-    // ヘッダー構築: Lv1 | 文字数 | Lv2 | 文字数 | ... | LvN | 文字数 | 回答 | 文字数
+    // ヘッダー構築: Lv1 | 文字数 | Lv2 | 文字数 | ... | LvN | 文字数（回答列なし）
     const headerRow: string[] = [];
     for (let lv = 1; lv <= maxDepth; lv++) {
       headerRow.push(`Lv${lv}`, "文字数");
     }
-    headerRow.push("回答", "文字数");
 
     // 列幅設定
     const columns: Partial<ExcelJS.Column>[] = [];
@@ -118,8 +121,6 @@ export async function generateCategoryExcels(
       columns.push({ width: 25 }); // Lv列
       columns.push({ width: 8 });  // 文字数列
     }
-    columns.push({ width: 50 }); // 回答列
-    columns.push({ width: 8 });  // 回答文字数列
     sheet.columns = columns;
 
     // ヘッダー行追加
@@ -143,19 +144,13 @@ export async function generateCategoryExcels(
       const rowIndex = sheet.rowCount + 1;
       const rowValues: (string | { formula: string })[] = [];
 
-      // Lv1〜LvN の値 + LEN数式
+      // Lv1〜LvN の値 + LEN数式（contentもLvに含む）
       for (let lv = 0; lv < maxDepth; lv++) {
         const colNum = lv * 2 + 1; // 1始まり列番号（Lv列）
         const colLetter = columnLetter(colNum);
         rowValues.push(lv < levels.length ? levels[lv] : "");
         rowValues.push({ formula: `LEN(${colLetter}${rowIndex})` });
       }
-
-      // 回答列 + LEN数式
-      const answerColNum = maxDepth * 2 + 1;
-      const answerColLetter = columnLetter(answerColNum);
-      rowValues.push(item.content);
-      rowValues.push({ formula: `LEN(${answerColLetter}${rowIndex})` });
 
       const row = sheet.addRow(rowValues);
 

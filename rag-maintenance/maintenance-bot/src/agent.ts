@@ -158,6 +158,11 @@ agentApp.adaptiveCards.actionExecute(
       topN = cached.topN;
     }
 
+    // ページ遷移時にユーザーのチェック状態をキャッシュに同期
+    if (cached) {
+      syncToggleState(data, cached.needsUpdateIds, "scenario_");
+    }
+
     console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}, topN: ${topN}, perPage: ${perPage}, session: ${searchSessionId}`);
     return await executeSearchPaged(query, mode, page, categories, topN, perPage > 0 ? perPage : undefined, searchSessionId || undefined);
   }
@@ -307,6 +312,18 @@ agentApp.adaptiveCards.actionExecute(
   }
 );
 
+// --- モード選択に戻る (Action.Execute verb: showSearchCard) ---
+agentApp.adaptiveCards.actionExecute(
+  "showSearchCard",
+  async (_context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
+    const searchSessionId = extractField(data, "searchSessionId", "");
+    cleanExpiredCache();
+    const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
+    const query = cached?.query ?? "";
+    return buildSearchCard(query);
+  }
+);
+
 // --- キャンセル ---
 agentApp.adaptiveCards.actionExecute(
   "cancelAction",
@@ -401,7 +418,7 @@ async function executeSearchPaged(
   cleanExpiredCache();
   const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
   if (cached) {
-    return buildResultCard(query, mode, cached.scenarios, cached.faqs, page, categories, topN, perPage, searchSessionId);
+    return buildResultCard(query, mode, cached.scenarios, cached.faqs, page, categories, topN, perPage, searchSessionId, cached.needsUpdateIds);
   }
 
   // キャッシュミス時はフォールバックとして再検索
@@ -418,7 +435,20 @@ async function executeSearchPaged(
       } as AdaptiveCard;
     }
 
-    return buildResultCard(query, mode, results.scenarios, results.faqs, page, categories, topN, perPage);
+    // キャッシュミス後も新規セッションとしてキャッシュに登録
+    const newSessionId = randomUUID();
+    searchResultCache.set(newSessionId, {
+      scenarios: results.scenarios,
+      faqs: results.faqs,
+      needsUpdateIds: new Set(),
+      query,
+      mode,
+      categories,
+      topN,
+      timestamp: Date.now(),
+    });
+
+    return buildResultCard(query, mode, results.scenarios, results.faqs, page, categories, topN, perPage, newSessionId);
   } catch (err: unknown) {
     return buildSearchErrorCard(err);
   }
@@ -527,14 +557,14 @@ async function searchSingle(
             },
           ],
         },
-        select: ["id", "dataType", "categoryId", "categoryName", "title", "content"] as string[],
+        select: ["id", "dataType", "categoryId", "categoryName", "title", "content", "order"] as string[],
         top: topN,
         filter,
       }
     : {
         queryType: "full" as const,
         searchFields: ["title", "content", "keywords"] as string[],
-        select: ["id", "dataType", "categoryId", "categoryName", "title", "content"] as string[],
+        select: ["id", "dataType", "categoryId", "categoryName", "title", "content", "order"] as string[],
         top: topN,
         filter,
       };
@@ -551,6 +581,7 @@ async function searchSingle(
       title: String(doc.title),
       content: String(doc.content),
       score: result.score ?? 0,
+      order: typeof doc.order === "number" ? doc.order : undefined,
     });
   }
 
@@ -661,6 +692,27 @@ function extractCategorySelectionsFromPageData(data: Record<string, unknown>): C
     scenarios: SCENARIO_CATEGORIES.map((c) => c.id),
     faqs: FAQ_CATEGORIES.map((c) => c.id),
   };
+}
+
+/** ページ遷移時にユーザーのチェック状態をキャッシュに同期 */
+function syncToggleState(
+  data: Record<string, unknown>,
+  needsUpdateIds: Set<string>,
+  prefix: string
+): void {
+  const sources = [data, data?.data as Record<string, unknown> | undefined];
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    for (const [key, value] of Object.entries(source)) {
+      if (!key.startsWith(prefix)) continue;
+      const id = key.replace(prefix, "");
+      if (isToggleOn(value)) {
+        needsUpdateIds.add(id);
+      } else {
+        needsUpdateIds.delete(id);
+      }
+    }
+  }
 }
 
 function extractSelectedIds(
