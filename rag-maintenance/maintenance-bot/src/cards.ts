@@ -329,8 +329,9 @@ export function buildResultCard(
   const totalItems = scenarios.length + faqs.length;
   let perPage = Math.min(fixedPerPage ?? ITEMS_PER_PAGE, totalItems || 1);
   let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId);
-  let cardSize = JSON.stringify(card).length;
-  console.log(`[buildResultCard] perPage=${perPage}, size=${cardSize} bytes`);
+  let cardJson = JSON.stringify(card);
+  let cardSize = Buffer.byteLength(cardJson, "utf8");
+  console.log(`[buildResultCard] perPage=${perPage}, size=${cardSize} bytes (UTF-8)`);
 
   // 超過時は二分探索で最大表示件数を特定（O(log n)）
   if (cardSize > CARD_LIMIT && perPage > 1) {
@@ -339,7 +340,8 @@ export function buildResultCard(
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
       card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, mid, searchSessionId);
-      cardSize = JSON.stringify(card).length;
+      cardJson = JSON.stringify(card);
+      cardSize = Buffer.byteLength(cardJson, "utf8");
       if (cardSize <= CARD_LIMIT) {
         lo = mid; // mid件は収まる → もっと増やせるか試す
       } else {
@@ -348,8 +350,9 @@ export function buildResultCard(
     }
     perPage = lo;
     card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId);
-    cardSize = JSON.stringify(card).length;
-    console.log(`[buildResultCard] binary search → perPage=${perPage}, size=${cardSize} bytes`);
+    cardJson = JSON.stringify(card);
+    cardSize = Buffer.byteLength(cardJson, "utf8");
+    console.log(`[buildResultCard] binary search → perPage=${perPage}, size=${cardSize} bytes (UTF-8)`);
   }
 
   // perPage=1 でも超過する場合はコンテンツを段階的に切り詰めて再構築
@@ -360,7 +363,8 @@ export function buildResultCard(
       const ts = scenarios.map((s) => ({ ...s, content: truncate(s.content, limit) }));
       const tf = faqs.map((f) => ({ ...f, content: truncate(f.content, limit) }));
       card = buildResultCardInner(queryText, searchMode, ts, tf, page, selectedCategories, topN, 1, searchSessionId);
-      cardSize = JSON.stringify(card).length;
+      cardJson = JSON.stringify(card);
+      cardSize = Buffer.byteLength(cardJson, "utf8");
       if (cardSize <= CARD_LIMIT) {
         console.log(`[buildResultCard] Rebuilt with truncate=${limit}, size=${cardSize} bytes`);
         return card;
