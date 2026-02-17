@@ -24,9 +24,11 @@ import {
   SearchResultItem,
   CategorySelection,
 } from "./cards";
+import type { ExcelExportFileInfo } from "./cards";
 import { deleteFaqs, saveNeedsUpdate } from "./cosmos";
-import { generateImpactExcel, generateExcelFilename } from "./excel";
+import { generateCategoryExcels } from "./excel";
 import { uploadExcelToSharePoint } from "./sharepoint";
+import type { SpoUploadResult } from "./sharepoint";
 
 // --- クライアント遅延初期化 ---
 let _searchClient: SearchClient<Record<string, unknown>> | null = null;
@@ -49,6 +51,10 @@ interface CachedSearchResult {
   scenarios: SearchResultItem[];
   faqs: SearchResultItem[];
   needsUpdateIds: Set<string>;
+  query: string;
+  mode: "semantic" | "keyword";
+  categories: CategorySelection;
+  topN: number;
   timestamp: number;
 }
 const searchResultCache = new Map<string, CachedSearchResult>();
@@ -149,8 +155,9 @@ agentApp.adaptiveCards.actionExecute(
 // --- FR-013: FAQ削除確認 (Action.Execute verb: confirmDeleteFaqs) ---
 agentApp.adaptiveCards.actionExecute(
   "confirmDeleteFaqs",
-  async (_context: TurnContext, _state: TurnState, data: Record<string, string>) => {
+  async (_context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const selectedIds = extractSelectedIds(data, "faq_");
+    console.log(`[confirmDeleteFaqs] selectedIds: ${JSON.stringify(selectedIds)}`);
     if (selectedIds.length === 0) {
       return { type: "AdaptiveCard", body: [{ type: "TextBlock", text: "削除対象が選択されていません。" }], version: "1.5", $schema: "http://adaptivecards.io/schemas/adaptive-card.json" } as AdaptiveCard;
     }
@@ -176,14 +183,15 @@ agentApp.adaptiveCards.actionExecute(
 // --- FR-014: シナリオ要修正フラグ保存 (Action.Execute verb: saveNeedsUpdate) ---
 agentApp.adaptiveCards.actionExecute(
   "saveNeedsUpdate",
-  async (context: TurnContext, _state: TurnState, data: Record<string, string>) => {
+  async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const selectedIds = extractSelectedIds(data, "scenario_");
+    console.log(`[saveNeedsUpdate] selectedIds: ${JSON.stringify(selectedIds)}`);
     if (selectedIds.length === 0) {
       return { type: "AdaptiveCard", body: [{ type: "TextBlock", text: "要修正の対象が選択されていません。" }], version: "1.5", $schema: "http://adaptivecards.io/schemas/adaptive-card.json" } as AdaptiveCard;
     }
 
     const user = context.activity.from?.name ?? "不明";
-    const query = (data as Record<string, string>).query ?? "";
+    const query = extractQuery(data as Record<string, unknown>, context);
     const searchSessionId = extractField(data as Record<string, unknown>, "searchSessionId", "");
 
     const saved = await saveNeedsUpdate(selectedIds, query, user);
@@ -212,24 +220,78 @@ agentApp.adaptiveCards.actionExecute(
     const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
     if (!cached) {
       console.warn(`[exportExcel] Cache miss for session: ${searchSessionId}`);
-      return buildExcelExportErrorCard("検索結果の有効期限が切れました。再度検索してください。");
+      return buildExcelExportErrorCard({ message: "検索結果の有効期限が切れました。再度検索してください。" });
     }
 
     try {
-      const filename = generateExcelFilename();
-      const buffer = await generateImpactExcel(cached.scenarios, cached.needsUpdateIds);
-      const result = await uploadExcelToSharePoint(buffer, filename);
+      // カテゴリ別Excel生成
+      const categoryExcels = await generateCategoryExcels(cached.scenarios, cached.needsUpdateIds);
 
-      return buildExcelExportCompleteCard(
-        filename,
-        cached.scenarios.length,
-        cached.needsUpdateIds.size,
-        result.webUrl
+      if (categoryExcels.length === 0) {
+        return buildExcelExportErrorCard({
+          message: "出力対象のシナリオがありません。",
+          searchSessionId: searchSessionId || undefined,
+        });
+      }
+
+      // 並列SPOアップロード（部分失敗許容）
+      const uploadResults = await Promise.allSettled(
+        categoryExcels.map((ce) =>
+          uploadExcelToSharePoint(ce.buffer, ce.filename).then((result) => ({
+            ...result,
+            categoryName: ce.categoryName,
+            totalCount: ce.totalCount,
+            needsUpdateCount: ce.needsUpdateCount,
+          }))
+        )
       );
+
+      // 成功・失敗を分離
+      const succeeded: (SpoUploadResult & { categoryName: string; totalCount: number; needsUpdateCount: number })[] = [];
+      const failedCategories: string[] = [];
+
+      uploadResults.forEach((result, i) => {
+        if (result.status === "fulfilled") {
+          succeeded.push(result.value);
+        } else {
+          const catName = categoryExcels[i].categoryName;
+          failedCategories.push(catName);
+          console.error(`[exportExcel] Upload failed for category "${catName}":`, result.reason);
+        }
+      });
+
+      // 全件失敗
+      if (succeeded.length === 0) {
+        console.error("[exportExcel] All uploads failed");
+        return buildExcelExportErrorCard({
+          message: "SharePoint へのアップロードに失敗しました。しばらく経ってから再度お試しください。",
+          searchSessionId: searchSessionId || undefined,
+        });
+      }
+
+      // ファイル情報を構築
+      const files: ExcelExportFileInfo[] = succeeded.map((s) => ({
+        categoryName: s.categoryName,
+        totalCount: s.totalCount,
+        needsUpdateCount: s.needsUpdateCount,
+        webUrl: s.webUrl,
+      }));
+
+      // フォルダURLは最初の成功結果から取得
+      const folderUrl = succeeded[0].folderUrl;
+
+      return buildExcelExportCompleteCard({
+        files,
+        folderUrl,
+        searchSessionId: searchSessionId || undefined,
+        failedCategories: failedCategories.length > 0 ? failedCategories : undefined,
+      });
     } catch (err: unknown) {
       console.error("[exportExcel] Error:", err);
-      const message = err instanceof Error ? err.message : String(err);
-      return buildExcelExportErrorCard(`SharePoint への保存に失敗しました: ${message}`);
+      return buildExcelExportErrorCard({
+        message: "Excel出力中にエラーが発生しました。しばらく経ってから再度お試しください。",
+        searchSessionId: searchSessionId || undefined,
+      });
     }
   }
 );
@@ -292,6 +354,10 @@ async function executeSearch(
       scenarios: results.scenarios,
       faqs: results.faqs,
       needsUpdateIds: new Set(),
+      query,
+      mode,
+      categories,
+      topN,
       timestamp: Date.now(),
     });
 
@@ -348,23 +414,19 @@ async function executeSearchPaged(
 }
 
 function buildSearchErrorCard(err: unknown): AdaptiveCard {
+  // サーバーサイドに詳細ログを出力（内部情報をカードに含めない）
   console.error("[executeSearch] Error:", err);
-  let message: string;
   if (err instanceof Error) {
-    message = err.message;
-    // Azure SDK固有のエラープロパティを安全に取得
-    if ("statusCode" in err) message += ` | Status: ${(err as { statusCode: unknown }).statusCode}`;
-    if ("code" in err) message += ` | Code: ${(err as { code: unknown }).code}`;
-  } else if (typeof err === "object" && err !== null) {
-    message = JSON.stringify(err);
-  } else {
-    message = String(err);
+    let detail = err.message;
+    if ("statusCode" in err) detail += ` | Status: ${(err as { statusCode: unknown }).statusCode}`;
+    if ("code" in err) detail += ` | Code: ${(err as { code: unknown }).code}`;
+    console.error("[executeSearch] Detail:", detail);
   }
   return {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
     version: "1.5",
-    body: [{ type: "TextBlock", text: `検索エラー: ${message || "(詳細はデバッグコンソール参照)"}`, color: "Attention", wrap: true }],
+    body: [{ type: "TextBlock", text: "検索中にエラーが発生しました。しばらく経ってから再度お試しください。", color: "Attention", wrap: true }],
   } as AdaptiveCard;
 }
 
@@ -454,14 +516,14 @@ async function searchSingle(
             },
           ],
         },
-        select: ["id", "dataType", "categoryName", "title", "content"] as string[],
+        select: ["id", "dataType", "categoryId", "categoryName", "title", "content"] as string[],
         top: topN,
         filter,
       }
     : {
         queryType: "full" as const,
         searchFields: ["title", "content", "keywords"] as string[],
-        select: ["id", "dataType", "categoryName", "title", "content"] as string[],
+        select: ["id", "dataType", "categoryId", "categoryName", "title", "content"] as string[],
         top: topN,
         filter,
       };
@@ -473,6 +535,7 @@ async function searchSingle(
     items.push({
       id: String(doc.id),
       dataType,
+      categoryId: String(doc.categoryId),
       categoryName: String(doc.categoryName),
       title: String(doc.title),
       content: String(doc.content),
@@ -590,13 +653,24 @@ function extractCategorySelectionsFromPageData(data: Record<string, unknown>): C
 }
 
 function extractSelectedIds(
-  data: Record<string, string>,
+  data: Record<string, unknown>,
   prefix: string
 ): string[] {
   const ids: string[] = [];
   for (const [key, value] of Object.entries(data)) {
     if (key.startsWith(prefix) && isToggleOn(value)) {
       ids.push(key.replace(prefix, ""));
+    }
+  }
+  // M365 Agents SDK: Action全体が渡されるケース（data.data にユーザーデータ）
+  if (ids.length === 0) {
+    const nested = data?.data as Record<string, unknown> | undefined;
+    if (nested && typeof nested === "object") {
+      for (const [key, value] of Object.entries(nested)) {
+        if (key.startsWith(prefix) && isToggleOn(value)) {
+          ids.push(key.replace(prefix, ""));
+        }
+      }
     }
   }
   return ids;

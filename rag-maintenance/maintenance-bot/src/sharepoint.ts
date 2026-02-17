@@ -6,6 +6,7 @@ import config from "./config";
 export interface SpoUploadResult {
   webUrl: string;
   filename: string;
+  folderUrl: string;
 }
 
 // --- Graph クライアント遅延初期化 ---
@@ -21,11 +22,19 @@ function getGraphClient(): Client {
   return _graphClient;
 }
 
+const MAX_SIMPLE_UPLOAD_BYTES = 4 * 1024 * 1024; // 4MB
+
 /** Excel バッファを SharePoint Online にアップロード（4MB 以下シンプルアップロード） */
 export async function uploadExcelToSharePoint(
   buffer: Buffer,
   filename: string
 ): Promise<SpoUploadResult> {
+  if (buffer.length > MAX_SIMPLE_UPLOAD_BYTES) {
+    throw new Error(
+      `ファイルサイズが4MBを超えています (${(buffer.length / 1024 / 1024).toFixed(1)}MB)。アップロードできません。`
+    );
+  }
+
   const client = getGraphClient();
   const folder = config.spoUploadFolder;
   const driveId = config.spoDriveId;
@@ -43,5 +52,6 @@ export async function uploadExcelToSharePoint(
   return {
     webUrl: response.webUrl,
     filename,
+    folderUrl: response.parentReference?.webUrl ?? "",
   };
 }

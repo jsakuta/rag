@@ -9,6 +9,7 @@ import { SCENARIO_CATEGORIES, FAQ_CATEGORIES, TOP_N_OPTIONS, ITEMS_PER_PAGE } fr
 export interface SearchResultItem {
   id: string;
   dataType: "scenario" | "faq";
+  categoryId: string;
   categoryName: string;
   title: string;
   content: string;
@@ -765,47 +766,148 @@ export function buildNeedsUpdateCompleteCard(
   };
 }
 
+// --- FR-015: Excel出力関連の型定義 ---
+
+export interface ExcelExportFileInfo {
+  categoryName: string;
+  totalCount: number;
+  needsUpdateCount: number;
+  webUrl: string;
+}
+
+export interface ExcelExportCompleteCardParams {
+  files: ExcelExportFileInfo[];
+  folderUrl: string;
+  searchSessionId?: string;
+  failedCategories?: string[];
+}
+
+export interface ExcelExportErrorCardParams {
+  message: string;
+  searchSessionId?: string;
+}
+
 // --- FR-015: Excel出力完了カード ---
 export function buildExcelExportCompleteCard(
-  filename: string,
-  totalCount: number,
-  needsUpdateCount: number,
-  spoUrl: string
+  params: ExcelExportCompleteCardParams
 ): AdaptiveCard {
+  const { files, folderUrl, searchSessionId, failedCategories } = params;
   const now = formatJST(new Date());
+
+  const body: Record<string, unknown>[] = [
+    {
+      type: "TextBlock",
+      text: "Excel出力完了",
+      weight: "Bolder",
+      size: "Medium",
+      color: "Good",
+    },
+    {
+      type: "TextBlock",
+      text: `出力日時: ${now}`,
+      size: "Small",
+      isSubtle: true,
+    },
+  ];
+
+  // 各ファイル情報を表示
+  for (const file of files) {
+    body.push(
+      {
+        type: "ColumnSet",
+        separator: true,
+        spacing: "Medium",
+        columns: [
+          {
+            type: "Column",
+            width: "stretch",
+            items: [
+              {
+                type: "TextBlock",
+                text: `${file.categoryName}（${file.totalCount}件 / 要修正: ${file.needsUpdateCount}件）`,
+                weight: "Bolder",
+                size: "Small",
+                wrap: true,
+              },
+            ],
+          },
+          {
+            type: "Column",
+            width: "auto",
+            items: [
+              {
+                type: "ActionSet",
+                actions: [
+                  {
+                    type: "Action.OpenUrl",
+                    title: "開く",
+                    url: file.webUrl,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }
+    );
+  }
+
+  // 部分失敗警告
+  if (failedCategories && failedCategories.length > 0) {
+    body.push({
+      type: "TextBlock",
+      text: `⚠ 以下のカテゴリはアップロードに失敗しました: ${failedCategories.join("、")}`,
+      wrap: true,
+      color: "Warning",
+      spacing: "Medium",
+    });
+  }
+
+  // アクションボタン
+  const actions: Record<string, unknown>[] = [];
+
+  if (folderUrl) {
+    actions.push({
+      type: "Action.OpenUrl",
+      title: "フォルダを開く",
+      url: folderUrl,
+    });
+  }
+
+  if (searchSessionId) {
+    actions.push({
+      type: "Action.Execute",
+      title: "検索結果に戻る",
+      verb: "searchPage",
+      data: { verb: "searchPage", searchSessionId, page: 1 },
+    });
+  }
+
   return {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
     version: "1.5",
-    body: [
-      {
-        type: "TextBlock",
-        text: "Excel出力完了",
-        weight: "Bolder",
-        size: "Medium",
-        color: "Good",
-      },
-      {
-        type: "FactSet",
-        facts: [
-          { title: "ファイル名", value: filename },
-          { title: "シナリオ数", value: `${totalCount}件（うち要修正: ${needsUpdateCount}件）` },
-          { title: "出力日時", value: now },
-        ],
-      },
-    ],
-    actions: [
-      {
-        type: "Action.OpenUrl",
-        title: "SharePointで開く",
-        url: spoUrl,
-      },
-    ],
+    body,
+    ...(actions.length > 0 ? { actions } : {}),
   };
 }
 
 // --- FR-015: Excel出力エラーカード ---
-export function buildExcelExportErrorCard(message: string): AdaptiveCard {
+export function buildExcelExportErrorCard(
+  params: ExcelExportErrorCardParams
+): AdaptiveCard {
+  const { message, searchSessionId } = params;
+
+  const actions: Record<string, unknown>[] = [];
+  if (searchSessionId) {
+    actions.push({
+      type: "Action.Execute",
+      title: "検索結果に戻る",
+      verb: "searchPage",
+      data: { verb: "searchPage", searchSessionId, page: 1 },
+    });
+  }
+
   return {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -818,6 +920,7 @@ export function buildExcelExportErrorCard(message: string): AdaptiveCard {
         color: "Attention",
       },
     ],
+    ...(actions.length > 0 ? { actions } : {}),
   };
 }
 
