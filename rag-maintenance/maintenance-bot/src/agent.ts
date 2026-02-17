@@ -138,15 +138,26 @@ agentApp.adaptiveCards.actionExecute(
 agentApp.adaptiveCards.actionExecute(
   "searchPage",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
-    const query = extractQuery(data, context);
-    const mode = extractField(data, "mode", "semantic") === "keyword" ? "keyword" : "semantic";
+    let query = extractQuery(data, context);
+    let mode: "semantic" | "keyword" = extractField(data, "mode", "semantic") === "keyword" ? "keyword" : "semantic";
     const page = extractNumber(data, "page", 1);
-    const topN = extractSafeTopN(data);
+    let topN = extractSafeTopN(data);
     const perPage = extractNumber(data, "perPage", -1);
 
     // ページ遷移時は data に埋め込み済みの selectedCategories を使用
-    const categories = extractCategorySelectionsFromPageData(data);
+    let categories = extractCategorySelectionsFromPageData(data);
     const searchSessionId = extractField(data, "searchSessionId", "");
+
+    // Cache fallback: 「検索結果に戻る」ボタンは searchSessionId + page のみ送信するため
+    // query が空の場合はキャッシュから検索パラメータを復元する
+    const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
+    if (!query && cached) {
+      query = cached.query;
+      mode = cached.mode;
+      categories = cached.categories;
+      topN = cached.topN;
+    }
+
     console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}, topN: ${topN}, perPage: ${perPage}, session: ${searchSessionId}`);
     return await executeSearchPaged(query, mode, page, categories, topN, perPage > 0 ? perPage : undefined, searchSessionId || undefined);
   }
