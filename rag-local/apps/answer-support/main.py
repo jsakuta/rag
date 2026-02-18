@@ -152,9 +152,8 @@ def main():
 
             # subprocessを使用してStreamlitを起動（セキュリティ向上）
             import time
-            # Task 4 完了まで旧 chat.py を参照（中間状態での動作保証）
-            process = subprocess.Popen([python_executable, "-m", "streamlit", "run",
-                str(PROJECT_ROOT / "ui" / "chat.py")])
+            ui_chat_path = str(Path(__file__).parent / "ui" / "chat.py")
+            process = subprocess.Popen([python_executable, "-m", "streamlit", "run", ui_chat_path])
             # プロセスが起動したか確認（最大5秒待機）
             startup_timeout = 5
             poll_interval = 0.5
