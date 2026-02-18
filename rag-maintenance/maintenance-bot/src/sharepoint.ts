@@ -49,9 +49,18 @@ export async function uploadExcelToSharePoint(
     )
     .put(buffer);
 
+  // フォルダURLをファイルURLから構築（parentReference.webUrl のフォールバック）
+  let folderUrl = response.parentReference?.webUrl ?? "";
+  if (!folderUrl && response.webUrl) {
+    const lastSlash = response.webUrl.lastIndexOf("/");
+    if (lastSlash > 0) {
+      folderUrl = response.webUrl.substring(0, lastSlash);
+    }
+  }
+
   return {
     webUrl: response.webUrl,
     filename,
-    folderUrl: response.parentReference?.webUrl ?? "",
+    folderUrl,
   };
 }
