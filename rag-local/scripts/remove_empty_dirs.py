@@ -39,7 +39,7 @@ def remove_empty_directories(base_dir: str, dry_run: bool = False):
         print(f"\n完了: {removed_count}個の空ディレクトリを削除しました")
 
 if __name__ == "__main__":
-    base_dir = r"C:\VSCode\rag\rag-gemini"
+    base_dir = str(Path(__file__).parent.parent)
     
     # まずドライラン
     print("=== ドライラン（削除予定の確認） ===")

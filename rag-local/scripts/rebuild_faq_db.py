@@ -65,7 +65,7 @@ def main() -> None:
     print("FAQ DB 構築完了！")
     print("=" * 60)
     print("\nUIを起動するには:")
-    print("  streamlit run ui/chat.py")
+    print("  streamlit run apps/answer-support/ui/chat.py")
 
 
 if __name__ == "__main__":

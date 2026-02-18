@@ -1,6 +1,6 @@
 """
 Excel -> JSON 変換スクリプト
-rag-gemini の実データ（Excel）を Cosmos DB 投入用 JSON に変換する。
+rag-local の実データ（Excel）を Cosmos DB 投入用 JSON に変換する。
 
 使用法:
   pip install openpyxl
@@ -19,27 +19,27 @@ from pathlib import Path
 import openpyxl
 
 # --- 設定 ---
-RAG_GEMINI_BASE = Path(r"C:\VSCode\rag\rag-gemini\data\source")
+RAG_LOCAL_BASE = Path(r"C:\VSCode\rag\rag-local\data\source")
 OUTPUT_DIR = Path(__file__).parent / "data"
 
 SCENARIO_FILES = [
     {
-        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03smile_シナリオデータ_20260203.xlsx",
+        "path": RAG_LOCAL_BASE / "scenarios" / "revisions" / "rev03smile_シナリオデータ_20260203.xlsx",
         "categoryId": "smile",
         "categoryName": "スマイル",
     },
     {
-        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03souzoku_シナリオデータ_20260203.xlsx",
+        "path": RAG_LOCAL_BASE / "scenarios" / "revisions" / "rev03souzoku_シナリオデータ_20260203.xlsx",
         "categoryId": "souzoku",
         "categoryName": "相続",
     },
     {
-        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03naibujimu_シナリオデータ_20260203.xlsx",
+        "path": RAG_LOCAL_BASE / "scenarios" / "revisions" / "rev03naibujimu_シナリオデータ_20260203.xlsx",
         "categoryId": "naibujimu",
         "categoryName": "内部事務",
     },
     {
-        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03torikaku_シナリオデータ_20260203.xlsx",
+        "path": RAG_LOCAL_BASE / "scenarios" / "revisions" / "rev03torikaku_シナリオデータ_20260203.xlsx",
         "categoryId": "torikaku",
         "categoryName": "取引時確認",
     },
@@ -47,19 +47,19 @@ SCENARIO_FILES = [
 
 FAQ_FILES = [
     {
-        "path": RAG_GEMINI_BASE / "faq" / "latest" / "スマイル_履歴データ_20250205.xlsx",
+        "path": RAG_LOCAL_BASE / "faq" / "latest" / "スマイル_履歴データ_20250205.xlsx",
         "categoryId": "smile",
         "categoryName": "スマイル",
         "columns": {"title": "問い合わせ", "content": "回答", "supplement": "補足回答", "tags": None},
     },
     {
-        "path": RAG_GEMINI_BASE / "faq" / "latest" / "総則_履歴データ_20250829.xlsx",
+        "path": RAG_LOCAL_BASE / "faq" / "latest" / "総則_履歴データ_20250829.xlsx",
         "categoryId": "sousoku",
         "categoryName": "総則",
         "columns": {"title": "質問", "content": "回答", "supplement": None, "tags": "タグ付け"},
     },
     {
-        "path": RAG_GEMINI_BASE / "faq" / "latest" / "預金_履歴データ_20250830.xlsx",
+        "path": RAG_LOCAL_BASE / "faq" / "latest" / "預金_履歴データ_20250830.xlsx",
         "categoryId": "yokin",
         "categoryName": "預金",
         "columns": {"title": "質問", "content": "回答", "supplement": None, "tags": "タグ付け"},
