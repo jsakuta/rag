@@ -256,8 +256,28 @@ agentApp.adaptiveCards.actionExecute(
     }
 
     try {
-      // カテゴリ別Excel生成
-      const categoryExcels = await generateCategoryExcels(cached.scenarios, cached.needsUpdateIds);
+      // カテゴリ全シナリオを取得（検索結果ではなくカテゴリ全量）
+      const scenarioCategoryIds = cached.categories.scenarios.filter(
+        (catId) => VALID_SCENARIO_IDS.has(catId)
+      );
+
+      if (scenarioCategoryIds.length === 0) {
+        return buildExcelExportErrorCard({
+          message: "出力対象のシナリオカテゴリがありません。",
+          searchSessionId: searchSessionId || undefined,
+        });
+      }
+
+      // 並列で全カテゴリのシナリオを取得
+      const categoryResults = await Promise.all(
+        scenarioCategoryIds.map((catId) => fetchAllScenariosForCategory(catId))
+      );
+      const allScenarios = categoryResults.flat();
+
+      console.log(`[exportExcel] Total scenarios for Excel: ${allScenarios.length}, needsUpdateIds: ${cached.needsUpdateIds.size}`);
+
+      // カテゴリ別Excel生成（全シナリオ、要修正IDでハイライト）
+      const categoryExcels = await generateCategoryExcels(allScenarios, cached.needsUpdateIds);
 
       if (categoryExcels.length === 0) {
         return buildExcelExportErrorCard({
@@ -603,6 +623,50 @@ async function searchSingle(
 
   console.log(`[searchSingle] ${dataType}/${categoryId}: ${items.length} results`);
   return items;
+}
+
+/**
+ * 指定カテゴリの全シナリオを AI Search から取得する（Excel全量出力用）。
+ * AI Search の top 上限は 1,000 のため、skip でページネーションする。
+ */
+async function fetchAllScenariosForCategory(categoryId: string): Promise<SearchResultItem[]> {
+  const PAGE_SIZE = 1000;
+  const filter = `isDeleted eq false and dataType eq 'scenario' and categoryId eq '${categoryId}'`;
+  const allItems: SearchResultItem[] = [];
+  let skip = 0;
+
+  while (true) {
+    const searchResults = await getSearchClient().search("*", {
+      queryType: "simple" as const,
+      select: ["id", "dataType", "categoryId", "categoryName", "title", "content", "order"] as string[],
+      top: PAGE_SIZE,
+      skip,
+      filter,
+      orderBy: ["order asc"],
+    });
+
+    let count = 0;
+    for await (const result of searchResults.results) {
+      const doc = result.document as Record<string, unknown>;
+      allItems.push({
+        id: String(doc.id),
+        dataType: "scenario",
+        categoryId: String(doc.categoryId),
+        categoryName: String(doc.categoryName),
+        title: String(doc.title),
+        content: String(doc.content),
+        score: 0,
+        order: typeof doc.order === "number" ? doc.order : undefined,
+      });
+      count++;
+    }
+
+    if (count < PAGE_SIZE) break;
+    skip += PAGE_SIZE;
+  }
+
+  console.log(`[fetchAllScenariosForCategory] ${categoryId}: ${allItems.length} total scenarios`);
+  return allItems;
 }
 
 // --- ユーティリティ ---
