@@ -200,26 +200,42 @@ agentApp.adaptiveCards.actionExecute(
 agentApp.adaptiveCards.actionExecute(
   "saveNeedsUpdate",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
-    const selectedIds = extractSelectedIds(data, "scenario_");
-    console.log(`[saveNeedsUpdate] selectedIds: ${JSON.stringify(selectedIds)}`);
+    const searchSessionId = extractField(data as Record<string, unknown>, "searchSessionId", "");
+    cleanExpiredCache();
+    const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
+
+    // 1. 現在カードのトグル状態をキャッシュに同期（ページ遷移と同じロジック）
+    if (cached) {
+      syncToggleState(data, cached.needsUpdateIds, "scenario_");
+    }
+
+    // 2. キャッシュの全needsUpdateIds + 現在カードのIDを統合
+    const currentPageIds = extractSelectedIds(data, "scenario_");
+    const allIds = new Set<string>(currentPageIds);
+    if (cached) {
+      for (const id of cached.needsUpdateIds) {
+        allIds.add(id);
+      }
+    }
+    const selectedIds = Array.from(allIds);
+
+    console.log(`[saveNeedsUpdate] selectedIds: ${JSON.stringify(selectedIds)} (current page: ${currentPageIds.length}, cached: ${cached?.needsUpdateIds.size ?? 0})`);
     if (selectedIds.length === 0) {
       return { type: "AdaptiveCard", body: [{ type: "TextBlock", text: "要修正の対象が選択されていません。" }], version: "1.5", $schema: "http://adaptivecards.io/schemas/adaptive-card.json" } as AdaptiveCard;
     }
 
     const user = context.activity.from?.name ?? "不明";
     const query = extractQuery(data as Record<string, unknown>, context);
-    const searchSessionId = extractField(data as Record<string, unknown>, "searchSessionId", "");
 
     const saved = await saveNeedsUpdate(selectedIds, query, user);
 
-    // FR-015: キャッシュの needsUpdateIds にマージ（複数ページ対応）
-    cleanExpiredCache();
+    // キャッシュの needsUpdateIds にマージ（重複なし）
     if (searchSessionId && searchResultCache.has(searchSessionId)) {
-      const cached = searchResultCache.get(searchSessionId)!;
+      const c = searchResultCache.get(searchSessionId)!;
       for (const id of selectedIds) {
-        cached.needsUpdateIds.add(id);
+        c.needsUpdateIds.add(id);
       }
-      cached.timestamp = Date.now(); // TTL リフレッシュ
+      c.timestamp = Date.now();
     }
 
     return buildNeedsUpdateCompleteCard(saved, user, searchSessionId || undefined);
