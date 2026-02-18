@@ -1,6 +1,6 @@
 # 設定ガイド
 
-このドキュメントでは、RAG-Geminiシステムの全環境変数と設定オプションを詳しく説明します。
+このドキュメントでは、RAG-Localシステムの全環境変数と設定オプションを詳しく説明します。
 
 ## 目次
 
@@ -334,13 +334,13 @@ OUTPUT_DIR=data/output
 
 ```bash
 # デフォルトポート
-streamlit run ui/chat.py
+streamlit run apps/answer-support/ui/chat.py
 
 # カスタムポート
-streamlit run ui/chat.py --server.port 8502
+streamlit run apps/answer-support/ui/chat.py --server.port 8502
 
 # 外部アクセス許可
-streamlit run ui/chat.py --server.address 0.0.0.0
+streamlit run apps/answer-support/ui/chat.py --server.address 0.0.0.0
 ```
 
 ### Docker 設定

@@ -52,5 +52,5 @@ def archive_output_files(base_dir: str):
     print(f"\n完了: {archived_count}件アーカイブ, {skipped_count}件スキップ")
 
 if __name__ == "__main__":
-    base_dir = r"C:\VSCode\rag\rag-gemini"
+    base_dir = str(Path(__file__).parent.parent)
     archive_output_files(base_dir)
