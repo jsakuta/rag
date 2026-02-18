@@ -3,6 +3,12 @@ import sys
 import os
 import subprocess
 import argparse
+from pathlib import Path
+
+# apps/answer-support/ → rag-local/ ルートへのパス解決
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
 from dotenv import load_dotenv
 from config import SearchConfig
 from src.core.processor import Processor
@@ -10,7 +16,7 @@ from src.utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
 from src.utils.logger import setup_logger
 
 # 環境変数の読み込み
-load_dotenv()
+load_dotenv(PROJECT_ROOT / ".env")
 logger = setup_logger(__name__)
 
 
@@ -124,7 +130,7 @@ def main():
     args = parse_args()
 
     # 設定の初期化
-    config = SearchConfig(base_dir=os.path.dirname(os.path.abspath(__file__)))
+    config = SearchConfig(base_dir=str(PROJECT_ROOT))
 
     # プレフライトモード
     if args.command == "preflight":
@@ -146,7 +152,9 @@ def main():
 
             # subprocessを使用してStreamlitを起動（セキュリティ向上）
             import time
-            process = subprocess.Popen([python_executable, "-m", "streamlit", "run", "ui/chat.py"])
+            # Task 4 完了まで旧 chat.py を参照（中間状態での動作保証）
+            process = subprocess.Popen([python_executable, "-m", "streamlit", "run",
+                str(PROJECT_ROOT / "ui" / "chat.py")])
             # プロセスが起動したか確認（最大5秒待機）
             startup_timeout = 5
             poll_interval = 0.5
