@@ -1,4 +1,5 @@
-import { ActivityTypes } from "@microsoft/agents-activity";
+import { ActivityTypes, type ConversationReference } from "@microsoft/agents-activity";
+import type { JwtPayload } from "jsonwebtoken";
 import {
   AgentApplication,
   MemoryStorage,
@@ -21,13 +22,15 @@ import {
   buildCancelCard,
   buildExcelExportCompleteCard,
   buildExcelExportErrorCard,
+  buildExcelProcessingCard,
+  buildSearchProcessingCard,
   SearchResultItem,
   CategorySelection,
 } from "./cards";
 import type { ExcelExportFileInfo } from "./cards";
 import { deleteFaqs, saveNeedsUpdate } from "./cosmos";
 import { generateCategoryExcels } from "./excel";
-import { uploadExcelToSharePoint } from "./sharepoint";
+import { uploadExcelToSharePoint, getFolderWebUrl } from "./sharepoint";
 import type { SpoUploadResult } from "./sharepoint";
 
 // --- クライアント遅延初期化 ---
@@ -108,6 +111,9 @@ agentApp.onActivity(ActivityTypes.Message, async (context: TurnContext) => {
   await context.sendActivity(activity);
 });
 
+// --- FR-003/FR-004: 検索リトライガード（タイムアウトによるリトライで重複処理を防止） ---
+const processingSearches = new Set<string>();
+
 // --- FR-003: 意味検索 (Action.Execute verb: searchSemantic) ---
 agentApp.adaptiveCards.actionExecute(
   "searchSemantic",
@@ -117,7 +123,38 @@ agentApp.adaptiveCards.actionExecute(
     const categories = extractCategorySelections(data, targetType);
     const topN = extractSafeTopN(data);
     console.log(`[searchSemantic] query: ${query}, targetType: ${targetType}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
-    return await executeSearch(query, "semantic", categories, topN);
+
+    // リトライガード（conversation + query + categories でユニークキー）
+    const searchKey = `${context.activity.conversation?.id ?? ""}-semantic-${query}-${JSON.stringify(categories)}-${topN}`;
+    if (processingSearches.has(searchKey)) {
+      console.log(`[searchSemantic] Already processing: ${searchKey}`);
+      return buildSearchProcessingCard(query);
+    }
+    processingSearches.add(searchKey);
+
+    const convRef = context.activity.getConversationReference() as ConversationReference;
+    const identity = context.identity as JwtPayload;
+
+    // バックグラウンドで AI Search + カード構築（fire-and-forget）
+    (async () => {
+      try {
+        const card = await executeSearch(query, "semantic", categories, topN);
+        const activity = MessageFactory.attachment(CardFactory.adaptiveCard(card));
+        await agentApp.sendProactiveActivity(identity, convRef, activity);
+      } catch (err) {
+        console.error("[searchSemantic] Background error:", err);
+        try {
+          await agentApp.sendProactiveActivity(identity, convRef, "検索中にエラーが発生しました。しばらく経ってから再度お試しください。");
+        } catch (sendErr) {
+          console.error("[searchSemantic] Failed to send error notification:", sendErr);
+        }
+      } finally {
+        processingSearches.delete(searchKey);
+      }
+    })();
+
+    // 即座に「検索中...」カードを返す（Teams タイムアウト回避）
+    return buildSearchProcessingCard(query);
   }
 );
 
@@ -130,7 +167,38 @@ agentApp.adaptiveCards.actionExecute(
     const categories = extractCategorySelections(data, targetType);
     const topN = extractSafeTopN(data);
     console.log(`[searchKeyword] query: ${query}, targetType: ${targetType}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
-    return await executeSearch(query, "keyword", categories, topN);
+
+    // リトライガード
+    const searchKey = `${context.activity.conversation?.id ?? ""}-keyword-${query}-${JSON.stringify(categories)}-${topN}`;
+    if (processingSearches.has(searchKey)) {
+      console.log(`[searchKeyword] Already processing: ${searchKey}`);
+      return buildSearchProcessingCard(query);
+    }
+    processingSearches.add(searchKey);
+
+    const convRef = context.activity.getConversationReference() as ConversationReference;
+    const identity = context.identity as JwtPayload;
+
+    // バックグラウンドで AI Search + カード構築（fire-and-forget）
+    (async () => {
+      try {
+        const card = await executeSearch(query, "keyword", categories, topN);
+        const activity = MessageFactory.attachment(CardFactory.adaptiveCard(card));
+        await agentApp.sendProactiveActivity(identity, convRef, activity);
+      } catch (err) {
+        console.error("[searchKeyword] Background error:", err);
+        try {
+          await agentApp.sendProactiveActivity(identity, convRef, "検索中にエラーが発生しました。しばらく経ってから再度お試しください。");
+        } catch (sendErr) {
+          console.error("[searchKeyword] Failed to send error notification:", sendErr);
+        }
+      } finally {
+        processingSearches.delete(searchKey);
+      }
+    })();
+
+    // 即座に「検索中...」カードを返す（Teams タイムアウト回避）
+    return buildSearchProcessingCard(query);
   }
 );
 
@@ -189,9 +257,14 @@ agentApp.adaptiveCards.actionExecute(
 // --- FR-013: FAQ削除実行 (Action.Execute verb: executeDeleteFaqs) ---
 agentApp.adaptiveCards.actionExecute(
   "executeDeleteFaqs",
-  async (context: TurnContext, _state: TurnState, data: { faqIds: string[] }) => {
+  async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const user = context.activity.from?.name ?? "不明";
-    const deleted = await deleteFaqs(data.faqIds);
+    // M365 Agents SDK: data.faqIds ?? data.data.faqIds フォールバック
+    const faqIds = (Array.isArray(data.faqIds) ? data.faqIds : (data.data as Record<string, unknown>)?.faqIds) as string[] | undefined;
+    if (!faqIds || faqIds.length === 0) {
+      return { type: "AdaptiveCard", version: "1.5", body: [{ type: "TextBlock", text: "削除対象が見つかりませんでした。", color: "Attention" }] } as AdaptiveCard;
+    }
+    const deleted = await deleteFaqs(faqIds);
     return buildDeleteCompleteCard(deleted, user);
   }
 );
@@ -243,11 +316,20 @@ agentApp.adaptiveCards.actionExecute(
 );
 
 // --- FR-015: Excel出力 (Action.Execute verb: exportExcel) ---
+// リトライガード: Teams が Action.Execute タイムアウトでリトライするため重複処理を防止
+const processingExports = new Set<string>();
+
 agentApp.adaptiveCards.actionExecute(
   "exportExcel",
-  async (_context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
+  async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
     const searchSessionId = extractField(data, "searchSessionId", "");
     cleanExpiredCache();
+
+    // リトライガード: 同一セッションの処理中は即座に処理中カードを返す
+    if (processingExports.has(searchSessionId)) {
+      console.log(`[exportExcel] Already processing session: ${searchSessionId}, returning processing card`);
+      return buildExcelProcessingCard();
+    }
 
     const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
     if (!cached) {
@@ -255,96 +337,105 @@ agentApp.adaptiveCards.actionExecute(
       return buildExcelExportErrorCard({ message: "検索結果の有効期限が切れました。再度検索してください。" });
     }
 
-    try {
-      // カテゴリ全シナリオを取得（検索結果ではなくカテゴリ全量）
-      const scenarioCategoryIds = cached.categories.scenarios.filter(
-        (catId) => VALID_SCENARIO_IDS.has(catId)
-      );
-
-      if (scenarioCategoryIds.length === 0) {
-        return buildExcelExportErrorCard({
-          message: "出力対象のシナリオカテゴリがありません。",
-          searchSessionId: searchSessionId || undefined,
-        });
-      }
-
-      // 並列で全カテゴリのシナリオを取得
-      const categoryResults = await Promise.all(
-        scenarioCategoryIds.map((catId) => fetchAllScenariosForCategory(catId))
-      );
-      const allScenarios = categoryResults.flat();
-
-      console.log(`[exportExcel] Total scenarios for Excel: ${allScenarios.length}, needsUpdateIds: ${cached.needsUpdateIds.size}`);
-
-      // カテゴリ別Excel生成（全シナリオ、要修正IDでハイライト）
-      const categoryExcels = await generateCategoryExcels(allScenarios, cached.needsUpdateIds);
-
-      if (categoryExcels.length === 0) {
-        return buildExcelExportErrorCard({
-          message: "出力対象のシナリオがありません。",
-          searchSessionId: searchSessionId || undefined,
-        });
-      }
-
-      // 並列SPOアップロード（部分失敗許容）
-      const uploadResults = await Promise.allSettled(
-        categoryExcels.map((ce) =>
-          uploadExcelToSharePoint(ce.buffer, ce.filename).then((result) => ({
-            ...result,
-            categoryName: ce.categoryName,
-            totalCount: ce.totalCount,
-            needsUpdateCount: ce.needsUpdateCount,
-          }))
-        )
-      );
-
-      // 成功・失敗を分離
-      const succeeded: (SpoUploadResult & { categoryName: string; totalCount: number; needsUpdateCount: number })[] = [];
-      const failedCategories: string[] = [];
-
-      uploadResults.forEach((result, i) => {
-        if (result.status === "fulfilled") {
-          succeeded.push(result.value);
-        } else {
-          const catName = categoryExcels[i].categoryName;
-          failedCategories.push(catName);
-          console.error(`[exportExcel] Upload failed for category "${catName}":`, result.reason);
-        }
-      });
-
-      // 全件失敗
-      if (succeeded.length === 0) {
-        console.error("[exportExcel] All uploads failed");
-        return buildExcelExportErrorCard({
-          message: "SharePoint へのアップロードに失敗しました。しばらく経ってから再度お試しください。",
-          searchSessionId: searchSessionId || undefined,
-        });
-      }
-
-      // ファイル情報を構築
-      const files: ExcelExportFileInfo[] = succeeded.map((s) => ({
-        categoryName: s.categoryName,
-        totalCount: s.totalCount,
-        needsUpdateCount: s.needsUpdateCount,
-        webUrl: s.webUrl,
-      }));
-
-      // フォルダURLは最初の成功結果から取得
-      const folderUrl = succeeded[0].folderUrl;
-
-      return buildExcelExportCompleteCard({
-        files,
-        folderUrl,
-        searchSessionId: searchSessionId || undefined,
-        failedCategories: failedCategories.length > 0 ? failedCategories : undefined,
-      });
-    } catch (err: unknown) {
-      console.error("[exportExcel] Error:", err);
+    const scenarioCategoryIds = cached.categories.scenarios.filter(
+      (catId) => VALID_SCENARIO_IDS.has(catId)
+    );
+    if (scenarioCategoryIds.length === 0) {
       return buildExcelExportErrorCard({
-        message: "Excel出力中にエラーが発生しました。しばらく経ってから再度お試しください。",
+        message: "出力対象のシナリオカテゴリがありません。",
         searchSessionId: searchSessionId || undefined,
       });
     }
+
+    // 処理中フラグを立てる
+    processingExports.add(searchSessionId);
+
+    // プロアクティブメッセージ用: 会話参照 + Bot ID を保存
+    const convRef = context.activity.getConversationReference() as ConversationReference;
+    const identity = context.identity as JwtPayload;
+
+    // バックグラウンドで Excel 生成 + SPO アップロード（fire-and-forget）
+    (async () => {
+      try {
+        // 並列で全カテゴリのシナリオを取得
+        const categoryResults = await Promise.all(
+          scenarioCategoryIds.map((catId) => fetchAllScenariosForCategory(catId))
+        );
+        const allScenarios = categoryResults.flat();
+        console.log(`[exportExcel] Total scenarios for Excel: ${allScenarios.length}, needsUpdateIds: ${cached.needsUpdateIds.size}`);
+
+        // カテゴリ別Excel生成
+        const categoryExcels = await generateCategoryExcels(allScenarios, cached.needsUpdateIds);
+        if (categoryExcels.length === 0) {
+          await agentApp.sendProactiveActivity(identity, convRef, "出力対象のシナリオがありません。");
+          return;
+        }
+
+        // 並列SPOアップロード（部分失敗許容）
+        const uploadResults = await Promise.allSettled(
+          categoryExcels.map((ce) =>
+            uploadExcelToSharePoint(ce.buffer, ce.filename).then((result) => ({
+              ...result,
+              categoryName: ce.categoryName,
+              totalCount: ce.totalCount,
+              needsUpdateCount: ce.needsUpdateCount,
+            }))
+          )
+        );
+
+        // 成功・失敗を分離
+        const succeeded: (SpoUploadResult & { categoryName: string; totalCount: number; needsUpdateCount: number })[] = [];
+        const failedCategories: string[] = [];
+        uploadResults.forEach((result, i) => {
+          if (result.status === "fulfilled") {
+            succeeded.push(result.value);
+          } else {
+            const catName = categoryExcels[i].categoryName;
+            failedCategories.push(catName);
+            console.error(`[exportExcel] Upload failed for category "${catName}":`, result.reason);
+          }
+        });
+
+        if (succeeded.length === 0) {
+          console.error("[exportExcel] All uploads failed");
+          await agentApp.sendProactiveActivity(identity, convRef, "SharePoint へのアップロードに失敗しました。しばらく経ってから再度お試しください。");
+          return;
+        }
+
+        // ファイル情報を構築
+        const files: ExcelExportFileInfo[] = succeeded.map((s) => ({
+          categoryName: s.categoryName,
+          totalCount: s.totalCount,
+          needsUpdateCount: s.needsUpdateCount,
+          webUrl: s.webUrl,
+        }));
+
+        const folderUrl = succeeded[0].folderUrl || await getFolderWebUrl();
+
+        const resultCard = buildExcelExportCompleteCard({
+          files,
+          folderUrl,
+          searchSessionId: searchSessionId || undefined,
+          failedCategories: failedCategories.length > 0 ? failedCategories : undefined,
+        });
+
+        console.log(`[exportExcel] Sending proactive result card (${files.length} files)`);
+        const resultActivity = MessageFactory.attachment(CardFactory.adaptiveCard(resultCard));
+        await agentApp.sendProactiveActivity(identity, convRef, resultActivity);
+      } catch (err: unknown) {
+        console.error("[exportExcel] Background error:", err);
+        try {
+          await agentApp.sendProactiveActivity(identity, convRef, "Excel出力中にエラーが発生しました。しばらく経ってから再度お試しください。");
+        } catch (sendErr) {
+          console.error("[exportExcel] Failed to send error notification:", sendErr);
+        }
+      } finally {
+        processingExports.delete(searchSessionId);
+      }
+    })();
+
+    // 即座に「処理中」カードを返す（Teams タイムアウト回避）
+    return buildExcelProcessingCard();
   }
 );
 
@@ -571,6 +662,12 @@ async function searchByCategories(
 }
 
 // --- 単一カテゴリ検索 ---
+
+// 小カテゴリ: HNSW グラフが疎で精度低下するため exhaustive（全件探索）を適用
+const SMALL_CATEGORY_IDS = new Set(["torikaku", "souzoku"]);
+// ベクトル検索の RRF 重み（BM25 は暗黙 1.0）
+const VECTOR_WEIGHT = 7.0;
+
 async function searchSingle(
   query: string,
   mode: "semantic" | "keyword",
@@ -580,19 +677,24 @@ async function searchSingle(
 ): Promise<SearchResultItem[]> {
   // categoryId は searchByCategories でホワイトリスト検証済み
   const filter = `isDeleted eq false and dataType eq '${dataType}' and categoryId eq '${categoryId}'`;
+  const useExhaustive = SMALL_CATEGORY_IDS.has(categoryId);
 
   const options = mode === "semantic"
     ? {
         queryType: "simple" as const,
+        searchFields: ["title", "content", "keywords"] as string[],
         vectorSearchOptions: {
           queries: [
             {
               kind: "text" as const,
               text: query,
               fields: ["contentVector"],
+              weight: VECTOR_WEIGHT,
+              exhaustive: useExhaustive,
             },
           ],
         },
+        vectorFilterMode: "preFilter" as const,
         select: ["id", "dataType", "categoryId", "categoryName", "title", "content", "order"] as string[],
         top: topN,
         filter,
@@ -605,6 +707,7 @@ async function searchSingle(
         filter,
       };
 
+  console.log(`[searchSingle] mode=${mode}, query="${query}", filter="${filter}", topN=${topN}, exhaustive=${useExhaustive}, vectorWeight=${mode === "semantic" ? VECTOR_WEIGHT : "N/A"}`);
   const searchResults = await getSearchClient().search(query, options);
   const items: SearchResultItem[] = [];
   for await (const result of searchResults.results) {

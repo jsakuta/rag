@@ -49,18 +49,24 @@ export async function uploadExcelToSharePoint(
     )
     .put(buffer);
 
-  // フォルダURLをファイルURLから構築（parentReference.webUrl のフォールバック）
-  let folderUrl = response.parentReference?.webUrl ?? "";
-  if (!folderUrl && response.webUrl) {
-    const lastSlash = response.webUrl.lastIndexOf("/");
-    if (lastSlash > 0) {
-      folderUrl = response.webUrl.substring(0, lastSlash);
-    }
-  }
-
   return {
     webUrl: response.webUrl,
     filename,
-    folderUrl,
+    folderUrl: response.parentReference?.webUrl ?? "",
   };
+}
+
+/** アップロード先フォルダの SharePoint WebURL を取得 */
+export async function getFolderWebUrl(): Promise<string> {
+  try {
+    const client = getGraphClient();
+    const driveId = config.spoDriveId;
+    const folder = config.spoUploadFolder;
+    const folderPath = `/drives/${driveId}/root:/${encodeURIComponent(folder)}`;
+    const folderItem = await client.api(folderPath).select("webUrl").get();
+    return folderItem.webUrl ?? "";
+  } catch (e) {
+    console.warn("[getFolderWebUrl] Failed:", e);
+    return "";
+  }
 }

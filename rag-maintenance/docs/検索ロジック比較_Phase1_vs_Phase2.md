@@ -1,7 +1,7 @@
 # 検索ロジック比較: Phase 1 (rag-gemini) vs Phase 2 (maintenance-bot)
 
 - 文書番号: COMP-SEARCH-001
-- 最終更新: 2026-02-12（Semantic Ranker 廃止 + topN 選択肢拡張を反映）
+- 最終更新: 2026-02-18（ベクトル重み制御 `weight` パラメータ調査 + RRF チューニング手法を追記）
 - 目的: Phase 1→2 の検索精度差分を網羅的に記録し、Phase 2 改善の結果を反映する
 - 前提: Phase 2 は「業務分野選択 + 表示件数選択 UI」を実装済み。Semantic Ranker は精度向上が確認されなかったため廃止
 
@@ -13,7 +13,7 @@
 |------|---------------------|--------------------------|------|
 | **ベクトル化** | combined_text / 3,072次元 | combinedContent / 3,072次元 | **同等**（同一フォーマット） |
 | **テキスト検索** | Sudachi + Jaccard（1フィールド） | ja.microsoft + BM25（5フィールド横断） | **同等〜改善**（再現率向上） |
-| **スコア統合** | 加重平均 (0.9v + 0.1k) → チューニング自在 | RRF (k=60固定) → チューニング自由度は低下 | **方式変更**（RRFは順位ベースで異スケールに強い） |
+| **スコア統合** | 加重平均 (0.9v + 0.1k) → チューニング自在 | RRF (k=60固定) + **`weight` パラメータでベクトル重み制御可能** | **方式変更**（RRFは順位ベースで異スケールに強い。`weight` で Phase 1 相当の重み調整が可能） |
 | **キーワード抽出** | Sudachi 品詞重み + 位置重み（クエリ主導） | BM25 IDF + keywords フィールド検索（ドキュメント主導） | **間接カバー**（銀行固有名詞の明示重み付けは消失） |
 | **再ランキング** | oversampling + keyword boost（2段階） | BM25 + HNSW cosine の RRF 統合（2段階） | **方式変更**（Semantic Ranker 廃止、RRF のみ） |
 | **スコア表示** | cosine 0〜1 + keyword 0〜1 → 加重平均 | RRF @search.score（順位ベースの統合スコア） | **方式変更** |
@@ -21,7 +21,7 @@
 | **LLM クエリ拡張** | 3戦略あり | なし（精度向上未確認のため非採用） | **影響なし** |
 | **結果件数** | 固定 top_k=4 | ユーザー選択 (10〜150、11段階) | **改善** |
 
-> **総合:** Phase 2 は BM25 + ベクトル cosine の RRF 統合（2段階ランキング）。Semantic Ranker は PoC 評価で精度向上が確認されなかったため廃止。業務分野 filter + 件数選択 UI の実装により、Phase 1 と同等以上の検索精度と柔軟性を実現。
+> **総合:** Phase 2 は BM25 + ベクトル cosine の RRF 統合（2段階ランキング）。Semantic Ranker は PoC 評価で精度向上が確認されなかったため廃止。業務分野 filter + 件数選択 UI の実装により柔軟性を実現。さらに `weight` パラメータ（安定版 API `2025-09-01` で利用可能）でベクトル検索の重み制御が可能であり、Phase 1 の加重平均（0.9v + 0.1k）に近い挙動を再現できる。
 
 ---
 
@@ -228,19 +228,21 @@ combined_score = 0.9 × vector_similarity + 0.1 × keyword_similarity
 - weight を変えて A/B テスト可能
 - 値域: 0.0〜1.0（コサイン類似度ベース）
 
-### 4-B. Phase 2: RRF のみ（Semantic Ranker 廃止）
+### 4-B. Phase 2: RRF + ベクトル重み制御
 
-**RRF (Reciprocal Rank Fusion)**
+**RRF (Reciprocal Rank Fusion) の基本式** [^1]
 
 ```
-RRF_score(doc) = 1/(k + rank_BM25) + 1/(k + rank_vector)
-k = 60（固定、変更不可）
+RRF_score(doc) = 1/(k + rank_BM25) + weight × 1/(k + rank_vector)
+k = 60（RRF アルゴリズム内の定数、変更不可。ベクトルクエリの k とは別）
+weight = ベクトルクエリの weight パラメータ（デフォルト 1.0）
 ```
 
 - BM25 での順位と HNSW ベクトル検索での順位を **順位ベース** で統合
 - スコア値の絶対値ではなく相対順位を使うため、スケールの異なるスコアを安全に統合できる
 - AI Search の `@search.score` として返却される
 - Bot では `result.score` として取得し、小数点以下4桁で表示
+- RRF スコアは 0.03 程度でも高い関連性を示す場合がある（順位ベースのため絶対値は小さい）[^2]
 
 **Semantic Ranker 廃止の経緯:**
 
@@ -259,6 +261,141 @@ Phase 2 は **2段階のランキング** を行っている:
 2. HNSW cosine（ベクトル類似度）← Phase 1 と同等
 
 上記2つの結果を RRF で順位ベース統合 → `@search.score` として返却
+
+### 4-D. Azure AI Search で利用可能な重み制御パラメータ（2026-02-18 調査）
+
+Phase 1 の加重平均（`0.9v + 0.1k`）に近い挙動を RRF 上で再現するために、Azure AI Search は以下の3つのチューニングパラメータを提供している。
+
+#### (1) `weight` パラメータ — ベクトルクエリの重み乗数
+
+`vectorQueries` の各クエリに設定可能。RRF サブスコアに対する乗数として機能する。[^3]
+
+| 項目 | 内容 |
+|------|------|
+| パラメータ位置 | `vectorQueries[].weight` |
+| 型 | `number`（正の数、0より大きい値） |
+| デフォルト | 1.0（重み付けなし） |
+| API バージョン | **`2025-09-01`（安定版）** 以降 |
+| JS SDK | `@azure/search-documents` v12.2.0 以降の `VectorizableTextQuery.weight` [^4] |
+
+**計算式:**
+
+```
+重み付き RRF_score(doc) = 1/(60 + rank_BM25) + weight × 1/(60 + rank_vector)
+```
+
+**weight 値によるベクトル貢献比率**（あるドキュメントが BM25/ベクトル両方で同一順位にある場合の理論値）:
+
+| weight | ベクトル貢献比率 | Phase 1 近似 | 備考 |
+|--------|-----------------|-------------|------|
+| 1.0 | 50% | 0.5:0.5 | デフォルト（現行） |
+| 2.0 | 67% | 0.67:0.33 | — |
+| 3.0 | 75% | 0.75:0.25 | — |
+| 4.0 | 80% | 0.8:0.2 | Phase 1 の 0.8 相当 |
+| **5.0** | **83%** | **0.83:0.17** | **推奨初期値** |
+| 7.0 | 88% | 0.88:0.12 | — |
+| **9.0** | **90%** | **0.9:0.1** | **Phase 1 の 0.9 に最も近い** |
+
+> **注意:** RRF は順位ベース、Phase 1 は実スコアベースのため、貢献比率は厳密には同一ではない。
+> ベクトル検索で上位・BM25 で下位のドキュメントは weight 増加で大幅にブーストされる。
+> 逆にベクトル検索で下位のドキュメントは weight を上げても順位改善の効果が限定的。
+
+**TypeScript 実装例:**
+
+```typescript
+// agent.ts — searchSingle() の semantic モード
+vectorSearchOptions: {
+  queries: [{
+    kind: "text" as const,
+    text: query,
+    fields: ["contentVector"],
+    weight: 5.0,  // ← ベクトルの重みを強化（デフォルト1.0）
+  }],
+},
+```
+
+#### (2) `maxTextRecallSize` — BM25 側の結果プールサイズ制限
+
+RRF に渡す BM25 側の結果数を制御する。小さくするとキーワード側の影響力が低下する。[^5]
+
+| 項目 | 内容 |
+|------|------|
+| パラメータ位置 | `hybridSearch.maxTextRecallSize` |
+| デフォルト | 1,000 |
+| 最大値 | 10,000 |
+| API バージョン | **`2024-05-01-preview` 以降（プレビュー版のみ）** |
+| 関連パラメータ | `hybridSearch.countAndFacetMode`（`"countAllResults"` or `"countRetrievableResults"`） |
+
+**使い分け:**
+
+| シナリオ | 推奨値 | 理由 |
+|---------|--------|------|
+| ベクトル検索が優勢 | 50〜200 に縮小 | BM25 のノイズを抑制 |
+| キーワード一致が重要 | 2,000〜5,000 に拡大 | 長尾のキーワードマッチを拾う |
+| デフォルト運用 | 1,000（変更不要） | ほとんどのケースで十分 |
+
+**REST API 例:**
+
+```json
+POST .../docs/search?api-version=2025-11-01-preview
+{
+  "search": "<クエリ>",
+  "hybridSearch": {
+    "maxTextRecallSize": 100,
+    "countAndFacetMode": "countRetrievableResults"
+  },
+  "vectorQueries": [{
+    "kind": "text",
+    "text": "<クエリ>",
+    "fields": "contentVector",
+    "weight": 5.0
+  }],
+  "top": 30
+}
+```
+
+> **注:** 現時点の JS SDK 安定版（v12.2.0）では `hybridSearch` パラメータは未サポート。
+> REST API で直接呼び出すか、SDK のプレビュー版を使用する必要がある。
+
+#### (3) `threshold` — 低スコア結果の除外（プレビュー）
+
+ベクトル検索結果から低スコアのマッチを RRF 統合前に除外する。[^6]
+
+```typescript
+// 2024-05-01-preview 以降
+vectorQueries: [{
+  kind: "text",
+  text: query,
+  fields: ["contentVector"],
+  threshold: { kind: "vectorSimilarity", value: 0.75 },
+}],
+```
+
+k=30 でも類似度 0.75 未満は除外されるため、ノイズの少ない結果セットを RRF に渡せる。
+
+### 4-E. Phase 1 との方式差異の本質
+
+| 観点 | Phase 1（加重平均） | Phase 2（RRF + weight） |
+|------|---------------------|------------------------|
+| **統合対象** | スコアの **絶対値**（cosine 0〜1, Jaccard 0〜1） | **順位**（rank 1, 2, 3, ...） |
+| **重み付けの効果** | スコアの大きさに比例して線形に影響 | 順位のRRFサブスコアに乗数として影響 |
+| **利点** | 直感的。重みの意味が明確 | スケール不一致に強い。異なるスコア体系を安全に統合 |
+| **欠点** | スコア体系が異なると重みの意味が変わる | 順位の差が大きいと weight の効果が減衰 |
+| **チューニング** | `settings.yaml` で `vector_weight` を変更 | `vectorQueries[].weight` を変更 |
+
+**具体例 — weight=5.0 の場合:**
+
+あるドキュメントがベクトル検索で1位、BM25 で50位のとき:
+```
+RRF = 1/(60+50) + 5.0 × 1/(60+1) = 0.0091 + 0.0820 = 0.0911
+→ ベクトル貢献 90%（Phase 1 の 0.9 × vector_sim と近い効果）
+```
+
+逆にベクトル検索で50位、BM25 で1位のとき:
+```
+RRF = 1/(60+1) + 5.0 × 1/(60+50) = 0.0164 + 0.0455 = 0.0619
+→ ベクトル貢献 73%（順位が低いと weight の効果が減衰する）
+```
 
 ---
 
@@ -310,7 +447,7 @@ Phase 2 は **2段階のランキング** を行っている:
 | 1 | ベクトル化対象 | combined_text | combinedContent | **同等**（同一フォーマット） |
 | 2 | Embedding モデル | Gemini or Azure OpenAI | Azure OpenAI のみ | **同等**（同一モデル使用時） |
 | 3 | テキスト検索 | Sudachi + Jaccard（1フィールド） | BM25 + ja.microsoft（5フィールド） | **同等〜改善** |
-| 4 | スコア統合 | 加重平均 (0.9v+0.1k) | RRF のみ（Semantic Ranker 廃止） | **方式変更**（2段階ランキング） |
+| 4 | スコア統合 | 加重平均 (0.9v+0.1k) | RRF + `weight` パラメータ（Semantic Ranker 廃止） | **方式変更**（`weight` でベクトル重み制御可能。セクション 4-D 参照） |
 | 5 | キーワード重み付け | Sudachi 品詞重み + 位置重み | BM25 IDF + keywords フィールド | **やや変化**（方式が異なるが同等効果） |
 | 6 | 業務分野スコープ | 分野別 DB（自動） | **分野別 filter（ユーザー選択）** | **同等**（実装済み） |
 | 7 | LLM クエリ拡張 | あり | なし | **影響なし**（精度向上未確認のため非採用） |
@@ -324,27 +461,31 @@ Phase 2 は **2段階のランキング** を行っている:
 | 1 | 実行形式 | Python バッチ（Excel入出力） | Teams Bot（リアルタイム） |
 | 2 | インフラ | ローカル PC | Azure (AI Search + Cosmos DB) |
 | 3 | Embedding 更新 | スクリプト手動実行 | Indexer 自動実行（1時間ごと） |
-| 4 | チューニング | settings.yaml で weight/threshold 変更可 | RRF k=60 固定（チューニング不可） |
+| 4 | チューニング | settings.yaml で weight/threshold 変更可 | `vectorQueries[].weight` でベクトル重み制御可（安定版API）。`maxTextRecallSize` でBM25側も制御可（プレビューAPI） |
 | 5 | 分野追加 | DB パスとコレクション追加 | Cosmos DB にデータ追加 → Indexer 自動反映 |
 
 ---
 
 ## 8. 実装済みの検索パラメータ
 
-### ハイブリッド検索（searchHybrid）— Semantic Ranker 廃止済み
+### ハイブリッド検索（searchSemantic）— ベクトル重み制御対応
 
 ```typescript
 const results = await searchClient.search(query, {
-  queryType: "simple",                                // ← "semantic" から変更
-  // semanticSearchOptions 削除（Semantic Ranker 廃止）
+  queryType: "simple",                                // ← "semantic" から変更（Semantic Ranker 廃止）
   vectorSearchOptions: {
-    queries: [{ kind: "text", text: query, fields: ["contentVector"] }],
+    queries: [{
+      kind: "text",
+      text: query,
+      fields: ["contentVector"],
+      weight: 5.0,                                    // ← ベクトル重み（セクション4-D参照）
+    }],
   },
   select: ["id", "dataType", "categoryName", "title", "content"],
   top: safeTopN,                                      // ← ユーザー選択 (10〜150)
   filter,                                             // ← "isDeleted eq false" + categoryId filter
 });
-// rerankerScore フィルタ削除 → RRFスコア（@search.score）で自然に順位付け
+// RRFスコア（@search.score）で自然に順位付け。weight でベクトル側を増幅。
 ```
 
 ### キーワード検索（searchKeyword）
@@ -384,3 +525,62 @@ const safeTopN = Number.isNaN(rawTopN) ? 30 : Math.min(Math.max(rawTopN, 10), 15
 `[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150]` — 11項目（Teams ChoiceSet 15件制限に収まる）
 
 デフォルト: 30件
+
+---
+
+## 9. 精度改善計画: ベクトル重み制御の段階的チューニング（2026-02-18 策定）
+
+### 背景
+
+Phase 1 では `vector_weight = 0.9` が最も精度が高く、`0.8` では精度が低下した。
+ベクトルオンリー（`1.0`）よりもキーワードを少量混ぜた方が良い結果が得られた。
+
+Phase 2（RRF）のデフォルト（`weight = 1.0`）はベクトルとキーワードが 50:50 であり、Phase 1 の 0.9:0.1 とは大きく異なる。これが精度差の主要因と考えられる。
+
+### 改善ステップ
+
+| ステップ | 内容 | `weight` 値 | 対応比率 | 必要なAPI変更 |
+|---------|------|------------|---------|-------------|
+| **Step 1** | `weight` パラメータ追加（初期値） | 5.0 | 83% | `agent.ts` の `searchSingle()` に `weight` 追加（安定版APIで対応） |
+| Step 2 | テスト結果を見て weight を調整 | 7.0 or 9.0 | 88% or 90% | 同上（値の変更のみ） |
+| Step 3（任意） | `maxTextRecallSize` で BM25 をさらに抑制 | — | — | プレビュー API に変更が必要。Step 1-2 で十分な場合は不要 |
+| Step 4（任意） | `threshold` で低スコア除外 | — | — | プレビュー API。ノイズが多い場合に検討 |
+
+### 変更箇所
+
+`maintenance-bot/src/agent.ts` の `searchSingle()` 関数（1箇所のみ）:
+
+```diff
+  const options = mode === "semantic"
+    ? {
+        queryType: "simple" as const,
+        vectorSearchOptions: {
+          queries: [
+            {
+              kind: "text" as const,
+              text: query,
+              fields: ["contentVector"],
++             weight: 5.0,
+            },
+          ],
+        },
+        ...
+      }
+```
+
+### 評価方法
+
+1. Phase 1 で精度が確認されているクエリセット（事務改定関連）で A/B テスト
+2. `weight` = 1.0（現行）、5.0、7.0、9.0 の4パターンで上位10件の一致率を比較
+3. Phase 1 の結果と Phase 2 の結果を突合し、順位の一致度（Top-k Overlap）を計測
+
+---
+
+## 参考文献
+
+[^1]: [Hybrid Search Scoring (RRF) - Azure AI Search | Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/hybrid-search-ranking) — RRF アルゴリズムの詳細、k=60 定数、重み付きスコア計算の解説
+[^2]: [Create a hybrid query - Azure AI Search | Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/hybrid-search-how-to-query) — ハイブリッドクエリの構築方法、`maxTextRecallSize` / `countAndFacetMode` の設定
+[^3]: [Create a Vector Query - Azure AI Search | Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/vector-search-how-to-query) — `vectorQueries[].weight` パラメータ、`threshold` の設定、安定版/プレビュー版 API の差異
+[^4]: [VectorizableTextQuery interface - @azure/search-documents | Microsoft Learn](https://learn.microsoft.com/en-us/javascript/api/@azure/search-documents/vectorizabletextquery?view=azure-node-latest) — JS SDK の `weight` プロパティ定義（`BaseVectorQuery.weight`）
+[^5]: [Hybrid Search Overview - Azure AI Search | Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/hybrid-search-overview) — ハイブリッド検索の全体像
+[^6]: [Azure AI Search's New Hybrid and Vector Search Updates | Microsoft Tech Community](https://techcommunity.microsoft.com/t5/ai-azure-ai-services-blog/azure-ai-search-s-new-hybrid-and-vector-search-updates-to-boost/ba-p/4141467) — ベクトル重み制御・`maxTextRecallSize` の発表記事

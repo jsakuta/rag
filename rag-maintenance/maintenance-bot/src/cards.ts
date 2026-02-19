@@ -600,33 +600,10 @@ function buildResultCardInner(
     }
   }
 
-  // --- アクションボタン ---
-  const actions: Record<string, unknown>[] = [];
-
-  // 要修正を保存（シナリオがある場合）
-  if (pageScenarios.length > 0) {
-    actions.push({
-      type: "Action.Execute",
-      title: "要修正を保存",
-      verb: "saveNeedsUpdate",
-      data: { query: queryText, searchSessionId },
-      style: "positive",
-    });
-  }
-
-  // FAQ削除（FAQがある場合）
-  if (pageFaqs.length > 0) {
-    actions.push({
-      type: "Action.Execute",
-      title: "選択したFAQを削除",
-      verb: "confirmDeleteFaqs",
-      style: "destructive",
-    });
-  }
-
-  // ページ遷移ボタン
+  // --- ページネーション（上段） ---
+  const paginationActions: Record<string, unknown>[] = [];
   if (safePage > 1) {
-    actions.push({
+    paginationActions.push({
       type: "Action.Execute",
       title: "← 前ページへ",
       verb: "searchPage",
@@ -634,12 +611,38 @@ function buildResultCardInner(
     });
   }
   if (safePage < totalPages) {
-    actions.push({
+    paginationActions.push({
       type: "Action.Execute",
       title: "次ページへ →",
       verb: "searchPage",
       data: { ...pageData, page: safePage + 1 },
     });
+  }
+  if (paginationActions.length > 0) {
+    body.push({ type: "ActionSet", actions: paginationActions });
+  }
+
+  // --- アクションボタン（下段・左寄せ） ---
+  const actionButtons: Record<string, unknown>[] = [];
+  if (pageScenarios.length > 0) {
+    actionButtons.push({
+      type: "Action.Execute",
+      title: "要修正を保存",
+      verb: "saveNeedsUpdate",
+      data: { query: queryText, searchSessionId },
+      style: "positive",
+    });
+  }
+  if (pageFaqs.length > 0) {
+    actionButtons.push({
+      type: "Action.Execute",
+      title: "選択したFAQを削除",
+      verb: "confirmDeleteFaqs",
+      style: "destructive",
+    });
+  }
+  if (actionButtons.length > 0) {
+    body.push({ type: "ActionSet", actions: actionButtons });
   }
 
   return {
@@ -647,7 +650,6 @@ function buildResultCardInner(
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
     version: "1.5",
     body,
-    ...(actions.length > 0 ? { actions } : {}),
   };
 }
 
@@ -727,7 +729,7 @@ export function buildDeleteCompleteCard(
 
 // --- FR-014: 要修正フラグ保存完了カード ---
 export function buildNeedsUpdateCompleteCard(
-  saved: { id: string; title: string }[],
+  saved: { id: string; title: string; categoryName: string }[],
   user: string,
   searchSessionId?: string
 ): AdaptiveCard {
@@ -754,31 +756,57 @@ export function buildNeedsUpdateCompleteCard(
     });
   }
 
-  return {
-    type: "AdaptiveCard",
-    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-    version: "1.5",
-    body: [
-      {
-        type: "TextBlock",
-        text: "要修正フラグを保存しました",
-        weight: "Bolder",
-        size: "Medium",
-        color: "Good",
-      },
-      ...saved.map((s) => ({
+  // カテゴリ別にグループ化
+  const grouped = new Map<string, { id: string; title: string }[]>();
+  for (const s of saved) {
+    const key = s.categoryName || "その他";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(s);
+  }
+
+  const body: Record<string, unknown>[] = [
+    {
+      type: "TextBlock",
+      text: "要修正フラグを保存しました",
+      weight: "Bolder",
+      size: "Medium",
+      color: "Good",
+    },
+  ];
+
+  // カテゴリ別セクション
+  for (const [catName, items] of grouped) {
+    body.push({
+      type: "TextBlock",
+      text: `▼ ${catName}（${items.length}件）`,
+      weight: "Bolder",
+      size: "Small",
+      spacing: "Medium",
+      separator: true,
+    });
+    for (const s of items) {
+      body.push({
         type: "TextBlock",
         text: `- ${s.title} → 要修正`,
         wrap: true,
         size: "Small",
-      })),
-      {
-        type: "TextBlock",
-        text: `記録者: ${user}  ${now}`,
-        size: "Small",
-        isSubtle: true,
-      },
-    ],
+      });
+    }
+  }
+
+  body.push({
+    type: "TextBlock",
+    text: `記録者: ${user}  ${now}`,
+    size: "Small",
+    isSubtle: true,
+    spacing: "Medium",
+  });
+
+  return {
+    type: "AdaptiveCard",
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    version: "1.5",
+    body,
     ...(actions.length > 0 ? { actions } : {}),
   };
 }
@@ -906,6 +934,61 @@ export function buildExcelExportCompleteCard(
     version: "1.5",
     body,
     ...(actions.length > 0 ? { actions } : {}),
+  };
+}
+
+// --- 検索処理中カード（非同期パターン用） ---
+export function buildSearchProcessingCard(queryText: string): AdaptiveCard {
+  return {
+    type: "AdaptiveCard",
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    version: "1.5",
+    body: [
+      {
+        type: "TextBlock",
+        text: "検索中...",
+        weight: "Bolder",
+        size: "Medium",
+      },
+      {
+        type: "TextBlock",
+        text: `入力: 「${truncate(queryText, 80)}」`,
+        wrap: true,
+        size: "Small",
+        color: "Accent",
+      },
+      {
+        type: "TextBlock",
+        text: "検索結果は完了後にメッセージとして送信されます。再度テキストを入力して検索することもできます。",
+        wrap: true,
+        size: "Small",
+        isSubtle: true,
+      },
+    ],
+  };
+}
+
+// --- FR-015: Excel出力処理中カード ---
+export function buildExcelProcessingCard(): AdaptiveCard {
+  return {
+    type: "AdaptiveCard",
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    version: "1.5",
+    body: [
+      {
+        type: "TextBlock",
+        text: "Excel出力を開始しました",
+        weight: "Bolder",
+        size: "Medium",
+      },
+      {
+        type: "TextBlock",
+        text: "カテゴリ全量のシナリオを取得し、Excelファイルを生成しています。完了後に結果が送信されます。",
+        wrap: true,
+        size: "Small",
+        isSubtle: true,
+      },
+    ],
   };
 }
 

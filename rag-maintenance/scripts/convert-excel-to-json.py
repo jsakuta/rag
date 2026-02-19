@@ -19,27 +19,27 @@ from pathlib import Path
 import openpyxl
 
 # --- 設定 ---
-RAG_GEMINI_BASE = Path(r"C:\VSCode\rag\rag-gemini\data\source")
+RAG_GEMINI_BASE = Path(r"C:\VSCode\rag\rag-local\data\source")
 OUTPUT_DIR = Path(__file__).parent / "data"
 
 SCENARIO_FILES = [
     {
-        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03smile_シナリオデータ_20260203.xlsx",
+        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03_smile_シナリオデータ_20260203.xlsx",
         "categoryId": "smile",
         "categoryName": "スマイル",
     },
     {
-        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03souzoku_シナリオデータ_20260203.xlsx",
+        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03_souzoku_シナリオデータ_20260203.xlsx",
         "categoryId": "souzoku",
         "categoryName": "相続",
     },
     {
-        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03naibujimu_シナリオデータ_20260203.xlsx",
+        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03_naibujimu_シナリオデータ_20260203.xlsx",
         "categoryId": "naibujimu",
         "categoryName": "内部事務",
     },
     {
-        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03torikaku_シナリオデータ_20260203.xlsx",
+        "path": RAG_GEMINI_BASE / "scenarios" / "revisions" / "rev03_torikaku_シナリオデータ_20260203.xlsx",
         "categoryId": "torikaku",
         "categoryName": "取引時確認",
     },
@@ -336,6 +336,11 @@ def convert_faqs():
 
             # keywords
             keywords = parse_tags_to_keywords(tags_val) if tags_val else []
+            # 質問文と回答文をキーワードに追加（ja.microsoft で形態素分解される）
+            if title_val:
+                keywords.append(title_val)
+            if content:
+                keywords.append(content)
 
             # combinedContent
             combined = f"質問: {title_val} | 回答: {content}"

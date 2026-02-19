@@ -15,7 +15,7 @@
       "dimensions": 3072,
       "vectorSearchProfile": "vector-profile"
     },
-    { "name": "keywords", "type": "Collection(Edm.String)", "searchable": true, "filterable": true },
+    { "name": "keywords", "type": "Collection(Edm.String)", "searchable": true, "filterable": false, "analyzer": "ja.microsoft" },
     { "name": "updatedAt", "type": "Edm.DateTimeOffset", "filterable": true, "sortable": true },
     { "name": "isDeleted", "type": "Edm.Boolean", "filterable": true },
     { "name": "path", "type": "Edm.String", "searchable": true, "filterable": true, "analyzer": "ja.microsoft" },
@@ -29,9 +29,9 @@
         "name": "hnsw-algorithm",
         "kind": "hnsw",
         "hnswParameters": {
-          "m": 4,
+          "m": 10,
           "efConstruction": 400,
-          "efSearch": 500,
+          "efSearch": 1000,
           "metric": "cosine"
         }
       }

@@ -46,13 +46,13 @@ export async function saveNeedsUpdate(
   scenarioIds: string[],
   searchQuery: string,
   assessedBy: string
-): Promise<{ id: string; title: string }[]> {
+): Promise<{ id: string; title: string; categoryName: string }[]> {
   const db = getDb();
   const scenariosContainer: Container = db.container("scenarios");
   const assessContainer: Container = db.container("impactAssessments");
   const now = new Date().toISOString();
   const searchId = `search-${now.replace(/[-:T.]/g, "").slice(0, 14)}`;
-  const results: { id: string; title: string }[] = [];
+  const results: { id: string; title: string; categoryName: string }[] = [];
 
   for (const scenarioId of scenarioIds) {
     const { resources } = await scenariosContainer.items
@@ -75,7 +75,7 @@ export async function saveNeedsUpdate(
       assessedAt: now,
     };
     await assessContainer.items.create(assessDoc);
-    results.push({ id: scenario.id, title: scenario.title });
+    results.push({ id: scenario.id, title: scenario.title, categoryName: scenario.categoryName ?? "" });
   }
   return results;
 }
