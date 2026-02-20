@@ -11,7 +11,16 @@ import {
 } from "@microsoft/agents-hosting";
 import { SearchClient } from "@azure/search-documents";
 import { DefaultAzureCredential } from "@azure/identity";
-import config, { SCENARIO_CATEGORIES, FAQ_CATEGORIES, DEFAULT_TOP_N } from "./config";
+import config, {
+  SCENARIO_CATEGORIES,
+  FAQ_CATEGORIES,
+  DEFAULT_TOP_N,
+  MAX_INPUT_LENGTH,
+  VECTOR_WEIGHT,
+  CACHE_TTL_MS,
+  MAX_CACHE_SIZE,
+  SEARCH_PAGE_SIZE,
+} from "./config";
 import { randomUUID } from "crypto";
 import {
   buildSearchCard,
@@ -61,8 +70,6 @@ interface CachedSearchResult {
   timestamp: number;
 }
 const searchResultCache = new Map<string, CachedSearchResult>();
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30分
-const MAX_CACHE_SIZE = 50;
 
 function cleanExpiredCache(): void {
   const now = Date.now();
@@ -96,10 +103,10 @@ agentApp.onActivity(ActivityTypes.Message, async (context: TurnContext) => {
     return;
   }
 
-  // 2,000文字制限 (FR-001)
-  if (query.length > 2000) {
+  // テキスト入力上限 (FR-001)
+  if (query.length > MAX_INPUT_LENGTH) {
     await context.sendActivity(
-      "入力テキストが2,000文字を超えています。短くしてから再送信してください。"
+      `入力テキストが${MAX_INPUT_LENGTH.toLocaleString()}文字を超えています。短くしてから再送信してください。`
     );
     return;
   }
@@ -110,6 +117,21 @@ agentApp.onActivity(ActivityTypes.Message, async (context: TurnContext) => {
   );
   await context.sendActivity(activity);
 });
+
+/**
+ * リトライガードユーティリティ
+ * Teams は Action.Execute がタイムアウト（約10秒）すると自動リトライするため、
+ * 重複処理を防止するために使用する。
+ * @returns isDuplicate: 既に処理中かどうか / release: 処理完了時に呼ぶ解放関数
+ */
+function withRetryGuard(
+  key: string,
+  guard: Set<string>
+): { isDuplicate: boolean; release: () => void } {
+  if (guard.has(key)) return { isDuplicate: true, release: () => {} };
+  guard.add(key);
+  return { isDuplicate: false, release: () => guard.delete(key) };
+}
 
 // --- FR-003/FR-004: 検索リトライガード（タイムアウトによるリトライで重複処理を防止） ---
 const processingSearches = new Set<string>();
@@ -125,12 +147,14 @@ agentApp.adaptiveCards.actionExecute(
     console.log(`[searchSemantic] query: ${query}, targetType: ${targetType}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
 
     // リトライガード（conversation + query + categories でユニークキー）
-    const searchKey = `${context.activity.conversation?.id ?? ""}-semantic-${query}-${JSON.stringify(categories)}-${topN}`;
-    if (processingSearches.has(searchKey)) {
+    // conversationId が空の場合は randomUUID() でフォールバック（クロスユーザー干渉防止）
+    const convId = context.activity.conversation?.id || randomUUID();
+    const searchKey = `${convId}-semantic-${query}-${JSON.stringify(categories)}-${topN}`;
+    const { isDuplicate, release } = withRetryGuard(searchKey, processingSearches);
+    if (isDuplicate) {
       console.log(`[searchSemantic] Already processing: ${searchKey}`);
       return buildSearchProcessingCard(query);
     }
-    processingSearches.add(searchKey);
 
     const convRef = context.activity.getConversationReference() as ConversationReference;
     const identity = context.identity as JwtPayload;
@@ -149,7 +173,7 @@ agentApp.adaptiveCards.actionExecute(
           console.error("[searchSemantic] Failed to send error notification:", sendErr);
         }
       } finally {
-        processingSearches.delete(searchKey);
+        release();
       }
     })();
 
@@ -168,13 +192,14 @@ agentApp.adaptiveCards.actionExecute(
     const topN = extractSafeTopN(data);
     console.log(`[searchKeyword] query: ${query}, targetType: ${targetType}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
 
-    // リトライガード
-    const searchKey = `${context.activity.conversation?.id ?? ""}-keyword-${query}-${JSON.stringify(categories)}-${topN}`;
-    if (processingSearches.has(searchKey)) {
+    // リトライガード（conversationId が空の場合は randomUUID() でフォールバック）
+    const convId = context.activity.conversation?.id || randomUUID();
+    const searchKey = `${convId}-keyword-${query}-${JSON.stringify(categories)}-${topN}`;
+    const { isDuplicate, release } = withRetryGuard(searchKey, processingSearches);
+    if (isDuplicate) {
       console.log(`[searchKeyword] Already processing: ${searchKey}`);
       return buildSearchProcessingCard(query);
     }
-    processingSearches.add(searchKey);
 
     const convRef = context.activity.getConversationReference() as ConversationReference;
     const identity = context.identity as JwtPayload;
@@ -193,7 +218,7 @@ agentApp.adaptiveCards.actionExecute(
           console.error("[searchKeyword] Failed to send error notification:", sendErr);
         }
       } finally {
-        processingSearches.delete(searchKey);
+        release();
       }
     })();
 
@@ -665,8 +690,6 @@ async function searchByCategories(
 
 // 小カテゴリ: HNSW グラフが疎で精度低下するため exhaustive（全件探索）を適用
 const SMALL_CATEGORY_IDS = new Set(["torikaku", "souzoku"]);
-// ベクトル検索の RRF 重み（BM25 は暗黙 1.0）
-const VECTOR_WEIGHT = 4.5;
 
 async function searchSingle(
   query: string,
@@ -736,7 +759,7 @@ async function searchSingle(
  * AI Search の top 上限は 1,000 のため、skip でページネーションする。
  */
 async function fetchAllScenariosForCategory(categoryId: string): Promise<SearchResultItem[]> {
-  const PAGE_SIZE = 1000;
+  // categoryId は VALID_SCENARIO_IDS でホワイトリスト検証済み
   const filter = `isDeleted eq false and dataType eq 'scenario' and categoryId eq '${categoryId}'`;
   const allItems: SearchResultItem[] = [];
   let skip = 0;
@@ -745,7 +768,7 @@ async function fetchAllScenariosForCategory(categoryId: string): Promise<SearchR
     const searchResults = await getSearchClient().search("*", {
       queryType: "simple" as const,
       select: ["id", "dataType", "categoryId", "categoryName", "title", "content", "order"] as string[],
-      top: PAGE_SIZE,
+      top: SEARCH_PAGE_SIZE,
       skip,
       filter,
       orderBy: ["order asc"],
@@ -767,8 +790,8 @@ async function fetchAllScenariosForCategory(categoryId: string): Promise<SearchR
       count++;
     }
 
-    if (count < PAGE_SIZE) break;
-    skip += PAGE_SIZE;
+    if (count < SEARCH_PAGE_SIZE) break;
+    skip += SEARCH_PAGE_SIZE;
   }
 
   console.log(`[fetchAllScenariosForCategory] ${categoryId}: ${allItems.length} total scenarios`);

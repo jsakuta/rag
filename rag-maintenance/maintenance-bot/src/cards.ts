@@ -3,7 +3,7 @@
  * 要件定義書 FR-001〜FR-005, FR-013, FR-014 準拠
  */
 import type { AdaptiveCard } from "@microsoft/agents-hosting";
-import { SCENARIO_CATEGORIES, FAQ_CATEGORIES, TOP_N_OPTIONS, ITEMS_PER_PAGE } from "./config";
+import { SCENARIO_CATEGORIES, FAQ_CATEGORIES, TOP_N_OPTIONS, ITEMS_PER_PAGE, ADAPTIVE_CARD_SIZE_LIMIT } from "./config";
 
 // --- 型定義 ---
 export interface SearchResultItem {
@@ -325,7 +325,7 @@ export function buildResultCard(
   searchSessionId?: string,
   needsUpdateIds?: Set<string>
 ): AdaptiveCard {
-  const CARD_LIMIT = 25 * 1024;
+  const CARD_LIMIT = ADAPTIVE_CARD_SIZE_LIMIT;
 
   // ページ遷移時は前回確定した perPage を使用、初回は実アイテム数から開始
   const totalItems = scenarios.length + faqs.length;

@@ -6,6 +6,9 @@ import config from "./config";
 let _db: Database | null = null;
 function getDb(): Database {
   if (!_db) {
+    if (!config.cosmosDbEndpoint) {
+      throw new Error("[cosmos] COSMOS_DB_ENDPOINT が設定されていません。環境変数を確認してください。");
+    }
     const credential = new DefaultAzureCredential();
     const client = new CosmosClient({
       endpoint: config.cosmosDbEndpoint,

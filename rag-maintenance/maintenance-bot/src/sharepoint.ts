@@ -1,7 +1,7 @@
 import { Client } from "@microsoft/microsoft-graph-client";
 import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
 import { DefaultAzureCredential } from "@azure/identity";
-import config from "./config";
+import config, { SPO_SIMPLE_UPLOAD_LIMIT } from "./config";
 
 export interface SpoUploadResult {
   webUrl: string;
@@ -22,7 +22,7 @@ function getGraphClient(): Client {
   return _graphClient;
 }
 
-const MAX_SIMPLE_UPLOAD_BYTES = 4 * 1024 * 1024; // 4MB
+const MAX_SIMPLE_UPLOAD_BYTES = SPO_SIMPLE_UPLOAD_LIMIT; // 4MB（config.ts で定義）
 
 /** Excel バッファを SharePoint Online にアップロード（4MB 以下シンプルアップロード） */
 export async function uploadExcelToSharePoint(
