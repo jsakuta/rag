@@ -666,7 +666,7 @@ async function searchByCategories(
 // 小カテゴリ: HNSW グラフが疎で精度低下するため exhaustive（全件探索）を適用
 const SMALL_CATEGORY_IDS = new Set(["torikaku", "souzoku"]);
 // ベクトル検索の RRF 重み（BM25 は暗黙 1.0）
-const VECTOR_WEIGHT = 7.0;
+const VECTOR_WEIGHT = 4.5;
 
 async function searchSingle(
   query: string,
@@ -681,7 +681,10 @@ async function searchSingle(
 
   const options = mode === "semantic"
     ? {
-        queryType: "simple" as const,
+        queryType: "semantic" as const,
+        semanticSearchOptions: {
+          configurationName: "semantic-config",
+        },
         searchFields: ["title", "content", "keywords"] as string[],
         vectorSearchOptions: {
           queries: [
