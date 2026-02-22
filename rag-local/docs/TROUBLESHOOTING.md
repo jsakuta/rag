@@ -1,6 +1,6 @@
 # トラブルシューティング
 
-このドキュメントでは、RAG-Geminiシステムでよく発生する問題と解決方法を説明します。
+このドキュメントでは、RAG-Localシステムでよく発生する問題と解決方法を説明します。
 
 ## 目次
 
@@ -31,7 +31,7 @@ google.auth.exceptions.DefaultCredentialsError: Could not automatically determin
 1. 認証ファイルの確認:
 ```bash
 # ファイルが存在するか確認
-ls -l C:\VSCode\rag\rag-gemini\gemini_credentials.json
+ls -l C:\VSCode\rag\rag-local\gemini_credentials.json
 ```
 
 2. `.env` ファイルの確認:
@@ -94,7 +94,7 @@ ValueError: Collection 'deposit_DB' does not exist.
 rm -rf data/vector_db/
 
 # データ処理を実行（自動的にDB再構築）
-python main.py
+python apps/answer-support/main.py
 ```
 
 2. 特定のDBのみ再構築:
@@ -148,7 +148,7 @@ rm data/vector_db/update_timestamps.json
 
 2. データ処理を再実行:
 ```bash
-python main.py
+python apps/answer-support/main.py
 ```
 
 ---
@@ -179,8 +179,8 @@ BATCH_SIZE = 5  # デフォルト値から減らす
 3. 処理データを分割:
 ```bash
 # データを複数ファイルに分割して処理
-python main.py --input input1.xlsx
-python main.py --input input2.xlsx
+python apps/answer-support/main.py --input input1.xlsx
+python apps/answer-support/main.py --input input2.xlsx
 ```
 
 ### コレクション名エラー
@@ -275,7 +275,7 @@ LLM_TIMEOUT = 60  # 30から増やす
 
 2. LLM分析を無効化:
 ```bash
-ENABLE_LLM_ANALYSIS=false python scripts/evaluate_revisions.py
+ENABLE_LLM_ANALYSIS=false python apps/revision-eval/evaluate_revisions.py
 ```
 
 3. ネットワーク接続を確認
@@ -324,7 +324,7 @@ lsof -ti:8501 | xargs kill -9
 
 2. 別のポートを使用:
 ```bash
-streamlit run ui/chat.py --server.port 8502
+streamlit run apps/answer-support/ui/chat.py --server.port 8502
 ```
 
 ---
@@ -401,7 +401,7 @@ rm logs/*.log
 ```bash
 # DEBUG レベルで詳細ログを出力
 export LOG_LEVEL=DEBUG
-python main.py
+python apps/answer-support/main.py
 ```
 
 ### リアルタイムログ監視
@@ -443,7 +443,7 @@ pkill -f python
 rm -rf data/vector_db/
 
 # 3. データ処理を再実行（自動的にDB再構築）
-python main.py
+python apps/answer-support/main.py
 ```
 
 ### Q: 複数の埋め込みモデルを同時に使用できる?

@@ -1,4 +1,4 @@
-# RAG-Gemini プロジェクト メモリ
+# RAG-Local プロジェクト メモリ
 
 ## プロジェクト概要
 シナリオボットの事務改定差分を管理し、RAG検索システムで正解IDを特定するプロジェクト。
@@ -173,8 +173,15 @@
 
 ### ディレクトリ構造
 ```
-rag-gemini/
-├── main.py                       # エントリーポイント
+rag-local/
+├── apps/                         # アプリケーション
+│   ├── answer-support/           # 回答支援AI
+│   │   ├── main.py               # バッチ処理エントリーポイント
+│   │   └── ui/
+│   │       └── chat.py           # Streamlit UI
+│   └── revision-eval/            # 事務改定評価
+│       └── evaluate_revisions.py # 評価実行
+│
 ├── config.py                     # 設定管理
 ├── requirements.txt              # 依存パッケージ
 ├── .env.example                  # 環境変数テンプレート
@@ -190,7 +197,7 @@ rag-gemini/
 │   ├── REVISION_EVALUATION.md    # 事務改定評価
 │   └── PROMPTS.md                # プロンプト詳細
 │
-├── src/                          # ソースコード
+├── src/                          # 共有コアライブラリ
 │   ├── core/                     # コアロジック
 │   │   ├── processor.py          # データ処理エンジン
 │   │   ├── judgment_support.py   # LLM判断支援
@@ -216,16 +223,12 @@ rag-gemini/
 │       ├── business_area_translator.py  # 業務領域変換
 │       └── logger.py             # ログ設定
 │
-├── ui/                           # Web UI
-│   └── chat.py                   # Streamlit UI
-│
 ├── prompt/                       # プロンプト
 │   ├── summarize_v1.0.txt        # クエリ拡張
 │   └── judgment_support.txt      # 関連性判定
 │
 ├── scripts/                      # ユーティリティスクリプト
 │   ├── rebuild_before_scenario_db.py  # DB再構築
-│   ├── evaluate_revisions.py          # 評価実行
 │   ├── generate_correct_ids.py        # 正解ID生成
 │   ├── prepare_before_scenario.py     # データ前処理
 │   └── check_db_content.py            # DB内容確認

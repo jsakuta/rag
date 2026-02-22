@@ -521,7 +521,7 @@ rm reference/vector_cache/cache*.json
 rm reference/vector_cache/cache_embeddings.json
 ```
 
-### rag-gemini（ChromaDB）
+### rag-local（ChromaDB）
 
 ```bash
 # ChromaDB を完全にクリア
@@ -578,6 +578,6 @@ config.CACHE_TTL = 3600  # 1時間
 
 プロジェクト固有の問題については、各プロジェクトの README を参照してください：
 
-- [rag-gemini/README.md](../rag-gemini/README.md#トラブルシューティング)
+- [rag-local/README.md](../rag-local/README.md#トラブルシューティング)
 - [rag-batch/README.md](../rag-batch/README.md#トラブルシューティング)
 - [rag-streamlit/README.md](../rag-streamlit/README.md#トラブルシューティング)

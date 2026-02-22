@@ -1,565 +1,350 @@
-# RAG Q&A システム群
+# RAG プロジェクト — 引き継ぎ資料
 
-**銀行預金業務向け RAG（Retrieval-Augmented Generation）質問応答システム**
-
-[![Python](https://img.shields.io/badge/Python-3.7+-blue)](https://www.python.org/)
-[![LangChain](https://img.shields.io/badge/LangChain-0.1.0+-green)](https://python.langchain.com/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+> 最終更新: 2026-02-17
+> リポジトリ: `C:\VSCode\rag\`
 
 ---
 
 ## 目次
 
-- [概要](#概要)
-- [プロジェクト一覧](#プロジェクト一覧)
-- [どのプロジェクトを使うべきか？](#どのプロジェクトを使うべきか)
-- [開発の経緯](#開発の経緯)
-- [アーキテクチャ比較](#アーキテクチャ比較)
-- [機能比較表](#機能比較表)
-- [クイックスタート](#クイックスタート)
-- [ディレクトリ構成](#ディレクトリ構成)
-- [技術スタック](#技術スタック)
-- [検索アルゴリズム](#検索アルゴリズム)
-- [設定パラメータ](#設定パラメータ)
-- [入出力フォーマット](#入出力フォーマット)
-- [Docker デプロイ](#docker-デプロイ)
-- [セキュリティ](#セキュリティ)
-- [トラブルシューティング](#トラブルシューティング)
-- [マイグレーション状況](#マイグレーション状況)
-- [コントリビューション](#コントリビューション)
-- [ライセンス](#ライセンス)
-- [連絡先](#連絡先)
-- [関連ドキュメント](#関連ドキュメント)
+- [プロジェクト全体マップ](#プロジェクト全体マップ)
+- [進化の系譜](#進化の系譜)
+- [rag-maintenance（Phase2 PoC 本番）](#rag-maintenancephase2-poc-本番)
+- [rag-local（Phase1 ローカル検証・評価基盤）](#rag-localphase1-ローカル検証評価基盤)
+- [アーカイブ対象](#アーカイブ対象)
+- [技術的注意事項](#技術的注意事項)
+- [環境構築リンク集](#環境構築リンク集)
+- [アーカイブ実施手順](#アーカイブ実施手順)
 
 ---
 
-## 概要
+## プロジェクト全体マップ
 
-このリポジトリは、銀行預金業務における問い合わせ対応を支援する RAG システム群です。段階的に進化した4つのプロジェクトが含まれており、用途に応じて最適なものを選択できます。
-
-### 主な機能
-
-- **ハイブリッド検索**: ベクトル類似度 + キーワード検索の重み付け統合
-- **複数 LLM 対応**: Anthropic Claude、OpenAI GPT、Google Gemini
-- **日本語最適化**: SudachiPy による形態素解析、日本語埋め込みモデル
-- **Excel 入出力**: 業務で使いやすい形式でのデータ処理
-- **Web UI**: Streamlit ベースの対話的インターフェース
-
----
-
-## プロジェクト一覧
-
-| プロジェクト | 用途 | 主な技術 | 状態 |
-|-------------|------|----------|------|
-| [rag-gemini](./rag-gemini/) | 最新技術・高精度 | Gemini Embedding, ChromaDB | **Active (推奨)** |
-| [rag-batch](./rag-batch/) | バッチ処理 | ハイブリッド検索, Factory Pattern | Active |
-| [rag-streamlit](./rag-streamlit/) | 対話的 UI | Streamlit, JSON キャッシュ | Active |
-| [rag-reranker](./rag-reranker/) | レガシー | Cross-Encoder Reranking | **Deprecated** |
-
----
-
-## どのプロジェクトを使うべきか？
-
-```mermaid
-flowchart TD
-    A{最新技術・高精度が必要?} -->|Yes| B[rag-gemini]
-    A -->|No| C{大量データの一括処理?}
-    C -->|Yes| D[rag-batch]
-    C -->|No| E{対話的 UI でデモ?}
-    E -->|Yes| F[rag-streamlit]
-    E -->|No| G[rag-reranker]
-
-    B -.-> B1[Gemini Embedding + ChromaDB]
-    D -.-> D1[Excel バッチ処理 + Factory Pattern]
-    F -.-> F1[Streamlit UI + リアルタイム検索]
-    G -.-> G1[※非推奨・参照のみ]
+```
+rag/
+├── rag-maintenance/     [現行] Phase2 PoC 本番 — Teams Bot (TypeScript)
+├── rag-local/          [現行] Phase1 ローカル検証・評価基盤 (Python)
+├── archive/             [非推奨] 旧版プロジェクト群
+│   ├── rag-batch/       第2世代: Excel一括バッチ処理
+│   ├── rag-streamlit/   第2世代: Streamlit対話型UI
+│   └── rag-reranker/    第1世代: Cross-Encoder Reranking PoC
+└── docs/                共通ドキュメント
 ```
 
-### ユースケース別推奨
-
-| ユースケース | 推奨プロジェクト | 理由 |
-|-------------|-----------------|------|
-| **本番運用** | rag-gemini | ChromaDB 永続化、動的 DB 管理、高精度検索 |
-| **業務担当者向けデモ** | rag-streamlit | Streamlit UI でわかりやすい |
-| **月次レポート作成** | rag-batch | Excel 一括処理、詳細なログ出力 |
-| **PoC / 技術検証** | rag-gemini | 最新技術、LLM 拡張検索モード |
-| **学習・参考実装** | rag-reranker | Cross-Encoder Reranking の実装例 |
+| ディレクトリ | 状態 | 目的 | 技術 |
+|---|---|---|---|
+| **rag-maintenance** | 現行（引き継ぎ対象） | Teams Bot: 事務改定影響候補検出 | TypeScript, M365 Agents SDK, Azure AI Search, Cosmos DB |
+| **rag-local** | 現行（引き継ぎ対象） | ローカル検証: バッチ処理 + Streamlit UI + 事務改定評価 | Python, ChromaDB, Gemini/Azure OpenAI |
+| archive/rag-batch | 非推奨 | Excel一括バッチ処理 → rag-localに吸収済み | Python, multilingual-e5 |
+| archive/rag-streamlit | 非推奨 | Streamlit対話型UI → rag-localに吸収済み | Python, Streamlit |
+| archive/rag-reranker | 非推奨 | Cross-Encoder Reranking PoC → DEPRECATED明記 | Python, SentenceTransformer |
 
 ---
 
-## 開発の経緯
+## 進化の系譜
 
-```mermaid
-graph TB
-    subgraph v0 [v0: 基礎実装]
-        A[rag-reranker]
-        A1[Cross-Encoder Reranking]
-        A2[Azure 統合]
-    end
-
-    subgraph v1 [v1.0: 機能分化]
-        B[rag-streamlit]
-        B1[Streamlit チャット UI]
-        B2[JSON ベクトルキャッシュ]
-        C[rag-batch]
-        C1[Excel 一括処理]
-        C2[Factory Pattern]
-    end
-
-    subgraph v2 [v2.x: エンタープライズ進化]
-        D[rag-gemini]
-        D1[Gemini Embedding API]
-        D2[ChromaDB 永続化]
-        D3[動的 DB 管理]
-        D4[デュアル検索モード]
-    end
-
-    A --> B
-    A --> C
-    C --> D
+```
+rag-reranker (第1世代)
+  │  融資業務Q&A + Cross-Encoder + PDF処理
+  │  技術: SentenceTransformer, janome
+  │
+  ├─→ rag-batch (第2世代A)
+  │     Excel一括バッチ処理特化
+  │     技術: Sudachi, Factory Pattern
+  │
+  ├─→ rag-streamlit (第2世代B)
+  │     rag-batchのStreamlit UI版(フォーク)
+  │
+  └─→ rag-local (第3世代/現行ローカル)
+        全機能統合 + ChromaDB + Gemini/Azure OpenAI
+        技術: SearchStrategy, MultiStageOrchestrator
+        │
+        └─→ rag-maintenance (Phase2 PoC/現行本番)
+              rag-localの検索知見をAzure環境に移植
+              技術: M365 Agents SDK, Azure AI Search, Cosmos DB
 ```
 
 ---
 
-## アーキテクチャ比較
+## rag-maintenance（Phase2 PoC 本番）
 
-### 共通アーキテクチャ
+千葉銀行 デジタル戦略部（B&DX）の Phase2 PoC。事務改定時にシナリオ・FAQへの影響候補をAI検索で検出するTeams Botシステム。
 
-```mermaid
-graph LR
-    subgraph 入力層
-        A[Excel 入力]
-    end
+### Botソースコード構成（計2,013行）
 
-    subgraph 処理層
-        B[Processor]
-    end
-
-    subgraph 検索エンジン層
-        C[ベクトル検索<br/>Embedding Model]
-        D[キーワード検索<br/>SudachiPy 形態素解析]
-        E[スコア統合<br/>combined = vw × vec + kw × keyword]
-    end
-
-    subgraph 出力層
-        F[Excel / UI 出力]
-    end
-
-    A --> B
-    B --> C
-    B --> D
-    C --> E
-    D --> E
-    E --> F
-```
-
-### プロジェクト別の違い
-
-| コンポーネント | rag-reranker | rag-streamlit | rag-batch | rag-gemini |
-|---------------|--------------|---------------|-----------|------------|
-| **埋め込みモデル** | multilingual-e5-base | multilingual-e5-base | multilingual-e5-base | **Gemini Embedding (3072次元)** |
-| **ベクトル DB** | Pickle ファイル | JSON キャッシュ | JSON キャッシュ | **ChromaDB** |
-| **Reranking** | Cross-Encoder | なし | なし | なし |
-| **検索モード** | 原文のみ | 原文のみ | LLM 要約 | **原文 / LLM 拡張** |
-| **DB 管理** | 手動 | 自動キャッシュ | 自動キャッシュ | **動的管理** |
-| **UI** | CLI | Streamlit | CLI + Streamlit | CLI + Streamlit |
-| **入力形式** | PDF / Excel | Excel | Excel | Excel (階層対応) |
-
----
-
-## 機能比較表
-
-| 機能 | rag-reranker | rag-streamlit | rag-batch | rag-gemini |
-|------|:------------:|:-------------:|:---------:|:----------:|
-| **ハイブリッド検索** | ○ | ○ | ○ | ○ |
-| **Cross-Encoder Reranking** | ○ | - | - | - |
-| **Streamlit UI** | - | ○ | ○ | ○ |
-| **バッチ処理** | ○ | ○ | ○ | ○ |
-| **ベクトルキャッシュ** | ○ | ○ | ○ | ○ |
-| **ChromaDB 永続化** | - | - | - | ○ |
-| **LLM 拡張検索** | - | - | ○ | ○ |
-| **動的 DB 管理** | - | - | - | ○ |
-| **階層 Excel 対応** | - | - | - | ○ |
-| **Docker 対応** | - | ○ | ○ | ○ |
-| **Factory Pattern** | - | - | ○ | ○ |
-| **複数 LLM 対応** | ○ | ○ | ○ | ○ |
-| **Azure 統合** | ○ | - | - | ○ (Key Vault) |
-
----
-
-## クイックスタート
-
-### 前提条件
-
-- Python 3.7 以上
-- pip または poetry
-- API キー（Anthropic / OpenAI / Google のいずれか）
-
-### 推奨プロジェクト（rag-gemini）でのセットアップ
-
-```bash
-# 1. リポジトリのクローン
-git clone https://github.com/Jsakuta/RAG_yokin.git
-cd RAG_yokin/rag-gemini
-
-# 2. 仮想環境の作成・有効化
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 3. 依存パッケージのインストール
-pip install -r requirements.txt
-
-# 4. 環境変数の設定
-cp .env.example .env
-# .env ファイルを編集して API キーを設定
-
-# 5. 参照データの配置
-mkdir -p reference/scenario reference/faq_data
-cp your_scenario.xlsx reference/scenario/
-cp your_faq.xlsx reference/faq_data/
-
-# 6. 入力データの配置
-cp your_input.xlsx input/
-
-# 7. 実行（バッチモード）
-python main.py
-
-# 8. 実行（インタラクティブモード）
-python main.py interactive
-```
-
-### 他のプロジェクトでのセットアップ
-
-各プロジェクトの詳細なセットアップ手順は、それぞれの README を参照してください。
-
-| プロジェクト | README |
-|-------------|--------|
-| rag-gemini | [rag-gemini/README.md](./rag-gemini/README.md) |
-| rag-batch | [rag-batch/README.md](./rag-batch/README.md) |
-| rag-streamlit | [rag-streamlit/README.md](./rag-streamlit/README.md) |
-| rag-reranker | [rag-reranker/README.md](./rag-reranker/README.md) |
-
----
-
-## ディレクトリ構成
-
-```text
-RAG_yokin/
-├── README.md                    # このファイル
-├── DEPRECATED.md                # 旧ディレクトリ名のマッピング
-│
-├── rag-gemini/                  # 推奨: Gemini 統合版
-│   ├── main.py
-│   ├── config.py
-│   ├── requirements.txt
-│   ├── src/
-│   │   ├── core/               # processor.py, searcher.py
-│   │   ├── handlers/           # input_handler.py, output_handler.py
-│   │   └── utils/              # auth.py, gemini_embedding.py, vector_db.py
-│   ├── ui/                     # chat.py (Streamlit)
-│   ├── prompt/                 # プロンプトテンプレート
-│   ├── input/                  # 入力 Excel
-│   ├── reference/              # 参照データ + vector_db/
-│   └── output/                 # 出力 Excel
-│
-├── rag-batch/                   # バッチ処理版
-│   ├── main.py
-│   ├── config.py
-│   ├── src/
-│   │   ├── core/
-│   │   ├── handlers/
-│   │   └── utils/
-│   └── ...
-│
-├── rag-streamlit/               # UI 版
-│   ├── main.py
-│   ├── config.py
-│   ├── src/
-│   ├── ui/
-│   └── ...
-│
-└── rag-reranker/                # レガシー版（非推奨）
-    ├── main.py
-    ├── config.py
-    ├── src/
-    └── ...
-```
-
----
-
-## 技術スタック
-
-### 共通
-
-| カテゴリ | 技術 |
-|---------|------|
-| **言語** | Python 3.7+ |
-| **LLM フレームワーク** | LangChain |
-| **日本語 NLP** | SudachiPy, sudachidict-core |
-| **データ処理** | pandas, numpy, openpyxl, xlsxwriter |
-| **Web UI** | Streamlit |
-
-### プロジェクト固有
-
-| プロジェクト | 固有技術 |
-|-------------|---------|
-| rag-gemini | google-cloud-aiplatform, chromadb, google-generativeai |
-| rag-batch | sentence-transformers, scikit-learn |
-| rag-streamlit | sentence-transformers |
-| rag-reranker | sentence-transformers, cross-encoder, pymupdf |
-
----
-
-## 検索アルゴリズム
-
-### ハイブリッド検索の仕組み
-
-全プロジェクトで共通の検索アルゴリズムを採用しています：
-
-```mermaid
-flowchart TB
-    A[入力質問] --> B[ベクトル検索]
-    A --> C[キーワード検索]
-
-    subgraph ベクトル検索
-        B --> B1[埋め込みモデル<br/>E5-base / Gemini]
-        B1 --> B2[コサイン類似度<br/>0.0 〜 1.0]
-    end
-
-    subgraph キーワード検索
-        C --> C1[SudachiPy 形態素解析<br/>名詞抽出 + 重要度重み]
-        C1 --> C2[重み付き Jaccard 類似度<br/>+ 位置重み ×1.2]
-    end
-
-    B2 --> D[スコア統合]
-    C2 --> D
-    D --> E[Top-K 結果]
-
-    D -.- D1[combined = vw × vec + kw × keyword<br/>デフォルト: vw=0.9, kw=0.1]
-```
-
-### 検索モードの違い
-
-| モード | 説明 | 対応プロジェクト |
-|--------|------|-----------------|
-| **原文検索** | 質問文をそのままベクトル化 | 全プロジェクト |
-| **LLM 要約検索** | LLM でキーワード抽出してからベクトル化 | rag-batch, rag-gemini |
-| **LLM 拡張検索** | LLM が質問の意図を理解してクエリ生成 | rag-gemini のみ |
-
----
-
-## 設定パラメータ
-
-### 共通パラメータ
-
-| パラメータ | 型 | デフォルト | 説明 |
-|-----------|-----|-----------|------|
-| `top_k` | int | 4 | 返却する類似文書数 |
-| `vector_weight` | float | 0.9 | ベクトル検索の重み (0.0〜1.0) |
-| `keyword_weight` | float | 0.1 | キーワード検索の重み (自動計算) |
-| `llm_provider` | str | "anthropic" | LLM プロバイダー |
-| `llm_model` | str | "claude-3-5-sonnet-20241022" | LLM モデル名 |
-
-### プロジェクト固有パラメータ
-
-詳細は各プロジェクトの README を参照してください。
-
----
-
-## 入出力フォーマット
-
-### 入力ファイル
-
-**場所:** `input/` ディレクトリ
-
-**形式:** Excel (.xlsx)
-
-| 列 | 必須 | 説明 |
-|----|------|------|
-| 1列目 | はい | 番号/ID |
-| 2列目 | はい | 質問内容 |
-| 3列目 | いいえ | オリジナル回答（比較用） |
-
-### 参照データ
-
-**場所:** `reference/` ディレクトリ
-
-**形式:** Excel (.xlsx)
-
-| 列名 | 必須 | 説明 |
-|------|------|------|
-| 問合せ内容 | はい | 参照質問文 |
-| 回答 | はい | 参照回答文 |
-
-**注意:** 列名は完全一致が必要です
-
-### 出力ファイル
-
-**場所:** `output/` ディレクトリ
-
-**形式:** Excel (.xlsx)
-
-| 列名 | 説明 |
-|------|------|
-| # | 入力番号 |
-| ユーザーの質問 | 元の質問文 |
-| 検索クエリ | 使用した検索クエリ |
-| 類似質問 | 検索結果の質問 |
-| 類似回答 | 検索結果の回答 |
-| 類似度 | 統合スコア (0.0〜1.0) |
-
----
-
-## Docker デプロイ
-
-各プロジェクトは Docker に対応しています（rag-reranker を除く）。
-
-### 基本コマンド
-
-```bash
-# ビルド
-cd rag-gemini
-docker build -t rag-gemini:latest .
-
-# バッチモード実行
-docker run --rm \
-  -v $(pwd)/input:/app/input \
-  -v $(pwd)/reference:/app/reference \
-  -v $(pwd)/output:/app/output \
-  --env-file .env \
-  rag-gemini:latest main.py
-
-# インタラクティブモード実行
-docker run -p 8501:8501 \
-  -v $(pwd)/reference:/app/reference \
-  --env-file .env \
-  rag-gemini:latest bash -c "streamlit run ui/chat.py"
-```
-
----
-
-## セキュリティ
-
-### 重要な注意事項
-
-- `.env` ファイルは絶対に Git にコミットしない
-- `gemini_credentials.json` は絶対に Git にコミットしない
-- API キーは定期的にローテーション
-- 機密データを含む Excel ファイルの適切な管理
-
-### .gitignore 設定
-
-```text
-# 機密ファイル
-.env
-*.env
-gemini_credentials.json
-
-# データディレクトリ
-input/
-output/
-reference/
-
-# ログ
-logs/
-*.log
-
-# Python
-__pycache__/
-.venv/
-venv/
-```
-
----
-
-## トラブルシューティング
-
-### よくある問題
-
-| 問題 | 原因 | 解決策 |
-|------|------|--------|
-| API キーエラー | `.env` 未設定 | `.env` ファイルを確認 |
-| 列名エラー | 参照ファイルの列名不一致 | 「問合せ内容」「回答」列を確認 |
-| メモリエラー | 大量データ処理 | データ分割またはメモリ増設 |
-| モデルダウンロード遅延 | 初回実行時 | 初回のみ。5-10分待機 |
-| ChromaDB エラー | vector_db/ 破損 | `rm -rf reference/vector_db/` |
-
-### ログの確認
-
-```bash
-# リアルタイムログ
-tail -f logs/app.log
-
-# エラーのみ表示
-grep ERROR logs/app.log
-```
-
----
-
-## マイグレーション状況
-
-### 完了したフェーズ
-
-| フェーズ | 状態 | 内容 |
+| ファイル | 行数 | 責務 |
 |---------|------|------|
-| Phase 1 | ✅ 完了 | ドキュメント整備 |
-| Phase 2 | ✅ 完了 | フォルダ構造統一（src/ ディレクトリ化） |
-| Phase 3 | ✅ 完了 | プロジェクトリネーム |
+| `agent.ts` | 688 | メインBotロジック、全Actionハンドラ、検索実行、キャッシュ管理 |
+| `cards.ts` | 969 | Adaptive Cardビルダー全種（検索/結果/削除/Excel出力完了等） |
+| `excel.ts` | 187 | カテゴリ別Excel生成（Lv/文字数形式、LEN数式、黄色ハイライト） |
+| `cosmos.ts` | 81 | Cosmos DB操作（FAQ論理削除、要修正フラグ保存） |
+| `sharepoint.ts` | 57 | SPOアップロード（Graph API、4MBチェック） |
+| `config.ts` | 28 | 設定定数・環境変数参照 |
+| `index.ts` | 3 | Expressサーバー起動 |
 
-### 旧ディレクトリ名のマッピング
+### 実装済み機能要件
 
-| 旧名 | 新名 | 状態 |
+| FR | 内容 | 状態 |
+|----|------|------|
+| FR-001 | テキスト入力（2000文字制限） | 完了 |
+| FR-002 | 検索カード（タブUI: シナリオ/FAQ） | 完了 |
+| FR-003 | 意味検索（ハイブリッド: BM25+ベクトルRRF） | 完了 |
+| FR-004 | キーワード検索 | 完了 |
+| FR-005 | 検索結果表示（ページネーション、UTF-8サイズ25KB上限） | 完了 |
+| FR-013 | FAQ論理削除 | 完了 |
+| FR-014 | シナリオ要修正フラグ保存 | 完了 |
+| FR-015 | カテゴリ別Excel出力+SPOアップロード+戻るボタン | 完了（動作確認中） |
+
+### Azure環境（命名: `*-maintenance-poc`）
+
+| リソース | 名前 | SKU |
+|---------|------|-----|
+| Resource Group | `rg-maintenance-poc` | - |
+| Azure OpenAI | `aoai-maintenance-poc` | S0 |
+| AI Search | `srch-maintenance-poc` | Basic |
+| Cosmos DB | `cosmos-maintenance-poc` | Serverless |
+| Web App | `app-maintenance-bot-poc` | B1 |
+| Bot Service | `bot-maintenance-poc` | F0 Single-Tenant |
+| Key Vault | `kv-maintenance-poc` | - |
+
+### RBAC構成（7ロール）
+
+| 付与先 | ターゲット | ロール |
+|--------|-----------|--------|
+| AI Search MI | Azure OpenAI | Cognitive Services OpenAI User |
+| AI Search MI | Cosmos DB | Cosmos DB Account Reader Role |
+| AI Search MI | Cosmos DB | Built-in Data Reader |
+| Web App MI | AI Search | Search Index Data Reader |
+| Web App MI | Cosmos DB | Built-in Data Contributor |
+| Web App MI | Key Vault | Key Vault Secrets User |
+
+> Web App → Azure OpenAI のロールは不要（BotはAIを直接呼ばない。EmbeddingはAI Search Skillset経由）
+
+### 環境変数
+
+| 変数名 | デフォルト | 用途 |
+|--------|-----------|------|
+| `AI_SEARCH_ENDPOINT` | (必須) | AI Searchエンドポイント |
+| `AI_SEARCH_INDEX_NAME` | `maintenance-search-index` | インデックス名 |
+| `COSMOS_DB_ENDPOINT` | (必須) | Cosmos DBエンドポイント |
+| `COSMOS_DB_DATABASE` | `maintenance-db` | DB名 |
+| `SPO_SITE_ID` | (必須) | SharePointサイトID |
+| `SPO_DRIVE_ID` | (必須) | SharePointドライブID |
+| `SPO_UPLOAD_FOLDER` | `影響候補シナリオ` | アップロード先フォルダ名 |
+
+認証: 全て`DefaultAzureCredential`使用（Managed Identity / 開発者CLI）
+
+### 未完了タスク
+
+1. **F5デバッグ動作確認**（最優先）: UTF-8サイズ計測修正後の検索結果表示確認
+2. **Excel出力E2Eテスト**: 検索→要修正保存→Excel出力→SPOリンク→Excelファイル確認
+3. **Toolkit再Deploy**: `manifest.json`の`validDomains`変更反映が必要
+4. **手順書完成**: スクリーンショット追加、最終Word化
+
+### ドキュメント
+
+| 文書 | バージョン | パス |
+|------|-----------|------|
+| 要件定義書 | v3.4 | `rag-maintenance/docs/要件定義書.md` |
+| 導入手順書 | v1.5 | `rag-maintenance/docs/導入手順書.md` |
+| データベース設計書 | v1.2 | `rag-maintenance/docs/データベース設計書.md` |
+| 検索ロジック比較 | - | `rag-maintenance/docs/検索ロジック比較_Phase1_vs_Phase2.md` |
+
+---
+
+## rag-local（Phase1 ローカル検証・評価基盤）
+
+事務改定のシナリオ影響をローカルで検証・評価するPython基盤。2つのAIアプリが `apps/` 配下に論理的に分離されている。
+
+| 項目 | 内容 |
+|------|------|
+| 言語 | Python 3.11 |
+| ベクトルDB | ChromaDB（永続化） |
+| 埋め込み | Azure OpenAI text-embedding-3-large / Gemini Embedding |
+| LLM | gemini-2.5-flash-lite |
+| UI | Streamlit |
+| データ規模 | scenarios 2,318件 + faqs 18,744件 = 計21,047件 |
+
+### 3つの機能（論理的分離）
+
+#### 機能A: バッチ処理（`main.py batch`）
+
+入力Excelの質問に対してRAG検索し、結果をExcel出力する。
+
+- エントリポイント: `main.py` → `Processor` → `Searcher` → `SearchStrategy`
+- 固有モジュール: `src/handlers/input_handler.py`(610行), `src/handlers/output_handler.py`(431行)
+
+#### 機能B: Streamlit回答支援UI（`main.py interactive`）
+
+対話的にRAG検索結果を閲覧。通常検索 + 事務改定評価の2モード搭載。
+
+- エントリポイント: `ui/chat.py`
+- 固有依存: `streamlit`, `streamlit_elements`
+
+#### 機能C: 事務改定評価スクリプト（`scripts/evaluate_revisions.py`）
+
+事務改定の正解ID発見率を定量評価。Azure/VertexAI両プロバイダーで比較し、評価Excelを出力。
+
+- エントリポイント: `scripts/evaluate_revisions.py`(1,217行)
+- 固有モジュール: `src/core/judgment_support.py`(121行)
+- 固有依存: `rich`
+
+#### 共通コード（3機能間で共有、計3,000行以上）
+
+| モジュール | 行数 | 役割 |
+|-----------|------|------|
+| `config.py` | 289 | SearchConfig + YAML設定読込 |
+| `src/utils/auth.py` | 176 | LLM/埋め込みモデルファクトリー |
+| `src/utils/vector_db.py` | 277 | ChromaDBラッパー |
+| `src/utils/dynamic_db_manager.py` | 1,044 | 業務分野別DB管理 |
+| `src/core/search/` | - | 検索エンジン群（keyword, vector, query_enhancer, text_combiner, multi_stage_orchestrator） |
+| `config/settings.yaml` | 243 | common/ui/batch/evaluation 4セクション |
+
+> 共通コード量が多いため物理的分割はせず、論理的境界を文書化。将来分離する場合は`rag-common`パッケージ化（pip editable install）を推奨。
+
+### Phase1 → Phase2 の技術移行
+
+| 観点 | Phase1（rag-local） | Phase2（rag-maintenance） |
+|------|---------------------|--------------------------|
+| ベクトル化 | ChromaDB/3072次元 | AI Search HNSW/3072次元 |
+| テキスト検索 | Sudachi+Jaccard（1フィールド） | ja.microsoft+BM25（5フィールド） |
+| スコア統合 | 加重平均（0.9v+0.1k） | RRF（k=60固定） |
+| 実行形式 | Pythonバッチ（Excel入出力） | Teams Bot（リアルタイム） |
+| Embedding更新 | スクリプト手動実行 | Indexer自動（1時間毎） |
+| LLMクエリ拡張 | 3戦略あり | なし（精度向上未確認のため省略） |
+
+---
+
+## アーカイブ対象
+
+### rag-reranker（第1世代）
+
+| 項目 | 内容 |
+|------|------|
+| 状態 | READMEにDEPRECATED明記 |
+| サイズ | 85MB (.venv除く) |
+| テスト | なし（tests/は空） |
+| 固有価値 | Cross-Encoder: `hotchpotch/japanese-reranker-cross-encoder-large-v1`、Azure Document Intelligence PDF処理 |
+
+### rag-batch（第2世代A）
+
+| 項目 | 内容 |
+|------|------|
+| 状態 | rag-localに全機能吸収済み |
+| サイズ | 521MB (.venv除く) — old/のExcel・キャッシュが大半 |
+| テスト | なし（tests/は空） |
+| 固有価値 | `old/OrganizeFAQ*.py`: Claude3を使ったFAQ整理の初期実験（歴史的参考のみ） |
+
+### rag-streamlit（第2世代B）
+
+| 項目 | 内容 |
+|------|------|
+| 状態 | rag-localに全機能吸収済み、固有価値なし |
+| サイズ | 172MB (.venv除く) |
+| テスト | なし（tests/は空） |
+
+---
+
+## 技術的注意事項
+
+### M365 Agents SDK
+
+- `actionExecute`の`data`は `{type, verb, data: {ユーザーデータ}}` 形式。ユーザーデータは `data.data` にネスト
+- 全extract関数（`extractQuery`, `extractSelectedIds`等）でネスト対応必須
+- `adaptiveCardsActions.ts:130`: `(a.value as any).action` をハンドラ第3引数に渡す
+
+### Adaptive Card サイズ制限
+
+- Teams上限: 約28KB（UTF-8バイト）、安全マージンで25KB制限
+- **正しい計測**: `Buffer.byteLength(JSON.stringify(card), "utf8")`
+- `JSON.stringify().length`はUTF-16コードユニット数。日本語コンテンツでは実サイズの60-70%しか計測できない
+- 二分探索で最適perPage値を特定する実装済み（`cards.ts`）
+
+### Azure環境
+
+- **遅延初期化必須**: SearchClient/CosmosClient/GraphClientは全てlazy init。`env-cmd`より先にモジュール評価されるとInvalid URLエラー
+- **Git Bashパス変換問題**: Azure CLI使用時は `MSYS_NO_PATHCONV=1` を設定
+- **OpenAIモデル再デプロイ**: ソフトデリート状態のモデルはパージが必要
+- **Toolkit v6系**: `m365agents.yml`（旧`teamsapp.yml`）。manifest.json変更後はToolkit再Deployが必要
+
+### Windows環境
+
+- **予約語ファイル**: `nul` ファイルが `rag-maintenance/` と `rag-local/` に存在。特殊ツールでの削除が必要
+- **パス**: 日本語ユーザー名含むパスでのGit操作に注意
+
+### データ規模
+
+| コンテナ | 件数 |
+|---------|------|
+| scenarios | 2,318 |
+| faqs | 18,744 |
+| **合計** | **21,047** |
+
+---
+
+## 環境構築リンク集
+
+| 文書 | パス | 内容 |
 |------|------|------|
-| old | rag-reranker | Deprecated |
-| RAG_yokin | rag-streamlit | Active |
-| rag_v1.0 | rag-batch | Active |
-| rag_v2.1 | rag-gemini | Active |
-
-詳細は [DEPRECATED.md](./DEPRECATED.md) を参照してください。
-
----
-
-## コントリビューション
-
-プロジェクトへの貢献を歓迎します。
-
-1. Fork してください
-2. Feature ブランチを作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add amazing feature'`)
-4. ブランチをプッシュ (`git push origin feature/amazing-feature`)
-5. Pull Request を作成
+| 導入手順書 v1.5 | `rag-maintenance/docs/導入手順書.md` | Azure環境構築 Step 1〜13 |
+| 要件定義書 v3.4 | `rag-maintenance/docs/要件定義書.md` | 全機能要件+非機能要件 |
+| DB設計書 v1.2 | `rag-maintenance/docs/データベース設計書.md` | 3コンテナ+Excel列マッピング |
+| 検索ロジック比較 | `rag-maintenance/docs/検索ロジック比較_Phase1_vs_Phase2.md` | Phase1→Phase2移行の技術比較 |
+| rag-local README | `rag-local/README.md` | クイックスタート、ディレクトリ構造 |
+| rag-local 設定 | `rag-local/config/settings.yaml` | 4セクション設定リファレンス |
+| Google Cloud認証 | `rag-local/docs/GOOGLE_CLOUD_AUTH.md` | Vertex AI認証設定 |
 
 ---
 
-## ライセンス
+## アーカイブ実施手順
 
-MIT License
+### Step 1: 機密ファイル削除
 
----
+```bash
+# 各プロジェクトの.env削除
+rm rag-reranker/.env rag-batch/.env rag-streamlit/.env
 
-## 連絡先
+# rag-reranker: 業務データExcel・Azurite設定
+rm rag-reranker/__azurite_db_table__.json
+# rm rag-reranker/問い合わせ履歴データ*.xlsx 等
 
-- **GitHub**: [@Jsakuta](https://github.com/Jsakuta)
-- **Repository**: [RAG_yokin](https://github.com/Jsakuta/RAG_yokin)
+# rag-batch: old/内のExcel・ベクトルキャッシュ
+# rm -rf rag-batch/old/
 
----
+# rag-streamlit: ログ
+rm rag-streamlit/app.log
+```
 
-## 関連ドキュメント
+### Step 2: venv削除（サイズ削減）
 
-### プロジェクト別 README
+```bash
+rm -rf rag-reranker/.venv rag-batch/.venv rag-streamlit/.venv
+```
 
-| ドキュメント | 説明 |
-|-------------|------|
-| [rag-gemini/README.md](./rag-gemini/README.md) | Gemini 統合版（推奨） |
-| [rag-batch/README.md](./rag-batch/README.md) | バッチ処理版 |
-| [rag-streamlit/README.md](./rag-streamlit/README.md) | UI 版 |
-| [rag-reranker/README.md](./rag-reranker/README.md) | レガシー版（非推奨） |
-| [DEPRECATED.md](./DEPRECATED.md) | 旧ディレクトリ名マッピング |
+### Step 3: ディレクトリ移動
 
-### 共通ドキュメント
+```bash
+mkdir archive
+git mv rag-reranker archive/rag-reranker
+git mv rag-batch archive/rag-batch
+git mv rag-streamlit archive/rag-streamlit
+```
 
-| ドキュメント | 説明 |
-|-------------|------|
-| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) | 共通トラブルシューティング |
-| [docs/SECURITY.md](./docs/SECURITY.md) | セキュリティガイドライン |
-| [docs/DOCKER.md](./docs/DOCKER.md) | Docker デプロイガイド |
+### Step 4: 整理後の確認（実施済み）
+
+```
+rag/
+├── rag-maintenance/     [現行] Phase2 PoC Teams Bot
+├── rag-local/           [現行] Phase1 ローカル検証・評価（旧rag-gemini）
+│   ├── apps/answer-support/   回答支援AI
+│   └── apps/revision-eval/    事務改定評価AI
+├── archive/
+│   ├── rag-batch/
+│   ├── rag-streamlit/
+│   └── rag-reranker/
+├── docs/
+│   ├── DOCKER.md
+│   ├── SECURITY.md
+│   └── TROUBLESHOOTING.md
+└── README.md            ← 本ファイル（引き継ぎ資料）
+```

@@ -156,15 +156,15 @@ docker run -p 8501:8501 \
 
 ---
 
-### rag-gemini
+### rag-local
 
 Google Gemini Embedding と ChromaDB を使用する最新版。
 
 #### ビルド
 
 ```bash
-cd rag-gemini
-docker build -t rag-gemini:latest .
+cd rag-local
+docker build -t rag-local:latest .
 ```
 
 #### バッチモード実行
@@ -177,7 +177,7 @@ docker run --rm \
   -v $(pwd)/gemini_credentials.json:/app/gemini_credentials.json:ro \
   -e GEMINI_CREDENTIALS_PATH=/app/gemini_credentials.json \
   -e GEMINI_PROJECT_ID=your-project-id \
-  rag-gemini:latest main.py
+  rag-local:latest main.py
 ```
 
 **オプション解説：**
@@ -194,7 +194,7 @@ docker run -p 8501:8501 \
   -v $(pwd)/gemini_credentials.json:/app/gemini_credentials.json:ro \
   -e GEMINI_CREDENTIALS_PATH=/app/gemini_credentials.json \
   -e GEMINI_PROJECT_ID=your-project-id \
-  rag-gemini:latest bash -c "streamlit run ui/chat.py --server.address 0.0.0.0"
+  rag-local:latest bash -c "streamlit run ui/chat.py --server.address 0.0.0.0"
 ```
 
 **ポイント：**
@@ -519,9 +519,9 @@ docker run \
 version: '3.8'
 
 services:
-  rag-gemini:
+  rag-local:
     build:
-      context: ./rag-gemini
+      context: ./rag-local
       dockerfile: Dockerfile
     ports:
       - "8501:8501"
@@ -565,7 +565,7 @@ volumes:
 docker-compose up -d
 
 # 特定のサービスのみ起動
-docker-compose up rag-gemini
+docker-compose up rag-local
 
 # バッチ処理を実行
 docker-compose --profile batch run rag-batch

@@ -1,6 +1,6 @@
 # セキュリティガイド
 
-このドキュメントでは、RAG-Geminiシステムのセキュリティ設定と認証情報管理について説明します。
+このドキュメントでは、RAG-Localシステムのセキュリティ設定と認証情報管理について説明します。
 
 ## 目次
 
@@ -227,8 +227,8 @@ chmod +x .git/hooks/pre-commit
 ```bash
 # Azure CLIでKey Vaultを作成
 az keyvault create \
-  --name rag-gemini-vault \
-  --resource-group rag-gemini-rg \
+  --name rag-local-vault \
+  --resource-group rag-local-rg \
   --location japaneast
 ```
 
@@ -237,13 +237,13 @@ az keyvault create \
 ```bash
 # Google Cloud 認証情報
 az keyvault secret set \
-  --vault-name rag-gemini-vault \
+  --vault-name rag-local-vault \
   --name gemini-credentials \
   --file gemini_credentials.json
 
 # Azure OpenAI API Key
 az keyvault secret set \
-  --vault-name rag-gemini-vault \
+  --vault-name rag-local-vault \
   --name azure-openai-api-key \
   --value "your-api-key"
 ```
@@ -252,7 +252,7 @@ az keyvault secret set \
 
 ```env
 # .env
-AZURE_KEY_VAULT_URL=https://rag-gemini-vault.vault.azure.net/
+AZURE_KEY_VAULT_URL=https://rag-local-vault.vault.azure.net/
 AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
 ```
 
@@ -279,12 +279,12 @@ def get_secret_from_key_vault(secret_name: str) -> str:
 ```bash
 # システムマネージドIDを有効化
 az webapp identity assign \
-  --name rag-gemini-app \
-  --resource-group rag-gemini-rg
+  --name rag-local-app \
+  --resource-group rag-local-rg
 
 # Key Vault アクセスポリシーを設定
 az keyvault set-policy \
-  --name rag-gemini-vault \
+  --name rag-local-vault \
   --object-id <managed-identity-object-id> \
   --secret-permissions get list
 ```
@@ -335,7 +335,7 @@ NO_PROXY=localhost,127.0.0.1
 
 ```bash
 # プロジェクトディレクトリ
-chmod 755 rag-gemini/
+chmod 755 rag-local/
 
 # 認証情報ファイル（所有者のみ読み取り）
 chmod 400 gemini_credentials.json
@@ -384,7 +384,7 @@ docker run --rm \
   -v $(pwd)/gemini_credentials.json:/app/secrets/gemini_credentials.json:ro \
   -e GEMINI_CREDENTIALS_PATH=/app/secrets/gemini_credentials.json \
   --user 1000:1000 \
-  rag-gemini:latest
+  rag-local:latest
 ```
 
 ---

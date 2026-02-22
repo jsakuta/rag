@@ -170,7 +170,7 @@ echo "$(date): ANTHROPIC_API_KEY rotated" >> ~/.key_rotation_log
 
 ---
 
-## Google Cloud 認証（rag-gemini）
+## Google Cloud 認証（rag-local）
 
 ### サービスアカウント設定
 
@@ -181,7 +181,7 @@ echo "$(date): ANTHROPIC_API_KEY rotated" >> ~/.key_rotation_log
 2. **サービスアカウントを作成**
    - IAM と管理 → サービスアカウント
    - 「サービスアカウントを作成」をクリック
-   - 名前: `rag-gemini-service`
+   - 名前: `rag-local-service`
    - 説明: `RAG システム用サービスアカウント`
 
 3. **役割を付与**
