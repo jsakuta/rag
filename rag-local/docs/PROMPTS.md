@@ -29,8 +29,6 @@
 |---------|------|-----------|---------|
 | `summarize_v1.0.txt` | 検索クエリ拡張 | `searcher.py`, `query_enhancer.py` | LLM (gemini-2.5-flash-lite) |
 | `judgment_support.txt` | 関連性判定（関連あり/要確認/無関係） | `judgment_support.py` | LLM (gemini-2.5-flash-lite) |
-| `tag_prompt.txt` | 銀行業務タグ付け | （未使用 / 将来拡張用） | LLM |
-| `impact_analysis_v1.0.txt` | 影響分析・修正案提示 | （未使用 / 将来拡張用） | LLM |
 
 ## 各プロンプトの説明
 
@@ -55,18 +53,6 @@
 関連性: 関連あり / 要確認 / 明らかに無関係
 根拠: 判定理由（1-2文）
 ```
-
-### tag_prompt.txt（タグ付け）
-
-銀行業務に関する質問・回答に階層タグ（Lv0〜Lv4）を付与します。
-
-**用途**: データの分類・整理（現在は未使用）
-
-### impact_analysis_v1.0.txt（影響分析）
-
-改定内容が既存FAQに与える影響を分析し、修正案を提示します。
-
-**用途**: 影響評価の詳細分析（現在は未使用、judgment_support.txtに置き換え）
 
 ## 設定
 
