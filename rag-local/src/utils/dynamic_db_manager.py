@@ -26,7 +26,7 @@ class DynamicDBManager:
         self.config = config
         self.base_db_path = os.path.join(config.base_dir, "data", "vector_db")
         self.reference_faq_path = os.path.join(config.base_dir, "data", "source", "faq", "latest")
-        self.reference_scenario_path = os.path.join(config.base_dir, "data", "source", "scenarios", "revisions")
+        self.reference_scenario_path = os.path.join(config.base_dir, "data", "source", "scenarios", "latest")
         self._translator = BusinessAreaTranslator()
 
         # ディレクトリの作成
