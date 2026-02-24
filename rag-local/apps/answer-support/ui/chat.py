@@ -62,7 +62,6 @@ def _needs_processor_reinit() -> bool:
         st.session_state.get("last_business_area") != st.session_state.business_area
         or st.session_state.get("last_search_type") != config.search_type
         or st.session_state.get("last_search_mode") != config.search_mode
-        or st.session_state.get("last_judgment_support") != config.multi_stage_enable_judgment_support
         or st.session_state.get("last_search_source") != config.search_source
     )
 
@@ -139,7 +138,6 @@ def _initialize_processor():
     st.session_state.last_business_area = business_area
     st.session_state.last_search_type = st.session_state.config.search_type
     st.session_state.last_search_mode = st.session_state.config.search_mode
-    st.session_state.last_judgment_support = st.session_state.config.multi_stage_enable_judgment_support
     st.session_state.last_search_source = st.session_state.config.search_source
 
 
@@ -156,14 +154,13 @@ def process_query(query: str):
 
         processor = st.session_state.processor
 
-        judgment_enabled = st.session_state.config.multi_stage_enable_judgment_support
         search_type_labels = {"hybrid": "意味検索", "keyword_filter": "キーワード検索"}
         search_type_label = search_type_labels.get(st.session_state.config.search_type, st.session_state.config.search_type)
         logger.info(f"検索タイプ: {search_type_label}")
         source_labels = {"scenario": "シナリオのみ", "history_data": "FAQのみ"}
         search_source_label = source_labels.get(st.session_state.config.search_source, st.session_state.config.search_source)
         if st.session_state.config.search_type == "hybrid":
-            logger.info(f"検索モード: {st.session_state.config.search_mode} (LLM判断支援: {'有効' if judgment_enabled else '無効'})")
+            logger.info(f"検索モード: {st.session_state.config.search_mode}")
             logger.info(f"検索対象: {search_source_label}")
             logger.info(f"検索バランス: ベクトル重み={st.session_state.config.vector_weight:.1f}")
 
@@ -195,51 +192,6 @@ def process_query(query: str):
         st.session_state.chat_history.append({"type": "bot", "text": error_message})
     finally:
         st.session_state.processing_query = False
-
-
-def run_llm_analysis():
-    """最新の検索結果に対してLLM分析を実行"""
-    if "last_results" not in st.session_state or not st.session_state.last_results:
-        st.warning("分析対象の検索結果がありません。")
-        return
-
-    if "processor" not in st.session_state:
-        st.error("Processorが初期化されていません。")
-        return
-
-    processor = st.session_state.processor
-    if not hasattr(processor, 'judgment_support') or processor.judgment_support is None:
-        st.error("JudgmentSupportが初期化されていません。")
-        return
-
-    results = st.session_state.last_results
-    query = st.session_state.last_query
-    judgment_support = processor.judgment_support
-
-    logger.info(f"=== LLM分析開始 ({len(results)}件) ===")
-
-    for i, result in enumerate(results, 1):
-        try:
-            evaluation = judgment_support.evaluate(
-                query,
-                result.get('Search_Result_Q', ''),
-                result.get('Search_Result_A', '')
-            )
-            result['Relevance_Judgment'] = evaluation['relevance_judgment']
-            result['Judgment_Reason'] = evaluation['judgment_reason']
-            logger.info(f"  結果{i}: → LLM判定: {evaluation['relevance_judgment']}")
-        except Exception as e:
-            logger.error(f"  結果{i}: LLM分析エラー: {e}")
-            result['Relevance_Judgment'] = "エラー"
-            result['Judgment_Reason'] = f"分析エラー: {str(e)[:50]}"
-
-    if st.session_state.chat_history:
-        for msg in reversed(st.session_state.chat_history):
-            if msg["type"] == "bot" and isinstance(msg["text"], list):
-                msg["text"] = results
-                break
-
-    logger.info("=== LLM分析完了 ===")
 
 
 def save_chat_history():
@@ -305,8 +257,8 @@ def run_streamlit_ui():
                 st.session_state.config.vector_weight = weight
                 st.session_state.config.keyword_weight = 1.0 - weight
 
-                search_modes = ["original", "llm_enhanced", "multi_stage"]
-                mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索", "multi_stage": "多段階OR検索"}
+                search_modes = ["original", "llm_enhanced"]
+                mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索"}
                 current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0
                 selected_mode = st.selectbox(
                     "検索モード",
@@ -327,20 +279,10 @@ def run_streamlit_ui():
                 )
                 st.session_state.config.search_source = selected_source
 
-                if selected_mode == "multi_stage":
-                    st.session_state.config.top_k = st.number_input(
-                        "候補数", min_value=10, max_value=200,
-                        value=max(10, st.session_state.config.top_k), step=10
-                    )
-                    st.session_state.config.multi_stage_enable_judgment_support = st.checkbox(
-                        "LLM判断支援",
-                        value=st.session_state.config.multi_stage_enable_judgment_support
-                    )
-                else:
-                    st.session_state.config.top_k = st.number_input(
-                        "表示する候補数", min_value=1, max_value=10,
-                        value=min(10, st.session_state.config.top_k), step=1
-                    )
+                st.session_state.config.top_k = st.number_input(
+                    "表示する候補数", min_value=1, max_value=10,
+                    value=min(10, st.session_state.config.top_k), step=1
+                )
             else:
                 st.session_state.config.search_mode = "original"
 
@@ -376,24 +318,10 @@ def run_streamlit_ui():
                             idx, response["Similarity"],
                             response["Search_Result_Q"], response["Search_Result_A"],
                             category=response.get("Search_Category"),
-                            relevance_judgment=response.get("Relevance_Judgment"),
-                            judgment_reason=response.get("Judgment_Reason"),
                         )
                         st.markdown(card_html, unsafe_allow_html=True)
                 else:
                     st.markdown(format_message(msg["text"], False), unsafe_allow_html=True)
-
-        show_llm_button = (
-            st.session_state.config.search_mode == "multi_stage"
-            and st.session_state.config.multi_stage_enable_judgment_support
-            and st.session_state.get("last_results")
-            and not any(r.get("Relevance_Judgment") for r in st.session_state.get("last_results", []))
-        )
-        if show_llm_button:
-            if st.button("LLM分析を実行", use_container_width=True, type="primary"):
-                with st.spinner("LLM分析を実行中..."):
-                    run_llm_analysis()
-                st.rerun()
 
         st.markdown('<div style="height: 50px;"></div>', unsafe_allow_html=True)
 
