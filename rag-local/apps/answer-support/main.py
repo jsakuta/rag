@@ -57,7 +57,7 @@ def run_preflight(config, args):
     try:
         logger.info("動的DB管理システムを初期化中（preflight）...")
         db_manager = DynamicDBManager(config)
-        reference_files = db_manager.analyze_reference_files()
+        reference_files = db_manager.analyze_reference_files(include_revisions=False)
 
         if args.business:
             targets = {k: v for k, v in reference_files.items() if k == args.business}
@@ -96,7 +96,7 @@ def run_db_update(config, business_filter=None):
         db_manager = DynamicDBManager(config)
 
         # 参照ファイルの分析
-        reference_files = db_manager.analyze_reference_files()
+        reference_files = db_manager.analyze_reference_files(include_revisions=False)
 
         # 業務分野フィルタの適用
         if business_filter:

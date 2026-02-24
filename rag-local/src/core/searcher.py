@@ -595,7 +595,7 @@ class Searcher:
 
         try:
             # 参照ファイルを業務分野ごとに分析
-            all_business_areas = self.db_manager.analyze_reference_files()
+            all_business_areas = self.db_manager.analyze_reference_files(include_revisions=False)
 
             if business_area not in all_business_areas:
                 logger.warning(f"業務分野 '{business_area}' の参照ファイルが見つかりません")

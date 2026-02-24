@@ -38,7 +38,7 @@ def get_available_business_areas() -> list:
     try:
         config = SearchConfig(base_dir=str(PROJECT_ROOT))
         db_manager = DynamicDBManager(config)
-        areas = db_manager.get_all_business_areas()
+        areas = db_manager.get_all_business_areas(include_revisions=False)
         if areas:
             return areas
     except Exception as e:
@@ -70,7 +70,7 @@ def _load_reference_data_for_business(config, business_area: str) -> dict:
     """業務分野に応じた参照データを読み込む"""
     try:
         with DynamicDBManager(config) as db_manager:
-            business_areas = db_manager.analyze_reference_files()
+            business_areas = db_manager.analyze_reference_files(include_revisions=False)
 
             if business_area not in business_areas:
                 raise ValueError(f"業務分野 '{business_area}' の参照ファイルが見つかりません（検出済み: {list(business_areas.keys())}）")
