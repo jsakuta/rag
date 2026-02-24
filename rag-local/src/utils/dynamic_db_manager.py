@@ -864,8 +864,11 @@ class DynamicDBManager:
 
         return db_path
     
-    def get_all_business_areas(self) -> List[str]:
+    def get_all_business_areas(self, include_revisions: bool = True) -> List[str]:
         """全業務分野の一覧を取得（新旧両構造対応）
+
+        Args:
+            include_revisions: Falseの場合、改定別コレクション（rev*）を除外
 
         新構造: {business}/{provider}/chroma.sqlite3
         旧構造: {business}_DB/chroma.sqlite3
@@ -883,10 +886,14 @@ class DynamicDBManager:
             # 旧構造: {business}_DB/
             if item.endswith('_DB'):
                 business_area = item[:-3]  # "_DB"を除去
-                business_areas.add(business_area)
+                if include_revisions or not business_area.startswith("rev"):
+                    business_areas.add(business_area)
                 continue
 
             # 新構造: {business}/{provider}/chroma.sqlite3
+            if not include_revisions and item.startswith("rev"):
+                continue
+
             # プロバイダーサブディレクトリをチェック
             for provider in self.config.VALID_EMBEDDING_PROVIDERS:
                 provider_path = os.path.join(item_path, provider)

@@ -149,3 +149,49 @@ class TestAnalyzeReferenceFilesKeyConsistency:
             assert "default" not in business_areas, (
                 f"'default' キーが存在します。マッピング漏れの可能性: {business_areas.get('default')}"
             )
+
+
+class TestGetAllBusinessAreasRevisionFilter:
+    """get_all_business_areas の改定別コレクション除外テスト"""
+
+    @pytest.fixture
+    def db_manager_with_dirs(self, mock_config, tmp_path):
+        """通常業務 + 改定別のDBディレクトリを持つDynamicDBManager"""
+        from src.utils.dynamic_db_manager import DynamicDBManager
+        db_manager = DynamicDBManager(mock_config)
+        db_manager.base_db_path = str(tmp_path)
+
+        # 通常業務: smile/azure_openai/chroma.sqlite3
+        for area in ["smile", "deposit", "general"]:
+            db_dir = tmp_path / area / "azure_openai"
+            db_dir.mkdir(parents=True)
+            (db_dir / "chroma.sqlite3").touch()
+
+        # 改定別: rev01_smile/azure_openai/chroma.sqlite3
+        for area in ["rev01_smile", "rev02_souzoku", "rev03_naibujimu"]:
+            db_dir = tmp_path / area / "azure_openai"
+            db_dir.mkdir(parents=True)
+            (db_dir / "chroma.sqlite3").touch()
+
+        return db_manager
+
+    def test_default_includes_revisions(self, db_manager_with_dirs):
+        """デフォルトでは改定別コレクションを含む"""
+        areas = db_manager_with_dirs.get_all_business_areas()
+        assert "rev01_smile" in areas
+        assert "smile" in areas
+
+    def test_exclude_revisions(self, db_manager_with_dirs):
+        """include_revisions=False で改定別コレクションを除外"""
+        areas = db_manager_with_dirs.get_all_business_areas(include_revisions=False)
+        assert "smile" in areas
+        assert "deposit" in areas
+        assert "general" in areas
+        assert not any(a.startswith("rev") for a in areas)
+
+    def test_include_revisions_explicit(self, db_manager_with_dirs):
+        """include_revisions=True で改定別コレクションを含む"""
+        areas = db_manager_with_dirs.get_all_business_areas(include_revisions=True)
+        assert "rev01_smile" in areas
+        assert "rev02_souzoku" in areas
+        assert "smile" in areas
