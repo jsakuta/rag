@@ -195,3 +195,48 @@ class TestGetAllBusinessAreasRevisionFilter:
         assert "rev01_smile" in areas
         assert "rev02_souzoku" in areas
         assert "smile" in areas
+
+
+class TestAnalyzeReferenceFilesRevisionFilter:
+    """analyze_reference_files の改定別エリア除外テスト"""
+
+    @pytest.fixture
+    def db_manager_with_files(self, mock_config, tmp_path):
+        """通常業務 + 改定別の参照ファイルを持つDynamicDBManager"""
+        from src.utils.dynamic_db_manager import DynamicDBManager
+        db_manager = DynamicDBManager(mock_config)
+
+        # シナリオディレクトリ（改定別ファイル）
+        scenario_dir = tmp_path / "scenarios"
+        scenario_dir.mkdir()
+        db_manager.reference_scenario_path = str(scenario_dir)
+        (scenario_dir / "rev01_smile_シナリオデータ_20260203.xlsx").touch()
+        (scenario_dir / "rev02_souzoku_シナリオデータ_20260203.xlsx").touch()
+
+        # FAQディレクトリ（通常業務ファイル）
+        faq_dir = tmp_path / "faq"
+        faq_dir.mkdir()
+        db_manager.reference_faq_path = str(faq_dir)
+        (faq_dir / "預金_履歴データ_20250830.xlsx").touch()
+        (faq_dir / "スマイル_履歴データ_20250205.xlsx").touch()
+
+        return db_manager
+
+    def test_default_includes_revisions(self, db_manager_with_files):
+        """デフォルトでは改定別エリアを含む"""
+        areas = db_manager_with_files.analyze_reference_files()
+        assert "rev01_smile" in areas
+        assert "deposit" in areas
+
+    def test_exclude_revisions(self, db_manager_with_files):
+        """include_revisions=False で改定別エリアを除外"""
+        areas = db_manager_with_files.analyze_reference_files(include_revisions=False)
+        assert "deposit" in areas
+        assert "smile" in areas
+        assert not any(k.startswith("rev") for k in areas)
+
+    def test_include_revisions_explicit(self, db_manager_with_files):
+        """include_revisions=True で改定別エリアを含む"""
+        areas = db_manager_with_files.analyze_reference_files(include_revisions=True)
+        assert "rev01_smile" in areas
+        assert "deposit" in areas

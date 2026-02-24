@@ -392,8 +392,12 @@ class DynamicDBManager:
         translated = self._translator.translate(raw_name)
         return translated
 
-    def analyze_reference_files(self) -> Dict[str, Dict[str, List[Tuple[str, str]]]]:
-        """参照ファイルを業務分野ごとに分類（DB互換名をキーとして返す）"""
+    def analyze_reference_files(self, include_revisions: bool = True) -> Dict[str, Dict[str, List[Tuple[str, str]]]]:
+        """参照ファイルを業務分野ごとに分類（DB互換名をキーとして返す）
+
+        Args:
+            include_revisions: Falseの場合、改定別エリア（rev*）を除外
+        """
         logger.info("参照ファイルの分析を開始...")
 
         business_areas = {}
@@ -405,6 +409,8 @@ class DynamicDBManager:
             if match:
                 raw_business, data_type, date = match.groups()
                 business = self._normalize_business_name(raw_business)
+                if not include_revisions and business.startswith("rev"):
+                    continue
                 if business not in business_areas:
                     business_areas[business] = {"faq": [], "scenario": []}
                 business_areas[business]["faq"].append((file, date))
@@ -419,6 +425,8 @@ class DynamicDBManager:
             if match:
                 raw_business, data_type, date = match.groups()
                 business = self._normalize_business_name(raw_business)
+                if not include_revisions and business.startswith("rev"):
+                    continue
                 if business not in business_areas:
                     business_areas[business] = {"faq": [], "scenario": []}
                 business_areas[business]["scenario"].append((file, date))
