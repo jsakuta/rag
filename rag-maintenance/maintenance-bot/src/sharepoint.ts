@@ -49,10 +49,12 @@ export async function uploadExcelToSharePoint(
     )
     .put(buffer);
 
+  const fileWebUrl: string = response.webUrl ?? "";
+  const lastSlash = fileWebUrl.lastIndexOf("/");
   return {
-    webUrl: response.webUrl,
+    webUrl: fileWebUrl,
     filename,
-    folderUrl: response.parentReference?.webUrl ?? "",
+    folderUrl: lastSlash > 0 ? fileWebUrl.substring(0, lastSlash) : "",
   };
 }
 

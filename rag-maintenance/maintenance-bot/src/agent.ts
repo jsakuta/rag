@@ -143,7 +143,7 @@ agentApp.adaptiveCards.actionExecute(
     const query = extractQuery(data, context);
     const targetType = extractTargetType(data);
     const categories = extractCategorySelections(data, targetType);
-    const topN = extractSafeTopN(data);
+    const topN = extractSafeTopN(data, targetType);
     console.log(`[searchSemantic] query: ${query}, targetType: ${targetType}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
 
     // リトライガード（conversation + query + categories でユニークキー）
@@ -189,7 +189,7 @@ agentApp.adaptiveCards.actionExecute(
     const query = extractQuery(data, context);
     const targetType = extractTargetType(data);
     const categories = extractCategorySelections(data, targetType);
-    const topN = extractSafeTopN(data);
+    const topN = extractSafeTopN(data, targetType);
     console.log(`[searchKeyword] query: ${query}, targetType: ${targetType}, categories: ${JSON.stringify(categories)}, topN: ${topN}`);
 
     // リトライガード（conversationId が空の場合は randomUUID() でフォールバック）
@@ -241,13 +241,15 @@ agentApp.adaptiveCards.actionExecute(
     let categories = extractCategorySelectionsFromPageData(data);
     const searchSessionId = extractField(data, "searchSessionId", "");
 
-    // Cache fallback: 「検索結果に戻る」ボタンは searchSessionId + page のみ送信するため
-    // query が空の場合はキャッシュから検索パラメータを復元する
+    // Cache fallback: キャッシュが存在する場合は categories を常にキャッシュから復元する
+    // （「検索結果に戻る」ボタンは最小限のデータのみ送信するため）
     const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
+    if (cached) {
+      categories = cached.categories;
+    }
     if (!query && cached) {
       query = cached.query;
       mode = cached.mode;
-      categories = cached.categories;
       topN = cached.topN;
     }
 
@@ -844,10 +846,13 @@ function extractNumber(data: Record<string, unknown>, field: string, defaultValu
 }
 
 /** topN をバリデーション付きで取得（10〜100に制限） */
-function extractSafeTopN(data: Record<string, unknown>): number {
-  // シナリオタブは "topN"、FAQタブは "topN_faq" のIDを使用
-  let raw = extractNumber(data, "topN", -1);
-  if (raw < 0) raw = extractNumber(data, "topN_faq", DEFAULT_TOP_N);
+function extractSafeTopN(data: Record<string, unknown>, targetType?: SearchTargetType): number {
+  // targetType に応じて優先フィールドを切り替え
+  // searchPage からは targetType なしで呼ばれる（pageData に topN が数値で埋め込まれるため問題ない）
+  const primaryKey = targetType === "faq" ? "topN_faq" : "topN";
+  const fallbackKey = targetType === "faq" ? "topN" : "topN_faq";
+  let raw = extractNumber(data, primaryKey, -1);
+  if (raw < 0) raw = extractNumber(data, fallbackKey, DEFAULT_TOP_N);
   if (raw < 0) raw = DEFAULT_TOP_N;
   return Math.min(Math.max(raw, 10), 100);
 }
@@ -896,10 +901,11 @@ function extractCategorySelectionsFromPageData(data: Record<string, unknown>): C
   if (nestedSel && Array.isArray(nestedSel.scenarios) && Array.isArray(nestedSel.faqs)) {
     return nestedSel;
   }
-  // フォールバック: 全カテゴリ
+  // フォールバック: 空カテゴリ（キャッシュから復元されることを前提とする）
+  // キャッシュも存在しない場合は executeSearchPaged で「候補なし」表示になる
   return {
-    scenarios: SCENARIO_CATEGORIES.map((c) => c.id),
-    faqs: FAQ_CATEGORIES.map((c) => c.id),
+    scenarios: [],
+    faqs: [],
   };
 }
 
