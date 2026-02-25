@@ -206,12 +206,18 @@ class TestAnalyzeReferenceFilesRevisionFilter:
         from src.utils.dynamic_db_manager import DynamicDBManager
         db_manager = DynamicDBManager(mock_config)
 
-        # シナリオディレクトリ（改定別ファイル）
-        scenario_dir = tmp_path / "scenarios"
-        scenario_dir.mkdir()
-        db_manager.reference_scenario_path = str(scenario_dir)
-        (scenario_dir / "rev01_smile_シナリオデータ_20260203.xlsx").touch()
-        (scenario_dir / "rev02_souzoku_シナリオデータ_20260203.xlsx").touch()
+        # シナリオ latest ディレクトリ（通常業務ファイル）
+        scenario_latest_dir = tmp_path / "scenarios" / "latest"
+        scenario_latest_dir.mkdir(parents=True)
+        db_manager.reference_scenario_path = str(scenario_latest_dir)
+        (scenario_latest_dir / "スマイル_シナリオデータ_20260224.xlsx").touch()
+
+        # シナリオ revisions ディレクトリ（改定別ファイル）
+        scenario_rev_dir = tmp_path / "scenarios" / "revisions"
+        scenario_rev_dir.mkdir(parents=True)
+        db_manager.reference_revision_scenario_path = str(scenario_rev_dir)
+        (scenario_rev_dir / "rev01_smile_シナリオデータ_20260203.xlsx").touch()
+        (scenario_rev_dir / "rev02_souzoku_シナリオデータ_20260203.xlsx").touch()
 
         # FAQディレクトリ（通常業務ファイル）
         faq_dir = tmp_path / "faq"
@@ -226,7 +232,9 @@ class TestAnalyzeReferenceFilesRevisionFilter:
         """デフォルトでは改定別エリアを含む"""
         areas = db_manager_with_files.analyze_reference_files()
         assert "rev01_smile" in areas
+        assert "rev02_souzoku" in areas
         assert "deposit" in areas
+        assert "smile" in areas
 
     def test_exclude_revisions(self, db_manager_with_files):
         """include_revisions=False で改定別エリアを除外"""
@@ -239,7 +247,9 @@ class TestAnalyzeReferenceFilesRevisionFilter:
         """include_revisions=True で改定別エリアを含む"""
         areas = db_manager_with_files.analyze_reference_files(include_revisions=True)
         assert "rev01_smile" in areas
+        assert "rev02_souzoku" in areas
         assert "deposit" in areas
+        assert "smile" in areas
 
 
 class TestGetScenarioBasePath:

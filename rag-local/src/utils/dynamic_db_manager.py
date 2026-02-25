@@ -433,7 +433,7 @@ class DynamicDBManager:
             else:
                 logger.warning(f"不正な履歴データファイル名: {file}")
 
-        # シナリオデータの分析
+        # シナリオデータの分析（latest/）
         scenario_files = self._get_files_in_directory(self.reference_scenario_path)
         for file in scenario_files:
             match = re.match(self.config.REFERENCE_FILE_PATTERN, file)
@@ -448,6 +448,21 @@ class DynamicDBManager:
                 logger.info(f"シナリオデータ検出: {business} - {file}")
             else:
                 logger.warning(f"不正なシナリオデータファイル名: {file}")
+
+        # シナリオデータの分析（revisions/）— include_revisions=True の場合のみ
+        if include_revisions:
+            revision_scenario_files = self._get_files_in_directory(self.reference_revision_scenario_path)
+            for file in revision_scenario_files:
+                match = re.match(self.config.REFERENCE_FILE_PATTERN, file)
+                if match:
+                    raw_business, data_type, date = match.groups()
+                    business = self._normalize_business_name(raw_business)
+                    if business not in business_areas:
+                        business_areas[business] = {"faq": [], "scenario": []}
+                    business_areas[business]["scenario"].append((file, date))
+                    logger.info(f"シナリオデータ検出（revisions）: {business} - {file}")
+                else:
+                    logger.warning(f"不正なシナリオデータファイル名: {file}")
 
         logger.info(f"業務分野検出: {list(business_areas.keys())}")
         return business_areas
