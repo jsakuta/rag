@@ -11,7 +11,7 @@
 
 ### 処理フロー
 ```
-1. rebuild_before_scenario_db.py
+1. build_db.py --revisions-only
    - 変更前シナリオExcelをベクトル化
    - Azure OpenAI / VertexAI 両方でDB構築
 
@@ -158,7 +158,7 @@ data/vector_db/
 
 ```bash
 # Streamlit UIを停止してから実行
-python scripts/rebuild_before_scenario_db.py
+python scripts/build_db.py --revisions-only
 ```
 
 処理内容:
@@ -283,7 +283,7 @@ rm: cannot remove '...': Device or resource busy
 ```
 DBが存在しません: data/vector_db/rev01smile/azure_openai
 ```
-→ `rebuild_before_scenario_db.py`を先に実行してDBを構築。
+→ `build_db.py --revisions-only`を先に実行してDBを構築。
 
 ### 正解IDが一致しない
 - 正解IDのフォーマットを確認（`{ボット名}_{Excel行番号}`）
@@ -300,7 +300,7 @@ DBが存在しません: data/vector_db/rev01smile/azure_openai
 
 | ファイル | 説明 |
 |---------|------|
-| `scripts/rebuild_before_scenario_db.py` | DB再構築スクリプト |
+| `scripts/build_db.py` | DB構築スクリプト（回答支援AI + 改定別 統合） |
 | `scripts/evaluate_revisions.py` | 評価スクリプト（多段階検索版） |
 | `scripts/generate_correct_ids.py` | 正解ID対応表生成 |
 | `scripts/prepare_before_scenario.py` | 変更前シナリオの前処理 |

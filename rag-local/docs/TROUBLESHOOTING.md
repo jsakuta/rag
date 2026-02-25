@@ -99,7 +99,7 @@ python apps/answer-support/main.py
 
 2. 特定のDBのみ再構築:
 ```bash
-python scripts/rebuild_before_scenario_db.py
+python scripts/build_db.py --revisions-only
 ```
 
 ### ChromaDB エラー: Device or resource busy

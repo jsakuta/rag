@@ -294,7 +294,7 @@ class BaseEmbeddingModel(ABC):
 1. 変更前シナリオExcel配置
    └─ data/source/scenarios/revXXボット_シナリオデータ_YYYYMMDD.xlsx
 2. DB再構築
-   ↓ scripts/rebuild_before_scenario_db.py
+   ↓ scripts/build_db.py --revisions-only
    ├─ Azure OpenAI でベクトル化
    │   └─ data/vector_db/revXX/azure_openai/
    └─ VertexAI でベクトル化

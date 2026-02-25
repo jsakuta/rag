@@ -116,7 +116,7 @@ rag-local/
 
 ```bash
 # Step 1: 改定前シナリオDB構築
-python scripts/rebuild_before_scenario_db.py
+python scripts/build_db.py --revisions-only
 
 # Step 2: 評価実行
 python apps/revision-eval/evaluate_revisions.py

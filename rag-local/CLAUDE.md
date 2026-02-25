@@ -18,6 +18,7 @@
 | [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) | トラブルシューティング |
 | [docs/REVISION_EVALUATION.md](../docs/REVISION_EVALUATION.md) | 事務改定評価システム |
 | [docs/PROMPTS.md](../docs/PROMPTS.md) | プロンプト詳細 |
+| [docs/DB_BUILD_GUIDE.md](../docs/DB_BUILD_GUIDE.md) | DB構築ガイド（回答支援AI + 改定別） |
 
 ---
 
@@ -126,14 +127,14 @@
         ↓
 3. data/source/scenarios/revisions/revXXボット_シナリオデータ_YYYYMMDD.xlsx
         ↓
-   rebuild_before_scenario_db.py → DynamicDBManager
+   build_db.py --revisions-only → DynamicDBManager
         ↓
 4. data/vector_db/revisions/revXX_bot/ (ベクトルDB)
 ```
 
 ### 重要なスクリプト
 - `scripts/prepare_before_scenario.py`: 変更前シナリオの前処理（列削除・リネーム）
-- `scripts/rebuild_before_scenario_db.py`: ベクトルDB再構築
+- `scripts/build_db.py`: DB構築（回答支援AI用 + 改定別、統合スクリプト）
 - `scripts/generate_correct_ids.py`: 正解ID対応表生成
 
 ---
@@ -228,7 +229,7 @@ rag-local/
 │   └── judgment_support.txt      # 関連性判定
 │
 ├── scripts/                      # ユーティリティスクリプト
-│   ├── rebuild_before_scenario_db.py  # DB再構築
+│   ├── build_db.py                    # DB構築（回答支援AI + 改定別 統合）
 │   ├── generate_correct_ids.py        # 正解ID生成
 │   ├── prepare_before_scenario.py     # データ前処理
 │   └── check_db_content.py            # DB内容確認

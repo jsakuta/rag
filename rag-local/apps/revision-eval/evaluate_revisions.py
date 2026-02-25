@@ -8,7 +8,7 @@
 出力: output/revision_evaluation_{timestamp}.xlsx
 
 前提条件:
-- scripts/rebuild_before_scenario_db.py を実行済みで、
+- scripts/build_db.py --revisions-only を実行済みで、
   reference/vector_db/rev*/{azure_openai,vertex_ai}/ が構築済みであること
 """
 
