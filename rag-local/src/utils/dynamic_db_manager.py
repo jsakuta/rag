@@ -312,7 +312,8 @@ class DynamicDBManager:
 
         # シナリオファイルのタイムスタンプ更新
         if latest_scenario:
-            scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
+            scenario_base = self._get_scenario_base_path(business_area)
+            scenario_path = os.path.join(scenario_base, latest_scenario)
             if os.path.exists(scenario_path):
                 self._last_scenario_mtime[business_area] = os.path.getmtime(scenario_path)
 
@@ -522,8 +523,9 @@ class DynamicDBManager:
                 self._last_faq_mtime.get(business_area, 0),
                 db_is_current, "履歴データ"
             )
+            scenario_base = self._get_scenario_base_path(business_area)
             scenario_needs_update = self._check_file_needs_update(
-                latest_scenario, self.reference_scenario_path,
+                latest_scenario, scenario_base,
                 self._last_scenario_mtime.get(business_area, 0),
                 db_is_current, "シナリオデータ"
             )
@@ -637,7 +639,8 @@ class DynamicDBManager:
             if not os.path.exists(faq_path):
                 raise DynamicDBError(f"FAQファイルが見つかりません: {faq_path}")
         if latest_scenario:
-            scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
+            scenario_base = self._get_scenario_base_path(business_area)
+            scenario_path = os.path.join(scenario_base, latest_scenario)
             if not os.path.exists(scenario_path):
                 raise DynamicDBError(f"シナリオファイルが見つかりません: {scenario_path}")
 
@@ -652,7 +655,7 @@ class DynamicDBManager:
             raise DynamicDBError(f"DB保存先への書き込み権限/ロックを確認してください: {e}")
 
         # 参照データの読み込み（実際の更新と同じ経路）
-        reference_data = self._prepare_reference_data_for_vectorization()
+        reference_data = self._prepare_reference_data_for_vectorization(latest_scenario, latest_faq, business_area)
         texts: List[str] = reference_data.get("combined_texts", [])
         metadatas: List[dict] = reference_data.get("metadatas", [])
 
@@ -785,7 +788,7 @@ class DynamicDBManager:
             collection_name = self._get_collection_name(business_area)
 
             # 参照データの準備（業務分野に対応するファイルのみ読み込み）
-            reference_data = self._prepare_reference_data_for_vectorization(latest_scenario, latest_faq)
+            reference_data = self._prepare_reference_data_for_vectorization(latest_scenario, latest_faq, business_area)
 
             # ベクトル化モデルの初期化（プロバイダー設定に応じて自動切替）
             from src.utils.auth import create_embedding_model
@@ -945,7 +948,8 @@ class DynamicDBManager:
     def _prepare_reference_data_for_vectorization(
         self,
         latest_scenario: Optional[str] = None,
-        latest_faq: Optional[str] = None
+        latest_faq: Optional[str] = None,
+        business_area: Optional[str] = None
     ) -> dict:
         """動的DB管理システム用の参照データ準備（業務分野フィルタリング対応）
 
@@ -973,7 +977,8 @@ class DynamicDBManager:
         # シナリオデータの読み込み
         if latest_scenario:
             from src.handlers.input_handler import HierarchicalExcelInputHandler
-            scenario_path = os.path.join(self.reference_scenario_path, latest_scenario)
+            scenario_base = self._get_scenario_base_path(business_area)
+            scenario_path = os.path.join(scenario_base, latest_scenario)
             if os.path.exists(scenario_path):
                 handler = HierarchicalExcelInputHandler(self.config, scenario_path)
                 scenario_data = handler.load_reference_data()
