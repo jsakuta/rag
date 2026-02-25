@@ -27,12 +27,14 @@ class DynamicDBManager:
         self.base_db_path = os.path.join(config.base_dir, "data", "vector_db")
         self.reference_faq_path = os.path.join(config.base_dir, "data", "source", "faq", "latest")
         self.reference_scenario_path = os.path.join(config.base_dir, "data", "source", "scenarios", "latest")
+        self.reference_revision_scenario_path = os.path.join(config.base_dir, "data", "source", "scenarios", "revisions")
         self._translator = BusinessAreaTranslator()
 
         # ディレクトリの作成
         os.makedirs(self.base_db_path, exist_ok=True)
         os.makedirs(self.reference_faq_path, exist_ok=True)
         os.makedirs(self.reference_scenario_path, exist_ok=True)
+        os.makedirs(self.reference_revision_scenario_path, exist_ok=True)
 
         # ChromaDBクライアントを一度だけ初期化（パフォーマンス向上）
         self._chroma_client = chromadb.PersistentClient(
@@ -391,6 +393,19 @@ class DynamicDBManager:
         """
         translated = self._translator.translate(raw_name)
         return translated
+
+    def _get_scenario_base_path(self, business_area: str) -> str:
+        """業務分野名に応じたシナリオベースパスを返す
+
+        Args:
+            business_area: 業務分野名（正規化済み）
+
+        Returns:
+            str: scenarios/latest/ または scenarios/revisions/ のパス
+        """
+        if business_area.startswith("rev"):
+            return self.reference_revision_scenario_path
+        return self.reference_scenario_path
 
     def analyze_reference_files(self, include_revisions: bool = True) -> Dict[str, Dict[str, List[Tuple[str, str]]]]:
         """参照ファイルを業務分野ごとに分類（DB互換名をキーとして返す）

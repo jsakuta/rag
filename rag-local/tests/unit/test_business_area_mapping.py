@@ -240,3 +240,32 @@ class TestAnalyzeReferenceFilesRevisionFilter:
         areas = db_manager_with_files.analyze_reference_files(include_revisions=True)
         assert "rev01_smile" in areas
         assert "deposit" in areas
+
+
+class TestGetScenarioBasePath:
+    """_get_scenario_base_path が業務分野に応じた正しいパスを返すことを検証"""
+
+    @pytest.fixture
+    def db_manager(self, mock_config):
+        from src.utils.dynamic_db_manager import DynamicDBManager
+        return DynamicDBManager(mock_config)
+
+    def test_regular_area_returns_latest(self, db_manager):
+        """通常業務は scenarios/latest/ パスを返す"""
+        path = db_manager._get_scenario_base_path("smile")
+        assert path == db_manager.reference_scenario_path
+        assert "latest" in path
+
+    def test_revision_area_returns_revisions(self, db_manager):
+        """改定別は scenarios/revisions/ パスを返す"""
+        path = db_manager._get_scenario_base_path("rev01_smile")
+        assert path == db_manager.reference_revision_scenario_path
+        assert "revisions" in path
+
+    def test_naibujimu_returns_latest(self, db_manager):
+        path = db_manager._get_scenario_base_path("naibujimu")
+        assert "latest" in path
+
+    def test_rev03_torikaku_returns_revisions(self, db_manager):
+        path = db_manager._get_scenario_base_path("rev03_torikaku")
+        assert "revisions" in path
