@@ -286,7 +286,8 @@ class RevisionEvaluator:
         )
 
         # areas は既に "rev02_souzoku" 等のフルネーム
-        all_matches = searcher.search(areas, query, provider="azure_openai")
+        # area ごとに MAX_RESULTS 件制限するため、全体上限は十分大きく
+        all_matches = searcher.search(areas, query, provider="azure_openai", max_results=MAX_RESULTS * len(areas))
 
         # 結果をバッチ版フォーマットに変換（area別に分割）
         results_by_area = {}

@@ -199,8 +199,8 @@ def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) 
         area_to_category=AREA_TO_CATEGORY,
     )
 
-    # areas は既に "rev02_souzoku" 等のフルネーム
-    matches = searcher.search(areas, query, provider="azure_openai")
+    # areas は既に "rev02_souzoku" 等のフルネーム（旧コードは全件返却）
+    matches = searcher.search(areas, query, provider="azure_openai", max_results=10000)
 
     # UI版フォーマットに変換
     return [
@@ -241,8 +241,8 @@ def _execute_impact_analysis_search(query: str, categories: List[str]) -> List[D
         area_to_category=AREA_TO_CATEGORY,
     )
 
-    # カテゴリ → コレクション名（naibujimu, smile）
-    matches = searcher.search(categories, query, provider="azure_openai")
+    # カテゴリ → コレクション名（naibujimu, smile）— 全件返却
+    matches = searcher.search(categories, query, provider="azure_openai", max_results=10000)
 
     return [
         {
