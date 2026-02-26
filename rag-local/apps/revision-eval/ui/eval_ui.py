@@ -152,7 +152,8 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
     """Azure/VertexAI両方で検索を実行"""
     config = st.session_state.config
     areas = REVISION_TO_AREAS.get(revision, [])
-    search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
+    # ユーザーがUIで選択した検索タイプを優先（フォールバック: YAML設定のデフォルト）
+    search_type = getattr(config, "search_type", None) or REVISION_SEARCH_TYPES.get(revision, "hybrid")
     vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
 
     if not areas:
@@ -160,7 +161,7 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
         return [], [], ""
 
     if search_type == "keyword_filter":
-        azure_results = _search_with_provider(query, revision, "azure_openai", areas, vector_weight)
+        azure_results = _execute_keyword_filter_search(query, revision, areas)
         return azure_results, [], ""
 
     azure_results = _search_with_provider(query, revision, "azure_openai", areas, vector_weight)
@@ -171,8 +172,103 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
     return azure_results, vertex_results, llm_query
 
 
+def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) -> List[Dict]:
+    """キーワード検索（Excel直接検索、LLM不使用）— バッチ版と同等のロジック"""
+    from src.core.search.keyword_search_engine import KeywordSearchEngine
+
+    config = st.session_state.config
+    SCENARIO_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "revisions"
+
+    keyword_engine = KeywordSearchEngine(
+        stop_words=config.STOP_WORDS,
+        position_weight=config.POSITION_WEIGHT,
+    )
+    keywords = keyword_engine.extract_keywords(query)
+    logger.info(f"  キーワード検索: keywords={keywords}")
+
+    all_results = []
+
+    for area in areas:
+        pattern = f"{area}_シナリオデータ_*.xlsx"
+        files = list(SCENARIO_DIR.glob(pattern))
+        if not files:
+            logger.warning(f"  {area}: シナリオファイルが見つかりません: {pattern}")
+            continue
+
+        try:
+            latest_file = max(files, key=lambda f: f.stat().st_mtime)
+            df = pd.read_excel(latest_file)
+            logger.info(f"  {area}: シナリオExcel読み込み: {latest_file.name}")
+
+            if df.empty:
+                continue
+
+            matched = []
+            for idx, row in df.iterrows():
+                text_parts = []
+                for col in df.columns:
+                    if col.startswith("Lv") and pd.notna(row.get(col)):
+                        text_parts.append(str(row[col]))
+                for col in ["質問", "回答"]:
+                    if col in df.columns and pd.notna(row.get(col)):
+                        text_parts.append(str(row[col]))
+                text = " ".join(text_parts)
+                text_lower = text.lower()
+
+                match_count = sum(1 for kw in keywords if kw.lower() in text_lower)
+                if match_count > 0:
+                    matched.append({"row_index": idx, "row": row, "match_count": match_count})
+
+            matched.sort(key=lambda x: -x["match_count"])
+
+            bot_name = extract_bot_name_from_area(area)
+
+            for m in matched:
+                row = m["row"]
+                excel_row = m["row_index"] + 2
+
+                if "質問" in df.columns and pd.notna(row.get("質問")):
+                    question = str(row["質問"])
+                elif "Lv5" in df.columns and pd.notna(row.get("Lv5")):
+                    question = str(row["Lv5"])
+                else:
+                    question = ""
+
+                if "回答" in df.columns and pd.notna(row.get("回答")):
+                    answer = str(row["回答"])
+                else:
+                    answer_parts = []
+                    for col in ["Lv6", "Lv7", "Lv8", "Lv9", "Lv10"]:
+                        if col in df.columns and pd.notna(row.get(col)):
+                            answer_parts.append(str(row[col]))
+                    answer = "\n".join(answer_parts)
+
+                similarity = m["match_count"] / len(keywords) if keywords else 0
+
+                all_results.append({
+                    "Similarity": round(similarity, 4),
+                    "Search_Result_Q": question,
+                    "Search_Result_A": answer,
+                    "Search_Category": "Keyword",
+                    "Sheet_Name": AREA_TO_CATEGORY.get(area, area),
+                    "Row_Index": m["row_index"],
+                    "Search_Query": "",
+                    "_area": area,
+                })
+
+            logger.info(f"  {area}: {len(matched)}件取得（キーワード検索）")
+
+        except Exception as e:
+            logger.error(f"キーワード検索エラー ({area}): {e}")
+            import traceback
+            traceback.print_exc()
+
+    all_results.sort(key=lambda x: x.get("Similarity", 0), reverse=True)
+    return all_results
+
+
 def _search_with_provider(query: str, revision: str, provider: str, areas: List[str], vector_weight: float) -> List[Dict]:
-    """特定のプロバイダーで検索を実行"""
+    """特定のプロバイダーでハイブリッド検索を実行"""
     from src.core.search.multi_stage_orchestrator import MultiStageOrchestrator
     from src.core.search.vector_search_engine import VectorSearchEngine
     from src.core.search.keyword_search_engine import KeywordSearchEngine
@@ -439,17 +535,19 @@ def run_streamlit_ui():
                 st.session_state.config.vector_weight = weight
                 st.session_state.config.keyword_weight = 1.0 - weight
 
-            st.markdown("---")
-            eval_top_k = st.number_input(
-                "候補数",
-                min_value=10,
-                max_value=200,
-                value=max(10, st.session_state.config.top_k),
-                step=10,
-                key="eval_top_k",
-                help="検索結果の最大件数（評価用に多めに設定）"
-            )
-            st.session_state.config.top_k = eval_top_k
+                st.markdown("---")
+                eval_top_k = st.number_input(
+                    "候補数",
+                    min_value=10,
+                    max_value=200,
+                    value=max(10, st.session_state.config.top_k),
+                    step=10,
+                    key="eval_top_k",
+                    help="検索結果の最大件数（評価用に多めに設定）"
+                )
+                st.session_state.config.top_k = eval_top_k
+            else:
+                st.caption("キーワード検索: マッチする全件を返却します")
 
         st.markdown("---")
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
