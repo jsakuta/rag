@@ -10,9 +10,7 @@ from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher, Mat
 @pytest.fixture
 def in_memory_db(tmp_path):
     """テスト用ChromaDBをtmp_pathに作成し、サンプルデータを投入"""
-    db_path = str(tmp_path / "test_db")
-
-    # rev02_souzoku/azure_openai 相当のコレクション
+    # rev02_souzoku/azure_openai コレクション
     sub_db_path = str(tmp_path / "test_db" / "rev02_souzoku" / "azure_openai")
     os.makedirs(sub_db_path, exist_ok=True)
     sub_client = chromadb.PersistentClient(
@@ -33,6 +31,29 @@ def in_memory_db(tmp_path):
         ],
         ids=["doc_1", "doc_2", "doc_3"],
     )
+
+    # naibujimu/azure_openai コレクション（シナリオ + FAQ 混在）
+    mixed_db_path = str(tmp_path / "test_db" / "naibujimu" / "azure_openai")
+    os.makedirs(mixed_db_path, exist_ok=True)
+    mixed_client = chromadb.PersistentClient(
+        path=mixed_db_path,
+        settings=Settings(anonymized_telemetry=False),
+    )
+    mixed_col = mixed_client.get_or_create_collection("default")
+    mixed_col.add(
+        documents=[
+            "分類: 預金 > 届出印 | 質問: 届出印の届出方法 | 回答: 窓口で届出書を提出してください",
+            "分類: 預金 > 届出印 | 質問: 届出印を変更する手続き | 回答: 届出印変更届を提出してください",
+            "分類: 預金 > 解約 | 質問: 通帳の解約方法 | 回答: 窓口で解約届を提出してください",
+        ],
+        metadatas=[
+            {"source": "scenario", "sheet_name": "預金", "row_index": 100, "hierarchy": "預金 > 届出印"},
+            {"source": "history_data", "sheet_name": "預金", "row_index": 200, "hierarchy": "預金 > 届出印"},
+            {"source": "scenario", "sheet_name": "預金", "row_index": 300, "hierarchy": "預金 > 解約"},
+        ],
+        ids=["mixed_1", "mixed_2", "mixed_3"],
+    )
+
     return tmp_path / "test_db"
 
 
@@ -59,10 +80,9 @@ class TestChromaDBKeywordSearcher:
             provider="azure_openai",
         )
         assert len(results) >= 1
-        # 「届出印」「押印」の両方がヒットするドキュメントが最上位
         assert results[0].match_count == 2
         assert results[0].row_index == 10
-        assert results[0].scenario_id == "souzoku-bot_12"  # 10 + 2
+        assert results[0].scenario_id == "souzoku-bot_12"
 
     def test_no_keywords_returns_empty(self, in_memory_db):
         """キーワード抽出結果が空 → 空リスト"""
@@ -99,7 +119,6 @@ class TestChromaDBKeywordSearcher:
             area_to_category={"souzoku": "相続"},
         )
         results = searcher.search(["rev02_souzoku"], "通帳 届出印", provider="azure_openai")
-        # 各ドキュメントのマッチ数が降順であること
         for i in range(len(results) - 1):
             assert results[i].match_count >= results[i + 1].match_count
 
@@ -115,8 +134,8 @@ class TestChromaDBKeywordSearcher:
         for r in results:
             assert r.scenario_id == f"souzoku-bot_{r.row_index + 2}"
 
-    def test_match_result_has_required_fields(self, in_memory_db, mock_keyword_engine):
-        """MatchResult に必要なフィールドがすべて含まれること"""
+    def test_source_field_values(self, in_memory_db, mock_keyword_engine):
+        """source フィールドが有効な値であること"""
         searcher = ChromaDBKeywordSearcher(
             base_db_path=str(in_memory_db),
             keyword_engine=mock_keyword_engine,
@@ -125,13 +144,78 @@ class TestChromaDBKeywordSearcher:
         )
         results = searcher.search(["rev02_souzoku"], "届出印", provider="azure_openai")
         assert len(results) >= 1
-        r = results[0]
-        # 必須フィールド確認
-        assert hasattr(r, "question")
-        assert hasattr(r, "answer")
-        assert hasattr(r, "similarity")
-        assert hasattr(r, "scenario_id")
-        assert hasattr(r, "sheet_name")
-        assert hasattr(r, "row_index")
-        assert hasattr(r, "match_count")
-        assert hasattr(r, "collection_name")
+        valid_sources = {"scenario", "history_data", "unknown"}
+        for r in results:
+            assert r.source in valid_sources
+
+    def test_source_filter_scenario_only(self, in_memory_db):
+        """source_filter="scenario" でシナリオのみ返却"""
+        engine = MagicMock()
+        engine.extract_keywords.return_value = ["届出印"]
+        searcher = ChromaDBKeywordSearcher(
+            base_db_path=str(in_memory_db),
+            keyword_engine=engine,
+            area_to_bot={"naibujimu": "naibujimu-bot"},
+            area_to_category={"naibujimu": "内部事務"},
+        )
+        results = searcher.search(
+            ["naibujimu"], "届出印", provider="azure_openai",
+            source_filter="scenario",
+        )
+        assert len(results) >= 1
+        for r in results:
+            assert r.source == "scenario"
+
+    def test_source_filter_faq_only(self, in_memory_db):
+        """source_filter="history_data" でFAQのみ返却"""
+        engine = MagicMock()
+        engine.extract_keywords.return_value = ["届出印"]
+        searcher = ChromaDBKeywordSearcher(
+            base_db_path=str(in_memory_db),
+            keyword_engine=engine,
+            area_to_bot={"naibujimu": "naibujimu-bot"},
+            area_to_category={"naibujimu": "内部事務"},
+        )
+        results = searcher.search(
+            ["naibujimu"], "届出印", provider="azure_openai",
+            source_filter="history_data",
+        )
+        assert len(results) >= 1
+        for r in results:
+            assert r.source == "history_data"
+
+    def test_source_filter_none_returns_all(self, in_memory_db):
+        """source_filter=None で全件返却"""
+        engine = MagicMock()
+        engine.extract_keywords.return_value = ["届出印"]
+        searcher = ChromaDBKeywordSearcher(
+            base_db_path=str(in_memory_db),
+            keyword_engine=engine,
+            area_to_bot={"naibujimu": "naibujimu-bot"},
+            area_to_category={"naibujimu": "内部事務"},
+        )
+        results = searcher.search(
+            ["naibujimu"], "届出印", provider="azure_openai",
+            source_filter=None,
+        )
+        sources = {r.source for r in results}
+        assert "scenario" in sources
+        assert "history_data" in sources
+
+    def test_extract_area_public(self):
+        """extract_area が public メソッドとして呼べること"""
+        assert ChromaDBKeywordSearcher.extract_area("rev02_souzoku") == "souzoku"
+        assert ChromaDBKeywordSearcher.extract_area("naibujimu") == "naibujimu"
+        assert ChromaDBKeywordSearcher.extract_area("rev03_naibujimu") == "naibujimu"
+
+    def test_match_result_area_property(self, in_memory_db, mock_keyword_engine):
+        """MatchResult.area プロパティが正しく動作すること"""
+        searcher = ChromaDBKeywordSearcher(
+            base_db_path=str(in_memory_db),
+            keyword_engine=mock_keyword_engine,
+            area_to_bot={"souzoku": "souzoku-bot"},
+            area_to_category={"souzoku": "相続"},
+        )
+        results = searcher.search(["rev02_souzoku"], "届出印", provider="azure_openai")
+        assert len(results) >= 1
+        assert results[0].area == "souzoku"
