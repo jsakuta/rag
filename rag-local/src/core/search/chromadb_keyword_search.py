@@ -7,7 +7,7 @@ ChromaDB の collection.get() で全件取得し、Python側でキーワード�
 """
 import os
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import chromadb
