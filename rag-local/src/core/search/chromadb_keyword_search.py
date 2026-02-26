@@ -7,8 +7,8 @@ ChromaDB の collection.get() で全件取得し、Python側でキーワード�
 """
 import os
 import logging
-from dataclasses import dataclass
-from typing import Dict, List
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 
 import chromadb
 from chromadb.config import Settings
@@ -34,6 +34,11 @@ class MatchResult:
     collection_name: str
     source: str  # "scenario" or "history_data"
 
+    @property
+    def area(self) -> str:
+        """コレクション名からarea名を返す"""
+        return ChromaDBKeywordSearcher.extract_area(self.collection_name)
+
 
 class ChromaDBKeywordSearcher:
     """ChromaDB全件取得 + キーワードマッチング
@@ -57,6 +62,7 @@ class ChromaDBKeywordSearcher:
         self.area_to_bot = area_to_bot
         self.area_to_category = area_to_category
         self._text_combiner = get_text_combiner()
+        self._collection_cache: Dict[Tuple[str, str], Tuple[list, list]] = {}
 
     def search(
         self,
@@ -64,6 +70,7 @@ class ChromaDBKeywordSearcher:
         query: str,
         provider: str = "azure_openai",
         max_results: int = 50,
+        source_filter: Optional[str] = None,
     ) -> List[MatchResult]:
         """ChromaDBからキーワード検索を実行
 
@@ -74,6 +81,7 @@ class ChromaDBKeywordSearcher:
             query: 検索クエリ
             provider: 埋め込みプロバイダー（DBディレクトリ構造用）
             max_results: 最大結果件数
+            source_filter: データソースフィルタ（"scenario" | "history_data" | None=全て）
 
         Returns:
             MatchResult のリスト（マッチ数降順）
@@ -87,23 +95,24 @@ class ChromaDBKeywordSearcher:
         all_results: List[MatchResult] = []
 
         for col_name in collection_names:
-            results = self._search_collection(col_name, keywords, provider)
+            results = self._search_collection(col_name, keywords, provider, source_filter)
             all_results.extend(results)
 
         all_results.sort(key=lambda r: r.match_count, reverse=True)
         return all_results[:max_results]
 
-    def _search_collection(
-        self,
-        collection_name: str,
-        keywords: List[str],
-        provider: str,
-    ) -> List[MatchResult]:
-        """単一コレクションからキーワード検索"""
+    def _get_collection_data(
+        self, collection_name: str, provider: str
+    ) -> Tuple[list, list]:
+        """コレクションデータを取得（キャッシュ付き）"""
+        cache_key = (collection_name, provider)
+        if cache_key in self._collection_cache:
+            return self._collection_cache[cache_key]
+
         db_path = os.path.join(self.base_db_path, collection_name, provider)
         if not os.path.exists(db_path):
             logger.warning(f"DBパスが存在しません: {db_path}")
-            return []
+            return [], []
 
         try:
             client = chromadb.PersistentClient(
@@ -111,25 +120,43 @@ class ChromaDBKeywordSearcher:
                 settings=Settings(anonymized_telemetry=False),
             )
             collection = client.get_collection("default")
-        except (ChromaNotFoundError, Exception) as e:
-            logger.warning(f"コレクション取得エラー ({collection_name}/{provider}): {e}")
-            return []
+        except ChromaNotFoundError:
+            logger.warning(f"コレクションが見つかりません: {collection_name}/{provider}")
+            return [], []
+        except (ValueError, FileNotFoundError) as e:
+            logger.warning(f"DB読み込みエラー ({collection_name}/{provider}): {e}")
+            return [], []
 
         result = collection.get(include=["documents", "metadatas"])
         documents = result.get("documents", [])
         metadatas = result.get("metadatas", [])
 
+        self._collection_cache[cache_key] = (documents, metadatas)
+        return documents, metadatas
+
+    def _search_collection(
+        self,
+        collection_name: str,
+        keywords: List[str],
+        provider: str,
+        source_filter: Optional[str] = None,
+    ) -> List[MatchResult]:
+        """単一コレクションからキーワード検索"""
+        documents, metadatas = self._get_collection_data(collection_name, provider)
+
         if not documents:
             logger.info(f"{collection_name}: ドキュメントなし")
             return []
 
-        # area名を抽出（rev02_souzoku → souzoku, naibujimu → naibujimu）
-        area = self._extract_area(collection_name)
+        area = self.extract_area(collection_name)
         bot_name = self._resolve_bot_name(area)
         total_keywords = len(keywords)
 
         matched: List[MatchResult] = []
         for doc, meta in zip(documents, metadatas):
+            if source_filter and meta.get("source") != source_filter:
+                continue
+
             doc_lower = doc.lower()
             match_count = sum(1 for kw in keywords if kw.lower() in doc_lower)
             if match_count == 0:
@@ -157,7 +184,7 @@ class ChromaDBKeywordSearcher:
         return matched
 
     @staticmethod
-    def _extract_area(collection_name: str) -> str:
+    def extract_area(collection_name: str) -> str:
         """コレクション名からarea名を抽出（rev02_souzoku → souzoku）"""
         parts = collection_name.split("_", 1)
         if len(parts) == 2 and parts[0].startswith("rev"):
