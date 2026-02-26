@@ -229,10 +229,10 @@ rag-local/
 │   └── judgment_support.txt      # 関連性判定
 │
 ├── scripts/                      # ユーティリティスクリプト
-│   ├── build_db.py                    # DB構築（回答支援AI + 改定別 統合）
-│   ├── generate_correct_ids.py        # 正解ID生成
-│   ├── prepare_before_scenario.py     # データ前処理
-│   └── check_db_content.py            # DB内容確認
+│   ├── build_db.py               # DB構築（回答支援AI + 改定別 統合）
+│   ├── generate_correct_ids.py   # 正解ID生成
+│   ├── prepare_before_scenario.py # データ前処理
+│   └── check_db_content.py       # DB内容確認
 │
 ├── data/                         # データディレクトリ
 │   ├── vector_db/                # ベクトルDB
