@@ -437,8 +437,8 @@ def _render_provider_results(results: List[Dict], correct_ids: List[str], is_ver
     """プロバイダー検索結果を表示"""
     if not results:
         if is_vertex:
-            search_type = REVISION_SEARCH_TYPES.get(st.session_state.selected_revision, "hybrid")
-            if search_type == "keyword_filter":
+            search_type = getattr(st.session_state.config, "search_type", None) or REVISION_SEARCH_TYPES.get(st.session_state.selected_revision, "hybrid")
+            if search_type in ("keyword_filter", "impact_analysis"):
                 st.info("キーワード検索のためスキップ（Azureタブの結果をご確認ください）")
             else:
                 st.info("該当する結果がありません")

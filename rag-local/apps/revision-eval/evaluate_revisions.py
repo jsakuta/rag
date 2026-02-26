@@ -179,14 +179,6 @@ class RevisionEvaluator:
                 return bot_name
         return "unknown-bot"
 
-    def _extract_category_from_area(self, area: str) -> str:
-        """エリア名から日本語カテゴリ名を抽出"""
-        area_lower = area.lower()
-        for keyword, category_name in AREA_TO_CATEGORY.items():
-            if keyword in area_lower:
-                return category_name
-        return area  # マッピングがない場合はエリア名をそのまま返す
-
     def _get_source_file(self, revision: str, bot_name: str, lv1: str) -> str:
         """改定番号・ボット名・Lv1カテゴリからソースファイル名を取得"""
         if not revision or not bot_name or not lv1:
@@ -308,7 +300,9 @@ class RevisionEvaluator:
             bot_name = self._extract_bot_name_from_area(area)
             area_results = []
             for i, m in enumerate(area_matches[:MAX_RESULTS]):
-                source_file = self._get_source_file(revision, bot_name, "")
+                # hierarchy "預金 > 少額払い" → Lv1 "預金"
+                lv1 = m.hierarchy.split(" > ")[0].strip() if m.hierarchy else ""
+                source_file = self._get_source_file(revision, bot_name, lv1)
                 area_results.append({
                     "順位": i + 1,
                     "シナリオID": m.scenario_id,
