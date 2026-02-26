@@ -154,15 +154,11 @@ def process_query(query: str):
 
         processor = st.session_state.processor
 
-        search_type_labels = {"hybrid": "意味検索", "keyword_filter": "キーワード検索"}
-        search_type_label = search_type_labels.get(st.session_state.config.search_type, st.session_state.config.search_type)
-        logger.info(f"検索タイプ: {search_type_label}")
         source_labels = {"scenario": "シナリオのみ", "history_data": "FAQのみ"}
         search_source_label = source_labels.get(st.session_state.config.search_source, st.session_state.config.search_source)
-        if st.session_state.config.search_type == "hybrid":
-            logger.info(f"検索モード: {st.session_state.config.search_mode}")
-            logger.info(f"検索対象: {search_source_label}")
-            logger.info(f"検索バランス: ベクトル重み={st.session_state.config.vector_weight:.1f}")
+        logger.info(f"検索モード: {st.session_state.config.search_mode}")
+        logger.info(f"検索対象: {search_source_label}")
+        logger.info(f"検索バランス: ベクトル重み={st.session_state.config.vector_weight:.1f}")
 
         results = processor.searcher.search(str(query_number), query, "")
 
@@ -238,53 +234,38 @@ def run_streamlit_ui():
 
         st.markdown("---")
         with st.expander("検索パラメータ", expanded=True):
-            search_type_labels = {
-                "hybrid": "意味検索（意味で探す）",
-                "keyword_filter": "キーワード検索（ワードを含むもの）"
-            }
-            current_search_type = st.session_state.config.search_type if hasattr(st.session_state.config, 'search_type') else "hybrid"
-            selected_search_type = st.radio(
-                "検索タイプ",
-                options=["hybrid", "keyword_filter"],
-                format_func=lambda x: search_type_labels[x],
-                index=0 if current_search_type == "hybrid" else 1,
-                key="search_type_radio"
+            st.session_state.config.search_type = "hybrid"
+
+            weight = render_vector_weight_slider(st.session_state.config.vector_weight)
+            st.session_state.config.vector_weight = weight
+            st.session_state.config.keyword_weight = 1.0 - weight
+
+            search_modes = ["original", "llm_enhanced"]
+            mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索"}
+            current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0
+            selected_mode = st.selectbox(
+                "検索モード",
+                search_modes,
+                format_func=lambda x: mode_labels[x],
+                index=current_mode_index
             )
-            st.session_state.config.search_type = selected_search_type
+            st.session_state.config.search_mode = selected_mode
 
-            if selected_search_type == "hybrid":
-                weight = render_vector_weight_slider(st.session_state.config.vector_weight)
-                st.session_state.config.vector_weight = weight
-                st.session_state.config.keyword_weight = 1.0 - weight
+            search_sources = ["scenario", "history_data"]
+            source_labels = {"scenario": "シナリオのみ", "history_data": "FAQのみ"}
+            current_source_index = search_sources.index(st.session_state.config.search_source) if st.session_state.config.search_source in search_sources else 0
+            selected_source = st.selectbox(
+                "検索対象",
+                search_sources,
+                format_func=lambda x: source_labels[x],
+                index=current_source_index
+            )
+            st.session_state.config.search_source = selected_source
 
-                search_modes = ["original", "llm_enhanced"]
-                mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索"}
-                current_mode_index = search_modes.index(st.session_state.config.search_mode) if st.session_state.config.search_mode in search_modes else 0
-                selected_mode = st.selectbox(
-                    "検索モード",
-                    search_modes,
-                    format_func=lambda x: mode_labels[x],
-                    index=current_mode_index
-                )
-                st.session_state.config.search_mode = selected_mode
-
-                search_sources = ["scenario", "history_data"]
-                source_labels = {"scenario": "シナリオのみ", "history_data": "FAQのみ"}
-                current_source_index = search_sources.index(st.session_state.config.search_source) if st.session_state.config.search_source in search_sources else 0
-                selected_source = st.selectbox(
-                    "検索対象",
-                    search_sources,
-                    format_func=lambda x: source_labels[x],
-                    index=current_source_index
-                )
-                st.session_state.config.search_source = selected_source
-
-                st.session_state.config.top_k = st.number_input(
-                    "表示する候補数", min_value=1, max_value=10,
-                    value=min(10, st.session_state.config.top_k), step=1
-                )
-            else:
-                st.session_state.config.search_mode = "original"
+            st.session_state.config.top_k = st.number_input(
+                "表示する候補数", min_value=1, max_value=10,
+                value=min(10, st.session_state.config.top_k), step=1
+            )
 
         st.markdown("---")
         st.subheader("業務分野")
