@@ -4,7 +4,7 @@
   "targetIndexName": "maintenance-search-index",
   "skillsetName": "maintenance-skillset",
   "schedule": {
-    "interval": "PT1H"
+    "interval": "PT10M"
   },
   "parameters": {
     "batchSize": 100,
