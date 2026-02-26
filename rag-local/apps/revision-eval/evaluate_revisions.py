@@ -275,8 +275,7 @@ class RevisionEvaluator:
             stop_words=self.config.STOP_WORDS,
             position_weight=self.config.POSITION_WEIGHT,
         )
-        keywords = keyword_engine.extract_keywords(query)
-        logger.info(f"  抽出キーワード: {keywords}")
+        # キーワード抽出は searcher.search() 内で1回だけ行われる
 
         searcher = ChromaDBKeywordSearcher(
             base_db_path=str(VECTOR_DB_BASE),
@@ -285,23 +284,28 @@ class RevisionEvaluator:
             area_to_category=AREA_TO_CATEGORY,
         )
 
-        # areas は既に "rev02_souzoku" 等のフルネーム
         # area ごとに MAX_RESULTS 件制限するため、全体上限は十分大きく
         all_matches = searcher.search(areas, query, provider="azure_openai", max_results=MAX_RESULTS * len(areas))
 
-        # 結果をバッチ版フォーマットに変換（area別に分割）
+        # BUG-5修正: defaultdict で O(N+M) グルーピング
+        from collections import defaultdict
+        grouped: Dict[str, List] = defaultdict(list)
+        for m in all_matches:
+            grouped[m.area].append(m)
+
         results_by_area = {}
         searched_areas = []
+        keywords = keyword_engine.extract_keywords(query)  # ログ用（searcher内で既に抽出済み）
+
         for area in areas:
-            area_name = ChromaDBKeywordSearcher._extract_area(area)
-            area_matches = [m for m in all_matches if ChromaDBKeywordSearcher._extract_area(m.collection_name) == area_name]
+            area_name = ChromaDBKeywordSearcher.extract_area(area)
+            area_matches = grouped.get(area_name, [])
             if not area_matches:
                 continue
 
             bot_name = self._extract_bot_name_from_area(area)
             area_results = []
             for i, m in enumerate(area_matches[:MAX_RESULTS]):
-                # hierarchy "預金 > 少額払い" → Lv1 "預金"
                 lv1 = m.hierarchy.split(" > ")[0].strip() if m.hierarchy else ""
                 source_file = self._get_source_file(revision, bot_name, lv1)
                 area_results.append({

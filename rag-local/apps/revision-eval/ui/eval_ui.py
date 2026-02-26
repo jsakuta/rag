@@ -209,13 +209,10 @@ def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) 
             "Search_Result_Q": m.question,
             "Search_Result_A": m.answer,
             "Search_Category": "Keyword",
-            "Sheet_Name": AREA_TO_CATEGORY.get(
-                ChromaDBKeywordSearcher._extract_area(m.collection_name),
-                m.collection_name,
-            ),
+            "Sheet_Name": AREA_TO_CATEGORY.get(m.area, m.collection_name),
             "Row_Index": m.row_index,
             "Search_Query": "",
-            "_area": ChromaDBKeywordSearcher._extract_area(m.collection_name),
+            "_area": m.area,
         }
         for m in matches
     ]
