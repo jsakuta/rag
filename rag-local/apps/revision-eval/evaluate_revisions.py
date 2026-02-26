@@ -30,6 +30,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from config import SearchConfig, load_settings
 from src.core.judgment_support import JudgmentSupport
+from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher
 from src.core.search.keyword_search_engine import KeywordSearchEngine
 from src.core.search.multi_stage_orchestrator import MultiStageOrchestrator
 from src.core.search.query_enhancer import QueryEnhancer
@@ -96,7 +97,6 @@ for rev, config in _raw_revision_areas.items():
 INPUT_FILE = PROJECT_ROOT / "data" / "input" / "multi_stage_input.xlsx"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "output" / "latest"
 VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
-SCENARIO_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "revisions"
 
 
 class RevisionEvaluator:
@@ -270,28 +270,15 @@ class RevisionEvaluator:
             logger.error(f"参照クエリ取得エラー ({area}/{provider}): {e}")
             return []
 
-    def _load_scenario_excel(self, area: str) -> pd.DataFrame:
-        """シナリオExcelを読み込み"""
-        pattern = f"{area}_シナリオデータ_*.xlsx"
-        files = list(SCENARIO_DIR.glob(pattern))
-        if not files:
-            logger.warning(f"シナリオファイルが見つかりません: {pattern}")
-            return pd.DataFrame()
-        # 最新ファイルを使用
-        latest_file = max(files, key=lambda f: f.stat().st_mtime)
-        logger.info(f"シナリオExcel読み込み: {latest_file.name}")
-        return pd.read_excel(latest_file)
-
     def _execute_keyword_filter_search(
         self, revision: str, query: str, correct_ids: List[str]
     ) -> Tuple[Dict[str, List[Dict]], str, List[str], List[str]]:
-        """キーワード必須検索（Excel直接）"""
+        """キーワード必須検索（ChromaDB）"""
         areas = REVISION_TO_AREAS.get(revision, [])
         if not areas:
             logger.warning(f"改定 {revision} に対応するエリアがありません")
             return {}, "", [], []
 
-        # キーワード抽出
         keyword_engine = KeywordSearchEngine(
             stop_words=self.config.STOP_WORDS,
             position_weight=self.config.POSITION_WEIGHT,
@@ -299,97 +286,41 @@ class RevisionEvaluator:
         keywords = keyword_engine.extract_keywords(query)
         logger.info(f"  抽出キーワード: {keywords}")
 
+        searcher = ChromaDBKeywordSearcher(
+            base_db_path=str(VECTOR_DB_BASE),
+            keyword_engine=keyword_engine,
+            area_to_bot=AREA_TO_BOT,
+            area_to_category=AREA_TO_CATEGORY,
+        )
+
+        # areas は既に "rev02_souzoku" 等のフルネーム
+        all_matches = searcher.search(areas, query, provider="azure_openai")
+
+        # 結果をバッチ版フォーマットに変換（area別に分割）
         results_by_area = {}
         searched_areas = []
-
         for area in areas:
-            # シナリオExcel読み込み
-            df = self._load_scenario_excel(area)
-            if df.empty:
-                logger.warning(f"  {area}: シナリオExcelが空です")
+            area_name = ChromaDBKeywordSearcher._extract_area(area)
+            area_matches = [m for m in all_matches if ChromaDBKeywordSearcher._extract_area(m.collection_name) == area_name]
+            if not area_matches:
                 continue
 
-            # 各行に対してキーワードマッチング
-            matched = []
-            for idx, row in df.iterrows():
-                # 全レベルを結合してテキストを作成
-                # Lv1〜Lv4: カテゴリ, Lv5: 質問, Lv6〜: 回答
-                text_parts = []
-                for col in df.columns:
-                    if col.startswith("Lv") and pd.notna(row.get(col)):
-                        text_parts.append(str(row[col]))
-                # 明示的な質問/回答列がある場合
-                for col in ["質問", "回答"]:
-                    if col in df.columns and pd.notna(row.get(col)):
-                        text_parts.append(str(row[col]))
-                text = " ".join(text_parts)
-                text_lower = text.lower()  # 大文字小文字を無視してマッチング
-
-                # キーワードマッチ数をカウント（大文字小文字を無視）
-                match_count = sum(1 for kw in keywords if kw.lower() in text_lower)
-                if match_count > 0:
-                    matched.append({
-                        "row_index": idx,
-                        "row": row,
-                        "match_count": match_count,
-                    })
-
-            # マッチ数順でソート（降順）
-            matched.sort(key=lambda x: -x["match_count"])
-
-            # 結果をフォーマット
-            area_results = []
             bot_name = self._extract_bot_name_from_area(area)
-            # カテゴリ: エリア名から日本語カテゴリ名を抽出
-            category = self._extract_category_from_area(area)
-
-            for m in matched[:MAX_RESULTS]:  # TOP_K件に制限
-                row = m["row"]
-                # Excel行番号 = row_index + 2（ヘッダー行1 + 0-based index）
-                excel_row = m["row_index"] + 2
-                scenario_id = f"{bot_name}_{excel_row}"
-
-                # 質問（明示的な列があればそれを使用、なければLv5）
-                if "質問" in df.columns and pd.notna(row.get("質問")):
-                    question = str(row["質問"])
-                elif "Lv5" in df.columns and pd.notna(row.get("Lv5")):
-                    question = str(row["Lv5"])
-                else:
-                    question = ""
-
-                # 回答（明示的な列があればそれを使用、なければLv6以降を結合）
-                if "回答" in df.columns and pd.notna(row.get("回答")):
-                    answer = str(row["回答"])
-                else:
-                    answer_parts = []
-                    for col in ["Lv6", "Lv7", "Lv8", "Lv9", "Lv10"]:
-                        if col in df.columns and pd.notna(row.get(col)):
-                            answer_parts.append(str(row[col]))
-                    answer = "\n".join(answer_parts)
-
-                # マッチ率を類似度として使用（0-1のスケール）
-                similarity = m["match_count"] / len(keywords) if keywords else 0
-
-                # Lv1カテゴリからソースファイルを特定
-                lv1 = str(row.get("Lv1", "")) if pd.notna(row.get("Lv1")) else ""
-                source_file = self._get_source_file(revision, bot_name, lv1)
-
+            area_results = []
+            for i, m in enumerate(area_matches[:MAX_RESULTS]):
+                source_file = self._get_source_file(revision, bot_name, "")
                 area_results.append({
-                    "順位": 0,  # 呼び出し元で設定
-                    "シナリオID": scenario_id,
-                    "類似度": round(similarity, 4),
-                    "マッチ種別": "Keyword",  # キーワード検索
-                    "正解フラグ": "TRUE" if scenario_id in correct_ids else "FALSE",
-                    "質問": question,
-                    "回答": answer,
+                    "順位": i + 1,
+                    "シナリオID": m.scenario_id,
+                    "類似度": m.similarity,
+                    "マッチ種別": "Keyword",
+                    "正解フラグ": "TRUE" if m.scenario_id in correct_ids else "FALSE",
+                    "質問": m.question,
+                    "回答": m.answer,
                     "関連性判定": "",
                     "判定根拠": "",
                     "ソースファイル": source_file,
                 })
-
-            # 順位を設定
-            for i, result in enumerate(area_results):
-                result["順位"] = i + 1
             results_by_area[area] = area_results
             searched_areas.append(area)
             logger.info(f"  {area}: {len(area_results)}件取得（キーワード検索）")

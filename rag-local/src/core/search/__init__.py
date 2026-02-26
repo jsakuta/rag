@@ -25,6 +25,8 @@ __all__ = [
     'MultiStageSearchStrategy',
     'KeywordFilterSearchStrategy',
     'create_strategy',
+    'ChromaDBKeywordSearcher',
+    'MatchResult',
 ]
 
 
@@ -47,5 +49,8 @@ def __getattr__(name):
     elif name in ('SearchStrategy', 'OriginalSearchStrategy', 'LLMEnhancedSearchStrategy',
                   'MultiStageSearchStrategy', 'KeywordFilterSearchStrategy', 'create_strategy'):
         import src.core.search.search_strategy as mod
+        return getattr(mod, name)
+    elif name in ('ChromaDBKeywordSearcher', 'MatchResult'):
+        import src.core.search.chromadb_keyword_search as mod
         return getattr(mod, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -151,9 +151,16 @@ def initialize_session_state():
 def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict], List[Dict], str]:
     """Azure/VertexAI両方で検索を実行"""
     config = st.session_state.config
-    areas = REVISION_TO_AREAS.get(revision, [])
     # ユーザーがUIで選択した検索タイプを優先（フォールバック: YAML設定のデフォルト）
     search_type = getattr(config, "search_type", None) or REVISION_SEARCH_TYPES.get(revision, "hybrid")
+
+    # 影響調査モードは改定番号非依存
+    if search_type == "impact_analysis":
+        categories = st.session_state.get("impact_categories", ["naibujimu", "smile"])
+        impact_results = _execute_impact_analysis_search(query, categories)
+        return impact_results, [], ""
+
+    areas = REVISION_TO_AREAS.get(revision, [])
     vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
 
     if not areas:
@@ -173,98 +180,84 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
 
 
 def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) -> List[Dict]:
-    """キーワード検索（Excel直接検索、LLM不使用）— バッチ版と同等のロジック"""
+    """キーワード検索（ChromaDB、LLM不使用）"""
+    from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher
     from src.core.search.keyword_search_engine import KeywordSearchEngine
 
     config = st.session_state.config
-    SCENARIO_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "revisions"
+    VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
 
     keyword_engine = KeywordSearchEngine(
         stop_words=config.STOP_WORDS,
         position_weight=config.POSITION_WEIGHT,
     )
-    keywords = keyword_engine.extract_keywords(query)
-    logger.info(f"  キーワード検索: keywords={keywords}")
 
-    all_results = []
+    searcher = ChromaDBKeywordSearcher(
+        base_db_path=str(VECTOR_DB_BASE),
+        keyword_engine=keyword_engine,
+        area_to_bot=AREA_TO_BOT,
+        area_to_category=AREA_TO_CATEGORY,
+    )
 
-    for area in areas:
-        pattern = f"{area}_シナリオデータ_*.xlsx"
-        files = list(SCENARIO_DIR.glob(pattern))
-        if not files:
-            logger.warning(f"  {area}: シナリオファイルが見つかりません: {pattern}")
-            continue
+    # areas は既に "rev02_souzoku" 等のフルネーム
+    matches = searcher.search(areas, query, provider="azure_openai")
 
-        try:
-            latest_file = max(files, key=lambda f: f.stat().st_mtime)
-            df = pd.read_excel(latest_file)
-            logger.info(f"  {area}: シナリオExcel読み込み: {latest_file.name}")
+    # UI版フォーマットに変換
+    return [
+        {
+            "Similarity": m.similarity,
+            "Search_Result_Q": m.question,
+            "Search_Result_A": m.answer,
+            "Search_Category": "Keyword",
+            "Sheet_Name": AREA_TO_CATEGORY.get(
+                ChromaDBKeywordSearcher._extract_area(m.collection_name),
+                m.collection_name,
+            ),
+            "Row_Index": m.row_index,
+            "Search_Query": "",
+            "_area": ChromaDBKeywordSearcher._extract_area(m.collection_name),
+        }
+        for m in matches
+    ]
 
-            if df.empty:
-                continue
 
-            matched = []
-            for idx, row in df.iterrows():
-                text_parts = []
-                for col in df.columns:
-                    if col.startswith("Lv") and pd.notna(row.get(col)):
-                        text_parts.append(str(row[col]))
-                for col in ["質問", "回答"]:
-                    if col in df.columns and pd.notna(row.get(col)):
-                        text_parts.append(str(row[col]))
-                text = " ".join(text_parts)
-                text_lower = text.lower()
+def _execute_impact_analysis_search(query: str, categories: List[str]) -> List[Dict]:
+    """影響調査モード: 通常業務データの横断キーワード検索"""
+    from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher
+    from src.core.search.keyword_search_engine import KeywordSearchEngine
 
-                match_count = sum(1 for kw in keywords if kw.lower() in text_lower)
-                if match_count > 0:
-                    matched.append({"row_index": idx, "row": row, "match_count": match_count})
+    config = st.session_state.config
+    VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
 
-            matched.sort(key=lambda x: -x["match_count"])
+    keyword_engine = KeywordSearchEngine(
+        stop_words=config.STOP_WORDS,
+        position_weight=config.POSITION_WEIGHT,
+    )
 
-            bot_name = extract_bot_name_from_area(area)
+    searcher = ChromaDBKeywordSearcher(
+        base_db_path=str(VECTOR_DB_BASE),
+        keyword_engine=keyword_engine,
+        area_to_bot=AREA_TO_BOT,
+        area_to_category=AREA_TO_CATEGORY,
+    )
 
-            for m in matched:
-                row = m["row"]
-                excel_row = m["row_index"] + 2
+    # カテゴリ → コレクション名（naibujimu, smile）
+    matches = searcher.search(categories, query, provider="azure_openai")
 
-                if "質問" in df.columns and pd.notna(row.get("質問")):
-                    question = str(row["質問"])
-                elif "Lv5" in df.columns and pd.notna(row.get("Lv5")):
-                    question = str(row["Lv5"])
-                else:
-                    question = ""
-
-                if "回答" in df.columns and pd.notna(row.get("回答")):
-                    answer = str(row["回答"])
-                else:
-                    answer_parts = []
-                    for col in ["Lv6", "Lv7", "Lv8", "Lv9", "Lv10"]:
-                        if col in df.columns and pd.notna(row.get(col)):
-                            answer_parts.append(str(row[col]))
-                    answer = "\n".join(answer_parts)
-
-                similarity = m["match_count"] / len(keywords) if keywords else 0
-
-                all_results.append({
-                    "Similarity": round(similarity, 4),
-                    "Search_Result_Q": question,
-                    "Search_Result_A": answer,
-                    "Search_Category": "Keyword",
-                    "Sheet_Name": AREA_TO_CATEGORY.get(area, area),
-                    "Row_Index": m["row_index"],
-                    "Search_Query": "",
-                    "_area": area,
-                })
-
-            logger.info(f"  {area}: {len(matched)}件取得（キーワード検索）")
-
-        except Exception as e:
-            logger.error(f"キーワード検索エラー ({area}): {e}")
-            import traceback
-            traceback.print_exc()
-
-    all_results.sort(key=lambda x: x.get("Similarity", 0), reverse=True)
-    return all_results
+    return [
+        {
+            "Similarity": m.similarity,
+            "Search_Result_Q": m.question,
+            "Search_Result_A": m.answer,
+            "Search_Category": "Keyword",
+            "Sheet_Name": AREA_TO_CATEGORY.get(m.collection_name, m.collection_name),
+            "Row_Index": m.row_index,
+            "Search_Query": "",
+            "_area": m.collection_name,
+            "_source": m.source,
+        }
+        for m in matches
+    ]
 
 
 def _search_with_provider(query: str, revision: str, provider: str, areas: List[str], vector_weight: float) -> List[Dict]:
@@ -516,16 +509,17 @@ def run_streamlit_ui():
 
             default_search_type = REVISION_SEARCH_TYPES.get(selected_revision, "hybrid")
             eval_search_type_labels = {
-                "keyword_filter": "キーワード検索",
-                "hybrid": "意味検索"
+                "hybrid": "意味検索",
+                "keyword_filter": "キーワード検索（改定前データ）",
+                "impact_analysis": "影響調査（通常業務データ）",
             }
             eval_selected_search_type = st.radio(
                 "検索タイプ",
-                options=["hybrid", "keyword_filter"],
+                options=["hybrid", "keyword_filter", "impact_analysis"],
                 format_func=lambda x: eval_search_type_labels[x],
                 index=0 if default_search_type == "hybrid" else 1,
                 key="eval_search_type_radio",
-                horizontal=True
+                horizontal=False
             )
             st.session_state.config.search_type = eval_selected_search_type
 
@@ -546,6 +540,23 @@ def run_streamlit_ui():
                     help="検索結果の最大件数（評価用に多めに設定）"
                 )
                 st.session_state.config.top_k = eval_top_k
+            elif eval_selected_search_type == "impact_analysis":
+                impact_category_options = {
+                    "all": "全て（内部事務 + スマイル）",
+                    "naibujimu": "内部事務",
+                    "smile": "スマイル",
+                }
+                impact_category = st.radio(
+                    "対象カテゴリ",
+                    options=list(impact_category_options.keys()),
+                    format_func=lambda x: impact_category_options[x],
+                    key="impact_category_radio",
+                )
+                if impact_category == "all":
+                    st.session_state.impact_categories = ["naibujimu", "smile"]
+                else:
+                    st.session_state.impact_categories = [impact_category]
+                st.caption("通常業務データ（FAQ+シナリオ）の横断キーワード検索")
             else:
                 st.caption("キーワード検索: マッチする全件を返却します")
 
@@ -590,7 +601,8 @@ def run_streamlit_ui():
         submit_button = st.form_submit_button("検索", use_container_width=True, disabled=st.session_state.processing_query)
 
     if submit_button and query.strip():
-        if not st.session_state.selected_revision:
+        search_type = getattr(st.session_state.config, "search_type", "hybrid")
+        if not st.session_state.selected_revision and search_type != "impact_analysis":
             st.warning("改定番号を選択してください。")
         else:
             st.session_state.chat_history.append({"type": "user", "text": query})
