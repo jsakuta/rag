@@ -146,20 +146,43 @@ def initialize_session_state():
         st.session_state.azure_results = []
     if "vertex_results" not in st.session_state:
         st.session_state.vertex_results = []
+    # 影響調査モード用
+    if "app_mode" not in st.session_state:
+        st.session_state.app_mode = "evaluation"
+    if "impact_categories" not in st.session_state:
+        st.session_state.impact_categories = ["naibujimu", "smile"]
+    if "impact_source_filter" not in st.session_state:
+        st.session_state.impact_source_filter = None  # None=全て
 
 
 def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict], List[Dict], str]:
     """Azure/VertexAI両方で検索を実行"""
     config = st.session_state.config
-    # ユーザーがUIで選択した検索タイプを優先（フォールバック: YAML設定のデフォルト）
-    search_type = getattr(config, "search_type", None) or REVISION_SEARCH_TYPES.get(revision, "hybrid")
+    app_mode = st.session_state.get("app_mode", "evaluation")
 
-    # 影響調査モードは改定番号非依存
-    if search_type == "impact_analysis":
+    # 影響調査モード
+    if app_mode == "impact_analysis":
+        search_type = getattr(config, "search_type", "hybrid")
         categories = st.session_state.get("impact_categories", ["naibujimu", "smile"])
-        impact_results = _execute_impact_analysis_search(query, categories)
-        return impact_results, [], ""
+        source_filter = st.session_state.get("impact_source_filter")
 
+        if search_type == "keyword_filter":
+            results = _execute_impact_keyword_search(query, categories, source_filter)
+            return results, [], ""
+        else:
+            # hybrid: 意味検索（Azure/VertexAI）
+            vector_weight = getattr(config, "vector_weight", DEFAULT_VECTOR_WEIGHT)
+            azure_results = _search_with_provider(query, "", "azure_openai", categories, vector_weight)
+            vertex_results = _search_with_provider(query, "", "vertex_ai", categories, vector_weight)
+            # source_filter を Python 側で適用
+            if source_filter:
+                azure_results = [r for r in azure_results if r.get("_source", "") == source_filter or "_source" not in r]
+                vertex_results = [r for r in vertex_results if r.get("_source", "") == source_filter or "_source" not in r]
+            llm_query = azure_results[0].get("Search_Query", query) if azure_results else ""
+            return azure_results, vertex_results, llm_query
+
+    # 評価モード
+    search_type = getattr(config, "search_type", None) or REVISION_SEARCH_TYPES.get(revision, "hybrid")
     areas = REVISION_TO_AREAS.get(revision, [])
     vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
 
@@ -218,8 +241,8 @@ def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) 
     ]
 
 
-def _execute_impact_analysis_search(query: str, categories: List[str]) -> List[Dict]:
-    """影響調査モード: 通常業務データの横断キーワード検索"""
+def _execute_impact_keyword_search(query: str, categories: List[str], source_filter: Optional[str] = None) -> List[Dict]:
+    """影響調査モード: キーワード検索"""
     from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher
     from src.core.search.keyword_search_engine import KeywordSearchEngine
 
@@ -238,8 +261,10 @@ def _execute_impact_analysis_search(query: str, categories: List[str]) -> List[D
         area_to_category=AREA_TO_CATEGORY,
     )
 
-    # カテゴリ → コレクション名（naibujimu, smile）— 全件返却
-    matches = searcher.search(categories, query, provider="azure_openai", max_results=10000)
+    matches = searcher.search(
+        categories, query, provider="azure_openai",
+        max_results=10000, source_filter=source_filter,
+    )
 
     return [
         {
@@ -399,9 +424,14 @@ def process_query(query: str):
     st.session_state.processing_query = True
     try:
         query_number = len(st.session_state.chat_history) // 2 + 1
+        app_mode = st.session_state.get("app_mode", "evaluation")
         revision = st.session_state.selected_revision
-        search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
-        logger.info(f"=== 評価クエリ {query_number}: 改定番号={revision}, 検索タイプ={search_type} ===")
+
+        if app_mode == "impact_analysis":
+            logger.info(f"=== 影響調査クエリ {query_number} ===")
+        else:
+            search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
+            logger.info(f"=== 評価クエリ {query_number}: 改定番号={revision}, 検索タイプ={search_type} ===")
 
         azure_results, vertex_results, llm_query = execute_dual_provider_search(query, revision)
 
@@ -434,8 +464,11 @@ def _render_provider_results(results: List[Dict], correct_ids: List[str], is_ver
     """プロバイダー検索結果を表示"""
     if not results:
         if is_vertex:
-            search_type = getattr(st.session_state.config, "search_type", None) or REVISION_SEARCH_TYPES.get(st.session_state.selected_revision, "hybrid")
-            if search_type in ("keyword_filter", "impact_analysis"):
+            app_mode = st.session_state.get("app_mode", "evaluation")
+            search_type = getattr(st.session_state.config, "search_type", "hybrid")
+            if app_mode == "impact_analysis" and search_type == "keyword_filter":
+                st.info("キーワード検索のためスキップ（Azureタブの結果をご確認ください）")
+            elif app_mode == "evaluation" and search_type == "keyword_filter":
                 st.info("キーワード検索のためスキップ（Azureタブの結果をご確認ください）")
             else:
                 st.info("該当する結果がありません")
@@ -468,60 +501,77 @@ def run_streamlit_ui():
     initialize_session_state()
 
     with st.sidebar:
-        st.title("事務改定評価設定")
+        st.title("事務改定 AI")
 
-        revision_data = load_revision_correct_ids()
-        revision_options = list(revision_data.keys())
+        # モード選択（最上部）
+        app_mode = st.radio(
+            "モード",
+            options=["evaluation", "impact_analysis"],
+            format_func=lambda x: {"evaluation": "評価モード", "impact_analysis": "影響調査モード"}[x],
+            key="app_mode_radio",
+            horizontal=True,
+        )
+        st.session_state.app_mode = app_mode
 
-        if not revision_options:
-            st.warning("正解IDデータが見つかりません")
-            st.session_state.selected_revision = None
-            st.session_state.correct_ids = []
-        else:
-            current_revision_idx = 0
-            if st.session_state.selected_revision in revision_options:
-                current_revision_idx = revision_options.index(st.session_state.selected_revision)
+        st.markdown("---")
 
-            selected_revision = st.selectbox(
-                "改定番号",
-                revision_options,
-                index=current_revision_idx,
-                key="revision_select",
-                help="改定番号を選択すると、Azure/VertexAI両方で検索し、正解IDとマッチした結果にバッジを表示します"
-            )
+        if app_mode == "evaluation":
+            # === 評価モード ===
+            revision_data = load_revision_correct_ids()
+            revision_options = list(revision_data.keys())
 
-            st.session_state.selected_revision = selected_revision
+            if not revision_options:
+                st.warning("正解IDデータが見つかりません")
+                st.session_state.selected_revision = None
+                st.session_state.correct_ids = []
+            else:
+                current_revision_idx = 0
+                if st.session_state.selected_revision in revision_options:
+                    current_revision_idx = revision_options.index(st.session_state.selected_revision)
 
-            if selected_revision in revision_data:
-                content, correct_ids = revision_data[selected_revision]
-                st.session_state.correct_ids = correct_ids
-                st.success(f"正解ID: {len(correct_ids)}件")
+                selected_revision = st.selectbox(
+                    "改定番号",
+                    revision_options,
+                    index=current_revision_idx,
+                    key="revision_select",
+                    help="改定番号を選択すると、Azure/VertexAI両方で検索し、正解IDとマッチした結果にバッジを表示します"
+                )
 
-                areas = REVISION_TO_AREAS.get(selected_revision, [])
-                if areas:
-                    st.caption(f"対象エリア: {', '.join(areas)}")
+                st.session_state.selected_revision = selected_revision
+
+                if selected_revision in revision_data:
+                    content, correct_ids = revision_data[selected_revision]
+                    st.session_state.correct_ids = correct_ids
+                    st.success(f"正解ID: {len(correct_ids)}件")
+
+                    areas = REVISION_TO_AREAS.get(selected_revision, [])
+                    if areas:
+                        st.caption(f"対象エリア: {', '.join(areas)}")
 
             st.markdown("---")
             st.subheader("検索設定")
 
-            default_search_type = REVISION_SEARCH_TYPES.get(selected_revision, "hybrid")
+            default_search_type = REVISION_SEARCH_TYPES.get(
+                st.session_state.get("selected_revision", ""), "hybrid"
+            )
             eval_search_type_labels = {
                 "hybrid": "意味検索",
-                "keyword_filter": "キーワード検索（改定前データ）",
-                "impact_analysis": "影響調査（通常業務データ）",
+                "keyword_filter": "キーワード検索",
             }
             eval_selected_search_type = st.radio(
                 "検索タイプ",
-                options=["hybrid", "keyword_filter", "impact_analysis"],
+                options=["hybrid", "keyword_filter"],
                 format_func=lambda x: eval_search_type_labels[x],
                 index=0 if default_search_type == "hybrid" else 1,
                 key="eval_search_type_radio",
-                horizontal=False
+                horizontal=True,
             )
             st.session_state.config.search_type = eval_selected_search_type
 
             if eval_selected_search_type == "hybrid":
-                default_vector_weight = REVISION_VECTOR_WEIGHTS.get(selected_revision, DEFAULT_VECTOR_WEIGHT)
+                default_vector_weight = REVISION_VECTOR_WEIGHTS.get(
+                    st.session_state.get("selected_revision", ""), DEFAULT_VECTOR_WEIGHT
+                )
                 weight = render_vector_weight_slider(default_vector_weight, key="eval_vector_weight")
                 st.session_state.config.vector_weight = weight
                 st.session_state.config.keyword_weight = 1.0 - weight
@@ -537,23 +587,73 @@ def run_streamlit_ui():
                     help="検索結果の最大件数（評価用に多めに設定）"
                 )
                 st.session_state.config.top_k = eval_top_k
-            elif eval_selected_search_type == "impact_analysis":
-                impact_category_options = {
-                    "all": "全て（内部事務 + スマイル）",
-                    "naibujimu": "内部事務",
-                    "smile": "スマイル",
-                }
-                impact_category = st.radio(
-                    "対象カテゴリ",
-                    options=list(impact_category_options.keys()),
-                    format_func=lambda x: impact_category_options[x],
-                    key="impact_category_radio",
+            else:
+                st.caption("キーワード検索: マッチする全件を返却します")
+
+        else:
+            # === 影響調査モード ===
+            st.session_state.correct_ids = []  # 正解判定なし
+
+            impact_category_options = {
+                "all": "全て（内部事務 + スマイル）",
+                "naibujimu": "内部事務",
+                "smile": "スマイル",
+            }
+            impact_category = st.radio(
+                "対象カテゴリ",
+                options=list(impact_category_options.keys()),
+                format_func=lambda x: impact_category_options[x],
+                key="impact_category_radio",
+            )
+            if impact_category == "all":
+                st.session_state.impact_categories = ["naibujimu", "smile"]
+            else:
+                st.session_state.impact_categories = [impact_category]
+
+            st.markdown("---")
+            source_options = {
+                "all": "全て（シナリオ + FAQ）",
+                "scenario": "シナリオのみ",
+                "history_data": "FAQのみ",
+            }
+            source_selection = st.radio(
+                "データソース",
+                options=list(source_options.keys()),
+                format_func=lambda x: source_options[x],
+                key="impact_source_radio",
+            )
+            st.session_state.impact_source_filter = None if source_selection == "all" else source_selection
+
+            st.markdown("---")
+            st.subheader("検索設定")
+
+            impact_search_type_labels = {
+                "hybrid": "意味検索",
+                "keyword_filter": "キーワード検索",
+            }
+            impact_search_type = st.radio(
+                "検索タイプ",
+                options=["hybrid", "keyword_filter"],
+                format_func=lambda x: impact_search_type_labels[x],
+                key="impact_search_type_radio",
+                horizontal=True,
+            )
+            st.session_state.config.search_type = impact_search_type
+
+            if impact_search_type == "hybrid":
+                weight = render_vector_weight_slider(DEFAULT_VECTOR_WEIGHT, key="impact_vector_weight")
+                st.session_state.config.vector_weight = weight
+                st.session_state.config.keyword_weight = 1.0 - weight
+
+                impact_top_k = st.number_input(
+                    "候補数",
+                    min_value=10,
+                    max_value=200,
+                    value=max(10, st.session_state.config.top_k),
+                    step=10,
+                    key="impact_top_k",
                 )
-                if impact_category == "all":
-                    st.session_state.impact_categories = ["naibujimu", "smile"]
-                else:
-                    st.session_state.impact_categories = [impact_category]
-                st.caption("通常業務データ（FAQ+シナリオ）の横断キーワード検索")
+                st.session_state.config.top_k = impact_top_k
             else:
                 st.caption("キーワード検索: マッチする全件を返却します")
 
@@ -561,7 +661,12 @@ def run_streamlit_ui():
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
             save_chat_history()
 
-    if st.session_state.selected_revision:
+    # メインエリア タイトル
+    if st.session_state.get("app_mode") == "impact_analysis":
+        cats = st.session_state.get("impact_categories", [])
+        cat_label = " + ".join(AREA_TO_CATEGORY.get(c, c) for c in cats)
+        st.title(f"影響調査【{cat_label}】")
+    elif st.session_state.selected_revision:
         st.title(f"事務改定評価【改定{st.session_state.selected_revision}】")
     else:
         st.title("事務改定評価")
@@ -598,8 +703,8 @@ def run_streamlit_ui():
         submit_button = st.form_submit_button("検索", use_container_width=True, disabled=st.session_state.processing_query)
 
     if submit_button and query.strip():
-        search_type = getattr(st.session_state.config, "search_type", "hybrid")
-        if not st.session_state.selected_revision and search_type != "impact_analysis":
+        app_mode = st.session_state.get("app_mode", "evaluation")
+        if app_mode == "evaluation" and not st.session_state.selected_revision:
             st.warning("改定番号を選択してください。")
         else:
             st.session_state.chat_history.append({"type": "user", "text": query})
