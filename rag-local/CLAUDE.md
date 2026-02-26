@@ -237,8 +237,7 @@ rag-local/
 ├── data/                         # データディレクトリ
 │   ├── vector_db/                # ベクトルDB
 │   │   ├── update_timestamps.json
-│   │   ├── general/              # 総則DB
-│   │   ├── deposit/              # 預金DB
+│   │   ├── naibujimu/            # 内部事務DB
 │   │   ├── smile/                # スマイルDB
 │   │   ├── rev01_smile/          # 改定DB
 │   │   ├── rev02_souzoku/

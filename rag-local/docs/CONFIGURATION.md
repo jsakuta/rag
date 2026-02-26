@@ -292,17 +292,13 @@ OUTPUT_DIR=data/output
 
 ### コレクション命名規則
 
-| 日本語 | コレクション名 |
-|--------|----------------|
-| 預金 | deposit_DB |
-| 融資 | loan_DB |
-| 外貨 | foreign_currency_DB |
-| 投信 | investment_trust_DB |
-| 住宅ローン | housing_loan_DB |
-| カード | card_DB |
-| 保険 | insurance_DB |
-| 年金 | pension_DB |
-| 総則 | general_DB |
+| 日本語 | コレクション名 | 備考 |
+|--------|----------------|------|
+| 内部事務 | naibujimu | 預金+総則を統合 |
+| スマイル | smile | |
+| rev01_smile | rev01_smile | 改定別（事務改定評価AI用） |
+| rev02_souzoku | rev02_souzoku | 改定別 |
+| ... | rev{XX}_{bot} | 改定番号_ボット名 |
 
 ### タイムスタンプ管理
 
@@ -310,14 +306,10 @@ OUTPUT_DIR=data/output
 
 ```json
 {
-  "faq": {
-    "deposit": 1735567200.0,
-    "loan": 1735567200.0
-  },
-  "scenario": {
-    "deposit": 1735567200.0,
-    "loan": 1735567200.0
-  }
+  "naibujimu_azure_openai_faq": 1735567200.0,
+  "naibujimu_azure_openai_scenario": 1735567200.0,
+  "smile_azure_openai_faq": 1735567200.0,
+  "smile_azure_openai_scenario": 1735567200.0
 }
 ```
 

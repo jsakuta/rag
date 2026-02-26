@@ -79,7 +79,7 @@ AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
 
 **症状:**
 ```
-ValueError: Collection 'deposit_DB' does not exist.
+ValueError: Collection 'naibujimu' does not exist.
 ```
 
 **原因:**
@@ -197,16 +197,11 @@ ValueError: Collection name contains invalid characters
 
 現在は自動変換で対応済み。問題が発生した場合:
 
-1. `src/utils/dynamic_db_manager.py` の変換マップを確認:
 ```python
-COLLECTION_NAME_MAP = {
-    "預金": "deposit_DB",
-    "融資": "loan_DB",
-    ...
-}
+# 業務分野名は自動的に英語変換されます
+# 例: "預金" → "deposit" → naibujimu に統合済み
+# 現在の主要コレクション: naibujimu, smile, rev{XX}_{bot}
 ```
-
-2. 新しい業務領域を追加する場合は変換マップに登録
 
 ### キーワード抽出が空
 
@@ -419,14 +414,14 @@ python scripts/check_db_content.py
 出力例:
 ```text
 === ChromaDB Content Analysis ===
-Collection: deposit_DB
-Total documents: 943
-Unique documents: 943
+Collection: naibujimu
+Total documents: 11439
+Unique documents: 11439
 Duplicate documents: 0
 
 Source distribution:
-  scenario: 816
-  faq_data: 127
+  scenario: 1384
+  faq_data: 10055
 ```
 
 ---
