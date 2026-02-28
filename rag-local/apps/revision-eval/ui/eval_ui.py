@@ -150,9 +150,11 @@ def initialize_session_state():
     if "app_mode" not in st.session_state:
         st.session_state.app_mode = "evaluation"
     if "impact_categories" not in st.session_state:
-        st.session_state.impact_categories = ["naibujimu", "smile"]
+        st.session_state.impact_categories = ["naibujimu"]
     if "impact_source_filter" not in st.session_state:
-        st.session_state.impact_source_filter = None  # None=全て
+        st.session_state.impact_source_filter = "scenario"
+    if "selected_providers" not in st.session_state:
+        st.session_state.selected_providers = "both"
 
 
 def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict], List[Dict], str]:
@@ -163,22 +165,34 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
     # 影響調査モード
     if app_mode == "impact_analysis":
         search_type = getattr(config, "search_type", "hybrid")
-        categories = st.session_state.get("impact_categories", ["naibujimu", "smile"])
+        categories = st.session_state.get("impact_categories", ["naibujimu"])
         source_filter = st.session_state.get("impact_source_filter")
 
         if search_type == "keyword_filter":
             results = _execute_impact_keyword_search(query, categories, source_filter)
+            selected_providers = st.session_state.get("selected_providers", "both")
+            if selected_providers == "vertex_ai":
+                return [], results, ""
             return results, [], ""
         else:
             # hybrid: 意味検索（Azure/VertexAI）
             vector_weight = getattr(config, "vector_weight", DEFAULT_VECTOR_WEIGHT)
-            azure_results = _search_with_provider(query, "", "azure_openai", categories, vector_weight)
-            vertex_results = _search_with_provider(query, "", "vertex_ai", categories, vector_weight)
+            selected_providers = st.session_state.get("selected_providers", "both")
+            azure_results = []
+            vertex_results = []
+            if selected_providers in ("both", "azure_openai"):
+                azure_results = _search_with_provider(query, "", "azure_openai", categories, vector_weight, source_filter=source_filter)
+            if selected_providers in ("both", "vertex_ai"):
+                vertex_results = _search_with_provider(query, "", "vertex_ai", categories, vector_weight, source_filter=source_filter)
             # source_filter を Python 側で適用
             if source_filter:
                 azure_results = [r for r in azure_results if r.get("_source", "") == source_filter or "_source" not in r]
                 vertex_results = [r for r in vertex_results if r.get("_source", "") == source_filter or "_source" not in r]
-            llm_query = azure_results[0].get("Search_Query", query) if azure_results else ""
+            llm_query = ""
+            if azure_results:
+                llm_query = azure_results[0].get("Search_Query", query)
+            elif vertex_results:
+                llm_query = vertex_results[0].get("Search_Query", query)
             return azure_results, vertex_results, llm_query
 
     # 評価モード
@@ -191,13 +205,25 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
         return [], [], ""
 
     if search_type == "keyword_filter":
-        azure_results = _execute_keyword_filter_search(query, revision, areas)
-        return azure_results, [], ""
+        keyword_results = _execute_keyword_filter_search(query, revision, areas)
+        selected_providers = st.session_state.get("selected_providers", "both")
+        if selected_providers == "vertex_ai":
+            return [], keyword_results, ""
+        return keyword_results, [], ""
 
-    azure_results = _search_with_provider(query, revision, "azure_openai", areas, vector_weight)
-    vertex_results = _search_with_provider(query, revision, "vertex_ai", areas, vector_weight)
+    selected_providers = st.session_state.get("selected_providers", "both")
+    azure_results = []
+    vertex_results = []
+    if selected_providers in ("both", "azure_openai"):
+        azure_results = _search_with_provider(query, revision, "azure_openai", areas, vector_weight)
+    if selected_providers in ("both", "vertex_ai"):
+        vertex_results = _search_with_provider(query, revision, "vertex_ai", areas, vector_weight)
 
-    llm_query = azure_results[0].get("Search_Query", query) if azure_results else ""
+    llm_query = ""
+    if azure_results:
+        llm_query = azure_results[0].get("Search_Query", query)
+    elif vertex_results:
+        llm_query = vertex_results[0].get("Search_Query", query)
 
     return azure_results, vertex_results, llm_query
 
@@ -282,7 +308,7 @@ def _execute_impact_keyword_search(query: str, categories: List[str], source_fil
     ]
 
 
-def _search_with_provider(query: str, revision: str, provider: str, areas: List[str], vector_weight: float) -> List[Dict]:
+def _search_with_provider(query: str, revision: str, provider: str, areas: List[str], vector_weight: float, source_filter: Optional[str] = None) -> List[Dict]:
     """特定のプロバイダーでハイブリッド検索を実行"""
     from src.core.search.multi_stage_orchestrator import MultiStageOrchestrator
     from src.core.search.vector_search_engine import VectorSearchEngine
@@ -318,15 +344,26 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
             vector_db = MetadataVectorDB(db_path=str(db_path), collection_name="default")
 
             text_combiner = get_text_combiner()
-            result = vector_db.collection.get(include=["documents"])
+            if source_filter:
+                result = vector_db.collection.get(include=["documents", "metadatas"])
+                metadatas = result.get("metadatas", [])
+            else:
+                result = vector_db.collection.get(include=["documents"])
+                metadatas = None
             documents = result.get("documents", [])
             reference_queries = []
-            for doc in documents:
+            for idx, doc in enumerate(documents):
+                # source_filter: 非マッチ文書はスキップ（インデックス維持のため空文字）
+                if source_filter and metadatas and metadatas[idx].get("source") != source_filter:
+                    reference_queries.append("")
+                    continue
                 if doc:
                     parsed = text_combiner.parse(doc)
                     reference_queries.append(parsed.query if parsed.query else doc[:100])
+                else:
+                    reference_queries.append("")
 
-            if not reference_queries:
+            if not any(reference_queries):
                 continue
 
             vector_engine = VectorSearchEngine(
@@ -447,6 +484,7 @@ def process_query(query: str):
                 "azure": azure_results,
                 "vertex": vertex_results,
                 "llm_query": llm_query,
+                "providers": st.session_state.get("selected_providers", "both"),
             }
         })
 
@@ -590,12 +628,26 @@ def run_streamlit_ui():
             else:
                 st.caption("キーワード検索: マッチする全件を返却します")
 
+            st.markdown("---")
+            eval_provider_options = {
+                "both": "両方",
+                "azure_openai": "Azure",
+                "vertex_ai": "VertexAI",
+            }
+            eval_providers = st.radio(
+                "検索プロバイダー",
+                options=list(eval_provider_options.keys()),
+                format_func=lambda x: eval_provider_options[x],
+                key="eval_provider_radio",
+                horizontal=True,
+            )
+            st.session_state.selected_providers = eval_providers
+
         else:
             # === 影響調査モード ===
             st.session_state.correct_ids = []  # 正解判定なし
 
             impact_category_options = {
-                "all": "全て（内部事務 + スマイル）",
                 "naibujimu": "内部事務",
                 "smile": "スマイル",
             }
@@ -604,25 +656,23 @@ def run_streamlit_ui():
                 options=list(impact_category_options.keys()),
                 format_func=lambda x: impact_category_options[x],
                 key="impact_category_radio",
+                horizontal=True,
             )
-            if impact_category == "all":
-                st.session_state.impact_categories = ["naibujimu", "smile"]
-            else:
-                st.session_state.impact_categories = [impact_category]
+            st.session_state.impact_categories = [impact_category]
 
             st.markdown("---")
             source_options = {
-                "all": "全て（シナリオ + FAQ）",
-                "scenario": "シナリオのみ",
-                "history_data": "FAQのみ",
+                "scenario": "シナリオ",
+                "history_data": "FAQ",
             }
             source_selection = st.radio(
                 "データソース",
                 options=list(source_options.keys()),
                 format_func=lambda x: source_options[x],
                 key="impact_source_radio",
+                horizontal=True,
             )
-            st.session_state.impact_source_filter = None if source_selection == "all" else source_selection
+            st.session_state.impact_source_filter = source_selection
 
             st.markdown("---")
             st.subheader("検索設定")
@@ -657,6 +707,21 @@ def run_streamlit_ui():
             else:
                 st.caption("キーワード検索: マッチする全件を返却します")
 
+            st.markdown("---")
+            impact_provider_options = {
+                "both": "両方",
+                "azure_openai": "Azure",
+                "vertex_ai": "VertexAI",
+            }
+            impact_providers = st.radio(
+                "検索プロバイダー",
+                options=list(impact_provider_options.keys()),
+                format_func=lambda x: impact_provider_options[x],
+                key="impact_provider_radio",
+                horizontal=True,
+            )
+            st.session_state.selected_providers = impact_providers
+
         st.markdown("---")
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
             save_chat_history()
@@ -681,18 +746,22 @@ def run_streamlit_ui():
                     azure_results = msg["text"].get("azure", [])
                     vertex_results = msg["text"].get("vertex", [])
                     llm_query = msg["text"].get("llm_query", "")
+                    providers = msg["text"].get("providers", "both")
                     correct_ids = st.session_state.correct_ids
 
                     if llm_query:
                         st.markdown(f"<div style='background-color: #f0f7ff; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;'><strong>LLM強化クエリ:</strong> {html.escape(llm_query)}</div>", unsafe_allow_html=True)
 
-                    tab_azure, tab_vertex = st.tabs(["Azure", "VertexAI"])
-
-                    with tab_azure:
+                    if providers == "both":
+                        tab_azure, tab_vertex = st.tabs(["Azure", "VertexAI"])
+                        with tab_azure:
+                            _render_provider_results(azure_results, correct_ids)
+                        with tab_vertex:
+                            _render_provider_results(vertex_results, correct_ids, is_vertex=True)
+                    elif providers == "azure_openai":
                         _render_provider_results(azure_results, correct_ids)
-
-                    with tab_vertex:
-                        _render_provider_results(vertex_results, correct_ids, is_vertex=True)
+                    else:
+                        _render_provider_results(vertex_results, correct_ids)
                 else:
                     st.markdown(format_message(str(msg["text"]), False), unsafe_allow_html=True)
 

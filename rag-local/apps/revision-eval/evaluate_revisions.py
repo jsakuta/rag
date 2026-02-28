@@ -12,6 +12,7 @@
   reference/vector_db/rev*/{azure_openai,vertex_ai}/ が構築済みであること
 """
 
+import argparse
 import copy
 import os
 import sys
@@ -549,6 +550,7 @@ class RevisionEvaluator:
         revision_content: str,
         correct_ids: List[str],
         change_details_map: Optional[Dict[str, str]] = None,
+        providers: str = "both",
     ) -> Dict[str, Any]:
         # 改定番号別のベクトル重みと検索タイプを取得
         vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
@@ -600,39 +602,52 @@ class RevisionEvaluator:
                     area_correct_ids, found_ids, area, revision, change_details_map
                 )
 
-                # キーワード必須検索の場合、Azure/VertexAI両方に同じ結果を設定
+                # キーワード必須検索の場合、選択プロバイダーに応じて結果を設定
                 evaluation_result["by_area"][area] = {
-                    "azure_results": keyword_results,
-                    "vertex_results": keyword_results,
+                    "azure_results": keyword_results if providers in ("both", "azure") else [],
+                    "vertex_results": keyword_results if providers in ("both", "vertex") else [],
                     "correct_ids": area_correct_ids,
                     "unfound_scenarios": unfound_scenarios,
                 }
 
             return evaluation_result
 
-        # 類似検索（hybrid）の場合 - 従来通り
-        # Azure検索
-        azure_results_by_area, llm_query, keywords, azure_areas = (
-            self.search_revision_multi_stage(
-                revision, revision_content, correct_ids, "azure_openai"
-            )
-        )
-        evaluation_result["llm_query"] = llm_query
-        evaluation_result["keywords"] = keywords
+        # 類似検索（hybrid）の場合
+        azure_results_by_area, azure_areas = {}, []
+        vertex_results_by_area, vertex_areas = {}, []
+        llm_query = ""
+        keywords = []
 
-        total_azure, azure_correct = self._count_correct_in_results_by_area(azure_results_by_area)
-        print_search_result(
-            "azure", total_azure, azure_areas, azure_correct, len(correct_ids)
-        )
+        # Azure検索
+        if providers in ("both", "azure"):
+            azure_results_by_area, llm_query, keywords, azure_areas = (
+                self.search_revision_multi_stage(
+                    revision, revision_content, correct_ids, "azure_openai"
+                )
+            )
+            total_azure, azure_correct = self._count_correct_in_results_by_area(azure_results_by_area)
+            print_search_result(
+                "azure", total_azure, azure_areas, azure_correct, len(correct_ids)
+            )
 
         # VertexAI検索
-        vertex_results_by_area, _, _, vertex_areas = self.search_revision_multi_stage(
-            revision, revision_content, correct_ids, "vertex_ai"
-        )
-        total_vertex, vertex_correct = self._count_correct_in_results_by_area(vertex_results_by_area)
-        print_search_result(
-            "vertex", total_vertex, vertex_areas, vertex_correct, len(correct_ids)
-        )
+        if providers in ("both", "vertex"):
+            vertex_results_by_area, vtx_llm_query, vtx_keywords, vertex_areas = (
+                self.search_revision_multi_stage(
+                    revision, revision_content, correct_ids, "vertex_ai"
+                )
+            )
+            if not llm_query:
+                llm_query = vtx_llm_query
+            if not keywords:
+                keywords = vtx_keywords
+            total_vertex, vertex_correct = self._count_correct_in_results_by_area(vertex_results_by_area)
+            print_search_result(
+                "vertex", total_vertex, vertex_areas, vertex_correct, len(correct_ids)
+            )
+
+        evaluation_result["llm_query"] = llm_query
+        evaluation_result["keywords"] = keywords
 
         all_areas = sorted(set(azure_areas) | set(vertex_areas))
         evaluation_result["areas"] = all_areas
@@ -648,13 +663,16 @@ class RevisionEvaluator:
                 if vertex_results:
                     vertex_results = self._run_llm_analysis(vertex_results, revision_content)
 
-            # 片方でも未発見なら未発見として抽出
+            # 未発見シナリオ抽出
             found_ids_azure = self._collect_found_ids(azure_results)
             found_ids_vertex = self._collect_found_ids(vertex_results)
-            found_ids_both = found_ids_azure & found_ids_vertex
+            if providers == "both":
+                found_ids_combined = found_ids_azure & found_ids_vertex
+            else:
+                found_ids_combined = found_ids_azure | found_ids_vertex
 
             unfound_scenarios = self._build_unfound_scenarios(
-                area_correct_ids, found_ids_both, area, revision, change_details_map
+                area_correct_ids, found_ids_combined, area, revision, change_details_map
             )
 
             evaluation_result["by_area"][area] = {
@@ -666,7 +684,7 @@ class RevisionEvaluator:
 
         return evaluation_result
 
-    def evaluate_all_revisions(self) -> Dict[str, Dict[str, Any]]:
+    def evaluate_all_revisions(self, providers: str = "both") -> Dict[str, Dict[str, Any]]:
         input_df = self.load_input_data()
         results_by_revision = {}
 
@@ -704,7 +722,8 @@ class RevisionEvaluator:
             )
 
             results_by_revision[revision] = self.evaluate_revision(
-                revision, revision_content, correct_ids, change_details_map
+                revision, revision_content, correct_ids, change_details_map,
+                providers=providers,
             )
 
         return results_by_revision
@@ -1086,6 +1105,15 @@ class RevisionEvaluator:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="事務改定評価スクリプト")
+    parser.add_argument(
+        "--provider",
+        choices=["both", "azure", "vertex"],
+        default="both",
+        help="検索プロバイダー: both=両方, azure=Azureのみ, vertex=VertexAIのみ",
+    )
+    args = parser.parse_args()
+
     print_section("事務改定評価 (多段階検索・横並び比較版)")
 
     print_section("DB存在確認")
@@ -1136,8 +1164,11 @@ def main() -> None:
         print_status(f"閾値 (Azure): {THRESHOLD_BY_PROVIDER['azure_openai']}", "info")
         print_status(f"閾値 (VertexAI): {THRESHOLD_BY_PROVIDER['vertex_ai']}", "info")
 
+    provider_labels = {"both": "両方", "azure": "Azure のみ", "vertex": "VertexAI のみ"}
+    print_status(f"プロバイダー: {provider_labels[args.provider]}", "info")
+
     evaluator = RevisionEvaluator(config, enable_llm_analysis=enable_llm)
-    results = evaluator.evaluate_all_revisions()
+    results = evaluator.evaluate_all_revisions(providers=args.provider)
     output_file = evaluator.save_results(results)
     print_completion(str(output_file))
 

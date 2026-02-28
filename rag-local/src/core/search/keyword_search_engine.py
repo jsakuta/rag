@@ -160,10 +160,15 @@ class KeywordSearchEngine:
         logger.info("キーワードキャッシュを構築中...")
         self._keyword_cache = {}
 
+        active_count = 0
         for i, query in enumerate(queries):
-            self._keyword_cache[i] = set(self.extract_keywords(query))
+            if query:
+                self._keyword_cache[i] = set(self.extract_keywords(query))
+                active_count += 1
+            else:
+                self._keyword_cache[i] = set()
 
-        logger.info(f"キーワードキャッシュ構築完了: {len(self._keyword_cache)}件")
+        logger.info(f"キーワードキャッシュ構築完了: {active_count}/{len(queries)}件")
 
     def get_cached_keywords(self, index: int) -> Set[str]:
         """キャッシュからキーワードセットを取得
