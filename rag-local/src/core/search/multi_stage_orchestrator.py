@@ -4,7 +4,7 @@
 原文検索 + LLMクエリ検索のOR結合を管理。
 """
 
-from typing import List, Dict, Any, Set, Tuple
+from typing import List, Dict, Any, Optional, Set, Tuple
 
 from src.core.search.vector_search_engine import VectorSearchEngine
 from src.core.search.keyword_search_engine import KeywordSearchEngine
@@ -84,7 +84,8 @@ class MultiStageOrchestrator:
         input_number: str,
         query_text: str,
         original_answer: str,
-        filter_metadata: Dict[str, str] = None
+        filter_metadata: Dict[str, str] = None,
+        pre_enhanced_query: Optional[str] = None,
     ) -> List[MultiStageSearchResultDict]:
         """多段階OR検索を実行
 
@@ -93,6 +94,7 @@ class MultiStageOrchestrator:
             query_text: 検索クエリテキスト
             original_answer: 元の回答
             filter_metadata: メタデータフィルタ（オプション）
+            pre_enhanced_query: 事前に生成済みのLLMクエリ（キャッシュ用、省略時は内部で生成）
 
         Returns:
             List[MultiStageSearchResultDict]: 検索結果のリスト
@@ -112,11 +114,14 @@ class MultiStageOrchestrator:
         logger.info(f"  原文検索: {len(original_results)}件")
 
         # Stage 2: LLMクエリ検索
-        try:
-            llm_query = self.query_enhancer.enhance(query_text)
-        except Exception as e:
-            logger.error(f"  LLMクエリ生成エラー: {e}")
-            llm_query = query_text
+        if pre_enhanced_query:
+            llm_query = pre_enhanced_query
+        else:
+            try:
+                llm_query = self.query_enhancer.enhance(query_text)
+            except Exception as e:
+                logger.error(f"  LLMクエリ生成エラー: {e}")
+                llm_query = query_text
 
         llm_results = self._execute_hybrid_search(
             llm_query, keywords, filter_metadata
@@ -246,6 +251,7 @@ class MultiStageOrchestrator:
             SearchResultKeys.TOP_K: self.max_results,
             SearchResultKeys.HIERARCHY: metadata.get(MetadataKeys.HIERARCHY, ''),
             SearchResultKeys.LV1_CATEGORY: metadata.get(MetadataKeys.DATE, ''),
+            '_source': metadata.get(MetadataKeys.SOURCE, 'unknown'),
         }
 
     def _merge_results(

@@ -331,19 +331,13 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
             vector_db = MetadataVectorDB(db_path=str(db_path), collection_name="default")
 
             text_combiner = get_text_combiner()
+            get_kwargs = {"include": ["documents"]}
             if source_filter:
-                result = vector_db.collection.get(include=["documents", "metadatas"])
-                metadatas = result.get("metadatas", [])
-            else:
-                result = vector_db.collection.get(include=["documents"])
-                metadatas = None
+                get_kwargs["where"] = {"source": source_filter}
+            result = vector_db.collection.get(**get_kwargs)
             documents = result.get("documents", [])
             reference_queries = []
-            for idx, doc in enumerate(documents):
-                # source_filter: 非マッチ文書はスキップ（インデックス維持のため空文字）
-                if source_filter and metadatas and metadatas[idx].get("source") != source_filter:
-                    reference_queries.append("")
-                    continue
+            for doc in documents:
                 if doc:
                     parsed = text_combiner.parse(doc)
                     reference_queries.append(parsed.query if parsed.query else doc[:100])
@@ -395,6 +389,7 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
                     "Row_Index": r.get("Row_Index", ""),
                     "Search_Query": r.get("Search_Query", ""),
                     "_area": area,
+                    "_source": r.get("_source", "unknown"),
                 })
 
         except Exception as e:
