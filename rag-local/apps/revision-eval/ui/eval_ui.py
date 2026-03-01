@@ -13,6 +13,7 @@ import streamlit as st
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
+import concurrent.futures
 import os
 import copy
 import html
@@ -155,6 +156,77 @@ def _get_cached_keyword_searcher():
     )
 
 
+@st.cache_resource(ttl=3600)
+def _get_cached_llm():
+    """LLMインスタンスをキャッシュ（TTL=1時間）"""
+    from src.utils.auth import create_llm
+    config = SearchConfig(base_dir=str(PROJECT_ROOT))
+    return create_llm(config)
+
+
+@st.cache_resource(ttl=3600)
+def _get_cached_search_components(area: str, provider: str, source_filter: str = ""):
+    """検索コンポーネントをキャッシュ（keyword cache構築済み、TTL=1時間）
+
+    Returns:
+        (vector_engine, keyword_engine, text_combiner) or None
+    """
+    from src.core.search.vector_search_engine import VectorSearchEngine
+    from src.core.search.keyword_search_engine import KeywordSearchEngine
+    from src.core.search.text_combiner import get_text_combiner
+    from src.utils.auth import create_embedding_model
+    from src.utils.vector_db import MetadataVectorDB
+
+    VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
+    db_path = VECTOR_DB_BASE / area / provider
+    if not db_path.exists():
+        logger.warning(f"DBが存在しません: {db_path}")
+        return None
+
+    config = SearchConfig(base_dir=str(PROJECT_ROOT))
+    provider_config = copy.copy(config)
+    provider_config.embedding_provider = provider
+    if provider == "azure_openai":
+        provider_config.embedding_model = os.getenv(
+            "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"
+        )
+    else:
+        provider_config.embedding_model = os.getenv(
+            "VERTEX_AI_EMBEDDING_MODEL", "gemini-embedding-001"
+        )
+    embedding_model = create_embedding_model(provider_config)
+
+    vector_db = MetadataVectorDB(db_path=str(db_path), collection_name="default")
+
+    text_combiner = get_text_combiner()
+    get_kwargs = {"include": ["documents"]}
+    if source_filter:
+        get_kwargs["where"] = {"source": source_filter}
+    result = vector_db.collection.get(**get_kwargs)
+    documents = result.get("documents", [])
+    reference_queries = []
+    for doc in documents:
+        if doc:
+            parsed = text_combiner.parse(doc)
+            reference_queries.append(parsed.query if parsed.query else doc[:100])
+        else:
+            reference_queries.append("")
+
+    if not any(reference_queries):
+        return None
+
+    vector_engine = VectorSearchEngine(
+        embedding_model=embedding_model, vector_db=vector_db
+    )
+    keyword_engine = KeywordSearchEngine(
+        stop_words=config.STOP_WORDS,
+        position_weight=config.POSITION_WEIGHT,
+    )
+    keyword_engine.build_cache(reference_queries)
+
+    return vector_engine, keyword_engine, text_combiner
+
+
 def initialize_session_state():
     initialize_common_session_state()
     if "correct_ids" not in st.session_state:
@@ -176,6 +248,63 @@ def initialize_session_state():
         st.session_state.selected_providers = "both"
 
 
+def _pre_enhance_query(query: str) -> Optional[str]:
+    """LLMクエリ拡張を1回だけ実行（エリア/プロバイダー間で共有）"""
+    from src.core.search.query_enhancer import QueryEnhancer
+    try:
+        llm = _get_cached_llm()
+        enhancer = QueryEnhancer(llm=llm, base_dir=str(PROJECT_ROOT))
+        return enhancer.enhance(query)
+    except Exception as e:
+        logger.warning(f"LLMクエリ事前拡張失敗: {e}")
+        return None
+
+
+def _run_parallel_hybrid_search(
+    query: str, revision: str, areas: List[str],
+    vector_weight: float, selected_providers: str,
+    source_filter: Optional[str] = None,
+) -> Tuple[List[Dict], List[Dict], str]:
+    """両プロバイダーのハイブリッド検索を並列実行"""
+    config = st.session_state.config
+    ui_top_k = config.top_k if hasattr(config, 'top_k') else _eval_settings.get("top_k", 50)
+
+    pre_enhanced_query = _pre_enhance_query(query)
+
+    azure_results = []
+    vertex_results = []
+    futures = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        if selected_providers in ("both", "azure_openai"):
+            futures["azure"] = executor.submit(
+                _search_with_provider, query, revision, "azure_openai", areas,
+                vector_weight, source_filter, pre_enhanced_query, ui_top_k,
+            )
+        if selected_providers in ("both", "vertex_ai"):
+            futures["vertex"] = executor.submit(
+                _search_with_provider, query, revision, "vertex_ai", areas,
+                vector_weight, source_filter, pre_enhanced_query, ui_top_k,
+            )
+
+    for key, future in futures.items():
+        try:
+            if key == "azure":
+                azure_results = future.result()
+            else:
+                vertex_results = future.result()
+        except Exception as e:
+            logger.error(f"{key} 検索でエラー: {e}")
+
+    llm_query = ""
+    if azure_results:
+        llm_query = azure_results[0].get("Search_Query", query)
+    elif vertex_results:
+        llm_query = vertex_results[0].get("Search_Query", query)
+
+    return azure_results, vertex_results, llm_query
+
+
 def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict], List[Dict], str]:
     """Azure/VertexAI両方で検索を実行"""
     config = st.session_state.config
@@ -193,26 +322,12 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
             if selected_providers == "vertex_ai":
                 return [], results, ""
             return results, [], ""
-        else:
-            # hybrid: 意味検索（Azure/VertexAI）
-            vector_weight = getattr(config, "vector_weight", DEFAULT_VECTOR_WEIGHT)
-            selected_providers = st.session_state.get("selected_providers", "both")
-            azure_results = []
-            vertex_results = []
-            if selected_providers in ("both", "azure_openai"):
-                azure_results = _search_with_provider(query, "", "azure_openai", categories, vector_weight, source_filter=source_filter)
-            if selected_providers in ("both", "vertex_ai"):
-                vertex_results = _search_with_provider(query, "", "vertex_ai", categories, vector_weight, source_filter=source_filter)
-            # source_filter を Python 側で適用
-            if source_filter:
-                azure_results = [r for r in azure_results if r.get("_source", "") == source_filter or "_source" not in r]
-                vertex_results = [r for r in vertex_results if r.get("_source", "") == source_filter or "_source" not in r]
-            llm_query = ""
-            if azure_results:
-                llm_query = azure_results[0].get("Search_Query", query)
-            elif vertex_results:
-                llm_query = vertex_results[0].get("Search_Query", query)
-            return azure_results, vertex_results, llm_query
+
+        vector_weight = getattr(config, "vector_weight", DEFAULT_VECTOR_WEIGHT)
+        selected_providers = st.session_state.get("selected_providers", "both")
+        return _run_parallel_hybrid_search(
+            query, "", categories, vector_weight, selected_providers, source_filter,
+        )
 
     # 評価モード
     search_type = getattr(config, "search_type", None) or REVISION_SEARCH_TYPES.get(revision, "hybrid")
@@ -231,20 +346,9 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
         return keyword_results, [], ""
 
     selected_providers = st.session_state.get("selected_providers", "both")
-    azure_results = []
-    vertex_results = []
-    if selected_providers in ("both", "azure_openai"):
-        azure_results = _search_with_provider(query, revision, "azure_openai", areas, vector_weight)
-    if selected_providers in ("both", "vertex_ai"):
-        vertex_results = _search_with_provider(query, revision, "vertex_ai", areas, vector_weight)
-
-    llm_query = ""
-    if azure_results:
-        llm_query = azure_results[0].get("Search_Query", query)
-    elif vertex_results:
-        llm_query = vertex_results[0].get("Search_Query", query)
-
-    return azure_results, vertex_results, llm_query
+    return _run_parallel_hybrid_search(
+        query, revision, areas, vector_weight, selected_providers,
+    )
 
 
 def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) -> List[Dict]:
@@ -295,71 +399,31 @@ def _execute_impact_keyword_search(query: str, categories: List[str], source_fil
     ]
 
 
-def _search_with_provider(query: str, revision: str, provider: str, areas: List[str], vector_weight: float, source_filter: Optional[str] = None) -> List[Dict]:
-    """特定のプロバイダーでハイブリッド検索を実行"""
-    from src.core.search.multi_stage_orchestrator import MultiStageOrchestrator
-    from src.core.search.vector_search_engine import VectorSearchEngine
-    from src.core.search.keyword_search_engine import KeywordSearchEngine
-    from src.core.search.query_enhancer import QueryEnhancer
-    from src.core.search.text_combiner import get_text_combiner
-    from src.utils.auth import create_embedding_model, create_llm
-    from src.utils.vector_db import MetadataVectorDB
+def _search_with_provider(
+    query: str, revision: str, provider: str, areas: List[str],
+    vector_weight: float, source_filter: Optional[str] = None,
+    pre_enhanced_query: Optional[str] = None, top_k: int = 50,
+) -> List[Dict]:
+    """特定のプロバイダーでハイブリッド検索を実行
 
-    config = st.session_state.config
-    VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
+    キャッシュ済みコンポーネント使用・pre_enhanced_query でLLM呼び出し1回に集約。
+    ThreadPoolExecutor から呼ばれるため st.session_state に依存しない。
+    """
+    from src.core.search.multi_stage_orchestrator import MultiStageOrchestrator
+    from src.core.search.query_enhancer import QueryEnhancer
+
     all_results = []
+    llm = _get_cached_llm()
+    query_enhancer = QueryEnhancer(llm=llm, base_dir=str(PROJECT_ROOT))
 
     for area in areas:
-        db_path = VECTOR_DB_BASE / area / provider
-        if not db_path.exists():
-            logger.warning(f"DBが存在しません: {db_path}")
-            continue
-
         try:
-            provider_config = copy.copy(config)
-            provider_config.embedding_provider = provider
-            if provider == "azure_openai":
-                provider_config.embedding_model = os.getenv(
-                    "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"
-                )
-            else:
-                provider_config.embedding_model = os.getenv(
-                    "VERTEX_AI_EMBEDDING_MODEL", "gemini-embedding-001"
-                )
-            embedding_model = create_embedding_model(provider_config)
-
-            vector_db = MetadataVectorDB(db_path=str(db_path), collection_name="default")
-
-            text_combiner = get_text_combiner()
-            get_kwargs = {"include": ["documents"]}
-            if source_filter:
-                get_kwargs["where"] = {"source": source_filter}
-            result = vector_db.collection.get(**get_kwargs)
-            documents = result.get("documents", [])
-            reference_queries = []
-            for doc in documents:
-                if doc:
-                    parsed = text_combiner.parse(doc)
-                    reference_queries.append(parsed.query if parsed.query else doc[:100])
-                else:
-                    reference_queries.append("")
-
-            if not any(reference_queries):
+            components = _get_cached_search_components(area, provider, source_filter or "")
+            if components is None:
                 continue
 
-            vector_engine = VectorSearchEngine(
-                embedding_model=embedding_model, vector_db=vector_db
-            )
-            keyword_engine = KeywordSearchEngine(
-                stop_words=config.STOP_WORDS,
-                position_weight=config.POSITION_WEIGHT,
-            )
-            keyword_engine.build_cache(reference_queries)
+            vector_engine, keyword_engine, text_combiner = components
 
-            llm = create_llm(config)
-            query_enhancer = QueryEnhancer(llm=llm, base_dir=str(PROJECT_ROOT))
-
-            ui_top_k = config.top_k if hasattr(config, 'top_k') else _eval_settings.get("top_k", 50)
             orchestrator = MultiStageOrchestrator(
                 vector_engine=vector_engine,
                 keyword_engine=keyword_engine,
@@ -369,7 +433,7 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
                 threshold=_eval_settings["thresholds"].get(provider, 0.5),
                 max_results=_eval_settings.get("max_results", 100),
                 filter_mode="top_k",
-                top_k=ui_top_k,
+                top_k=top_k,
             )
 
             results = orchestrator.execute(
@@ -377,6 +441,7 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
                 query_text=query,
                 original_answer="",
                 filter_metadata=None,
+                pre_enhanced_query=pre_enhanced_query,
             )
 
             for r in results:
