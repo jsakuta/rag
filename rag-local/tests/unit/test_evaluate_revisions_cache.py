@@ -65,3 +65,24 @@ class TestOrchestratorCache:
         evaluator._orchestrator_cache[("rev02_souzoku", "azure_openai", 0.9)] = mock_orch
         result = evaluator._create_orchestrator("azure_openai", "rev02_souzoku", ["q1"], 0.9)
         assert result is mock_orch
+
+
+class TestLlmQueryCache:
+    """_llm_query_cache のメモ化テスト"""
+
+    def _make_evaluator(self):
+        """テスト用の RevisionEvaluator を最小構成で作成"""
+        with patch.object(_mod, "create_llm") as mock_llm, \
+             patch.object(_mod, "JudgmentSupport"):
+            mock_llm.return_value = MagicMock()
+            config = MagicMock()
+            config.STOP_WORDS = ("の", "は", "が")
+            config.POSITION_WEIGHT = 1.2
+            evaluator = RevisionEvaluator(config, enable_llm_analysis=False)
+            return evaluator
+
+    def test_llm_query_cache_hit(self):
+        """同じ revision_content の2回目はキャッシュを返す"""
+        evaluator = self._make_evaluator()
+        evaluator._llm_query_cache["テスト改定内容"] = "拡張クエリ"
+        assert evaluator._llm_query_cache["テスト改定内容"] == "拡張クエリ"
