@@ -549,6 +549,8 @@ class RevisionEvaluator:
                 r["判定根拠"] = ""
             return results
 
+        import concurrent.futures
+
         total = len(results)
 
         if RICH_AVAILABLE:
@@ -562,16 +564,32 @@ class RevisionEvaluator:
                 transient=True,
             ) as progress:
                 task = progress.add_task("[cyan]LLM分析中...", total=total)
-                for result in results:
-                    self._evaluate_single_result(result, revision_content)
-                    progress.update(task, advance=1)
-            print_status(f"LLM分析完了: {total}件", "success")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    futures = {
+                        executor.submit(self._evaluate_single_result, r, revision_content): r
+                        for r in results
+                    }
+                    for future in concurrent.futures.as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"LLM分析エラー: {e}")
+                        progress.update(task, advance=1)
+            analyzed = sum(1 for r in results if r.get("関連性判定"))
+            print_status(f"LLM分析完了: {analyzed}/{total}件", "success")
         else:
             logger.info(f"LLM分析を実行中: {total}件")
-            for i, result in enumerate(results):
-                self._evaluate_single_result(result, revision_content)
-                if (i + 1) % 10 == 0:
-                    logger.info(f"  LLM分析: {i + 1}/{total}件完了")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [
+                    executor.submit(self._evaluate_single_result, r, revision_content)
+                    for r in results
+                ]
+                concurrent.futures.wait(futures)
+                for f in futures:
+                    if f.exception():
+                        logger.error(f"LLM分析エラー: {f.exception()}")
+            analyzed = sum(1 for r in results if r.get("関連性判定"))
+            print_status(f"LLM分析完了: {analyzed}/{total}件", "success")
 
         return results
 
