@@ -136,6 +136,25 @@ def check_if_correct(result: Dict, correct_ids: List[str], area: Optional[str] =
     return scenario_id, is_correct
 
 
+@st.cache_resource(ttl=3600)
+def _get_cached_keyword_searcher():
+    """ChromaDBKeywordSearcher をキャッシュ（TTL=1時間）"""
+    from src.core.search.keyword_search_engine import KeywordSearchEngine
+    from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher
+
+    config = SearchConfig(base_dir=str(PROJECT_ROOT))
+    keyword_engine = KeywordSearchEngine(
+        stop_words=config.STOP_WORDS,
+        position_weight=config.POSITION_WEIGHT,
+    )
+    return ChromaDBKeywordSearcher(
+        base_db_path=str(PROJECT_ROOT / "data" / "vector_db"),
+        keyword_engine=keyword_engine,
+        area_to_bot=AREA_TO_BOT,
+        area_to_category=AREA_TO_CATEGORY,
+    )
+
+
 def initialize_session_state():
     initialize_common_session_state()
     if "correct_ids" not in st.session_state:
@@ -230,23 +249,7 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
 
 def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) -> List[Dict]:
     """キーワード検索（ChromaDB、LLM不使用）"""
-    from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher
-    from src.core.search.keyword_search_engine import KeywordSearchEngine
-
-    config = st.session_state.config
-    VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
-
-    keyword_engine = KeywordSearchEngine(
-        stop_words=config.STOP_WORDS,
-        position_weight=config.POSITION_WEIGHT,
-    )
-
-    searcher = ChromaDBKeywordSearcher(
-        base_db_path=str(VECTOR_DB_BASE),
-        keyword_engine=keyword_engine,
-        area_to_bot=AREA_TO_BOT,
-        area_to_category=AREA_TO_CATEGORY,
-    )
+    searcher = _get_cached_keyword_searcher()
 
     # areas は既に "rev02_souzoku" 等のフルネーム（旧コードは全件返却）
     matches = searcher.search(areas, query, provider="azure_openai", max_results=10000)
@@ -269,23 +272,7 @@ def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) 
 
 def _execute_impact_keyword_search(query: str, categories: List[str], source_filter: Optional[str] = None) -> List[Dict]:
     """影響調査モード: キーワード検索"""
-    from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher
-    from src.core.search.keyword_search_engine import KeywordSearchEngine
-
-    config = st.session_state.config
-    VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
-
-    keyword_engine = KeywordSearchEngine(
-        stop_words=config.STOP_WORDS,
-        position_weight=config.POSITION_WEIGHT,
-    )
-
-    searcher = ChromaDBKeywordSearcher(
-        base_db_path=str(VECTOR_DB_BASE),
-        keyword_engine=keyword_engine,
-        area_to_bot=AREA_TO_BOT,
-        area_to_category=AREA_TO_CATEGORY,
-    )
+    searcher = _get_cached_keyword_searcher()
 
     matches = searcher.search(
         categories, query, provider="azure_openai",
@@ -725,6 +712,10 @@ def run_streamlit_ui():
         st.markdown("---")
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
             save_chat_history()
+
+        if st.button("キャッシュクリア", use_container_width=True):
+            st.cache_resource.clear()
+            st.rerun()
 
     # メインエリア タイトル
     if st.session_state.get("app_mode") == "impact_analysis":
