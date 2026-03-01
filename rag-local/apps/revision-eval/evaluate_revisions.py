@@ -636,6 +636,8 @@ class RevisionEvaluator:
             return evaluation_result
 
         # 類似検索（hybrid）の場合
+        import concurrent.futures
+
         azure_results_by_area, azure_areas = {}, []
         vertex_results_by_area, vertex_areas = {}, []
         llm_query = ""
@@ -653,35 +655,40 @@ class RevisionEvaluator:
                 logger.warning(f"LLMクエリ事前拡張失敗: {e}")
                 pre_enhanced_query = None
 
-        # Azure検索
-        if providers in ("both", "azure"):
-            azure_results_by_area, llm_query, keywords, azure_areas = (
-                self.search_revision_multi_stage(
-                    revision, revision_content, correct_ids, "azure_openai",
-                    pre_enhanced_query=pre_enhanced_query,
-                )
-            )
-            total_azure, azure_correct = self._count_correct_in_results_by_area(azure_results_by_area)
-            print_search_result(
-                "azure", total_azure, azure_areas, azure_correct, len(correct_ids)
+        def _search_provider(provider_name):
+            return self.search_revision_multi_stage(
+                revision, revision_content, correct_ids, provider_name,
+                pre_enhanced_query=pre_enhanced_query,
             )
 
-        # VertexAI検索
-        if providers in ("both", "vertex"):
-            vertex_results_by_area, vtx_llm_query, vtx_keywords, vertex_areas = (
-                self.search_revision_multi_stage(
-                    revision, revision_content, correct_ids, "vertex_ai",
-                    pre_enhanced_query=pre_enhanced_query,
-                )
-            )
-            if not llm_query:
-                llm_query = vtx_llm_query
-            if not keywords:
-                keywords = vtx_keywords
-            total_vertex, vertex_correct = self._count_correct_in_results_by_area(vertex_results_by_area)
-            print_search_result(
-                "vertex", total_vertex, vertex_areas, vertex_correct, len(correct_ids)
-            )
+        futures = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            if providers in ("both", "azure"):
+                futures["azure"] = executor.submit(_search_provider, "azure_openai")
+            if providers in ("both", "vertex"):
+                futures["vertex"] = executor.submit(_search_provider, "vertex_ai")
+
+        for key, future in futures.items():
+            try:
+                results_by_area, q, kw, areas = future.result()
+                if key == "azure":
+                    azure_results_by_area, azure_areas = results_by_area, areas
+                    if q:
+                        llm_query = q
+                    if kw:
+                        keywords = kw
+                    total_azure, azure_correct = self._count_correct_in_results_by_area(results_by_area)
+                    print_search_result("azure", total_azure, areas, azure_correct, len(correct_ids))
+                else:
+                    vertex_results_by_area, vertex_areas = results_by_area, areas
+                    if not llm_query and q:
+                        llm_query = q
+                    if not keywords and kw:
+                        keywords = kw
+                    total_vertex, vertex_correct = self._count_correct_in_results_by_area(results_by_area)
+                    print_search_result("vertex", total_vertex, areas, vertex_correct, len(correct_ids))
+            except Exception as e:
+                logger.error(f"{key} 検索でエラー: {e}")
 
         evaluation_result["llm_query"] = llm_query
         evaluation_result["keywords"] = keywords
