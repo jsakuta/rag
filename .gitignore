@@ -99,3 +99,6 @@ gemini_credentials.json
 # Serena AI memories
 .serena/
 **/.serena/
+
+# Git worktrees
+.worktrees/
