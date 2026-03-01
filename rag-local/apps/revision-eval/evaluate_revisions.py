@@ -119,6 +119,7 @@ class RevisionEvaluator:
         # パフォーマンス改善: キャッシュ
         self._reference_queries_cache: Dict[Tuple[str, str], List[str]] = {}
         self._orchestrator_cache: Dict[Tuple[str, str, float], MultiStageOrchestrator] = {}
+        self._llm_query_cache: Dict[str, str] = {}
 
     def load_input_data(self) -> pd.DataFrame:
         if not INPUT_FILE.exists():
@@ -382,7 +383,8 @@ class RevisionEvaluator:
         }
 
     def search_revision_multi_stage(
-        self, revision: str, query: str, correct_ids: List[str], provider: str
+        self, revision: str, query: str, correct_ids: List[str], provider: str,
+        pre_enhanced_query: Optional[str] = None,
     ) -> Tuple[Dict[str, List[Dict]], str, List[str], List[str]]:
         areas = REVISION_TO_AREAS.get(revision, [])
         if not areas:
@@ -425,6 +427,7 @@ class RevisionEvaluator:
                     query_text=query,
                     original_answer="",
                     filter_metadata=None,
+                    pre_enhanced_query=pre_enhanced_query,
                 )
 
                 if not keywords:
@@ -638,11 +641,24 @@ class RevisionEvaluator:
         llm_query = ""
         keywords = []
 
+        # LLMクエリ拡張を1回だけ実行（area/provider間で共有）
+        pre_enhanced_query = self._llm_query_cache.get(revision_content)
+        if pre_enhanced_query is None:
+            try:
+                from src.core.search.query_enhancer import QueryEnhancer
+                temp_enhancer = QueryEnhancer(llm=self.llm, base_dir=str(PROJECT_ROOT))
+                pre_enhanced_query = temp_enhancer.enhance(revision_content)
+                self._llm_query_cache[revision_content] = pre_enhanced_query
+            except Exception as e:
+                logger.warning(f"LLMクエリ事前拡張失敗: {e}")
+                pre_enhanced_query = None
+
         # Azure検索
         if providers in ("both", "azure"):
             azure_results_by_area, llm_query, keywords, azure_areas = (
                 self.search_revision_multi_stage(
-                    revision, revision_content, correct_ids, "azure_openai"
+                    revision, revision_content, correct_ids, "azure_openai",
+                    pre_enhanced_query=pre_enhanced_query,
                 )
             )
             total_azure, azure_correct = self._count_correct_in_results_by_area(azure_results_by_area)
@@ -654,7 +670,8 @@ class RevisionEvaluator:
         if providers in ("both", "vertex"):
             vertex_results_by_area, vtx_llm_query, vtx_keywords, vertex_areas = (
                 self.search_revision_multi_stage(
-                    revision, revision_content, correct_ids, "vertex_ai"
+                    revision, revision_content, correct_ids, "vertex_ai",
+                    pre_enhanced_query=pre_enhanced_query,
                 )
             )
             if not llm_query:
@@ -1125,6 +1142,9 @@ class RevisionEvaluator:
 
 
 def main() -> None:
+    import time
+    start_time = time.time()
+
     parser = argparse.ArgumentParser(description="事務改定評価スクリプト")
     parser.add_argument(
         "--provider",
@@ -1190,7 +1210,8 @@ def main() -> None:
     evaluator = RevisionEvaluator(config, enable_llm_analysis=enable_llm)
     results = evaluator.evaluate_all_revisions(providers=args.provider)
     output_file = evaluator.save_results(results)
-    print_completion(str(output_file))
+    elapsed = time.time() - start_time
+    print_completion(str(output_file), elapsed_time=elapsed)
 
 
 if __name__ == "__main__":

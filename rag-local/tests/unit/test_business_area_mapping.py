@@ -279,3 +279,21 @@ class TestGetScenarioBasePath:
     def test_rev03_torikaku_returns_revisions(self, db_manager):
         path = db_manager._get_scenario_base_path("rev03_torikaku")
         assert "revisions" in path
+
+
+class TestGetDisplayName:
+    def test_rev_prefix(self):
+        from src.utils.business_area_translator import get_display_name
+        assert get_display_name("rev03_naibujimu") == "内部事務"
+
+    def test_plain_name(self):
+        from src.utils.business_area_translator import get_display_name
+        assert get_display_name("smile") == "スマイル"
+
+    def test_unknown_returns_as_is(self):
+        from src.utils.business_area_translator import get_display_name
+        assert get_display_name("unknown_area") == "unknown_area"
+
+    def test_souzoku(self):
+        from src.utils.business_area_translator import get_display_name
+        assert get_display_name("rev02_souzoku") == "相続"

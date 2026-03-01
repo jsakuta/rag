@@ -172,3 +172,24 @@ def get_translator(config_path: Optional[str] = None) -> BusinessAreaTranslator:
     if _default_translator is None:
         _default_translator = BusinessAreaTranslator(config_path)
     return _default_translator
+
+
+# エリア名の日本語表示用マッピング
+_AREA_DISPLAY_NAMES = {
+    "naibujimu": "内部事務",
+    "smile": "スマイル",
+    "souzoku": "相続",
+    "torikaku": "取引時確認",
+}
+
+
+def get_display_name(area: str) -> str:
+    """内部エリア名を日本語表示名に変換する。
+
+    例: "rev03_naibujimu" -> "内部事務", "naibujimu" -> "内部事務"
+    マッチしない場合はそのまま返す。
+    """
+    for key, name in _AREA_DISPLAY_NAMES.items():
+        if key in area:
+            return name
+    return area

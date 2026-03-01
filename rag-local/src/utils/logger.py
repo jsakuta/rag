@@ -298,7 +298,9 @@ def print_search_result(
         rate = f"{found_correct}/{total_correct}" if total_correct > 0 else "-"
         rate_pct = f"({found_correct/total_correct*100:.0f}%)" if total_correct > 0 and found_correct > 0 else ""
 
-        areas_str = ", ".join(areas) if areas else "-"
+        from src.utils.business_area_translator import get_display_name
+        areas_display = [get_display_name(a) for a in areas] if areas else ["-"]
+        areas_str = ", ".join(areas_display)
 
         result_text = Text()
         result_text.append(f"  {icon} ", style=f"bold {color}")
