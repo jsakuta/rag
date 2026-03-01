@@ -116,6 +116,10 @@ class RevisionEvaluator:
         else:
             self.judgment_support = None
 
+        # パフォーマンス改善: キャッシュ
+        self._reference_queries_cache: Dict[Tuple[str, str], List[str]] = {}
+        self._orchestrator_cache: Dict[Tuple[str, str, float], MultiStageOrchestrator] = {}
+
     def load_input_data(self) -> pd.DataFrame:
         if not INPUT_FILE.exists():
             raise FileNotFoundError(f"入力ファイルが見つかりません: {INPUT_FILE}")
@@ -199,6 +203,11 @@ class RevisionEvaluator:
         reference_queries: List[str],
         vector_weight: float,
     ) -> Optional[MultiStageOrchestrator]:
+        # キャッシュチェック
+        cache_key = (area, provider, vector_weight)
+        if cache_key in self._orchestrator_cache:
+            return self._orchestrator_cache[cache_key]
+
         db_path = VECTOR_DB_BASE / area / provider
         chroma_file = db_path / "chroma.sqlite3"
 
@@ -225,7 +234,7 @@ class RevisionEvaluator:
 
             query_enhancer = QueryEnhancer(llm=self.llm, base_dir=str(PROJECT_ROOT))
 
-            return MultiStageOrchestrator(
+            orchestrator = MultiStageOrchestrator(
                 vector_engine=vector_engine,
                 keyword_engine=keyword_engine,
                 query_enhancer=query_enhancer,
@@ -236,12 +245,20 @@ class RevisionEvaluator:
                 filter_mode=FILTER_MODE,
                 top_k=TOP_K,
             )
+            # キャッシュに保存
+            self._orchestrator_cache[cache_key] = orchestrator
+            return orchestrator
         except Exception as e:
             logger.error(f"オーケストレーター作成エラー ({area}/{provider}): {e}")
             traceback.print_exc()
             return None
 
     def _get_reference_queries(self, area: str, provider: str) -> List[str]:
+        # キャッシュチェック
+        cache_key = (area, provider)
+        if cache_key in self._reference_queries_cache:
+            return self._reference_queries_cache[cache_key]
+
         db_path = VECTOR_DB_BASE / area / provider
         if not db_path.exists():
             return []
@@ -258,6 +275,9 @@ class RevisionEvaluator:
                 if doc:
                     parsed = self.text_combiner.parse(doc)
                     queries.append(parsed.query if parsed.query else doc[:100])
+
+            # キャッシュに保存
+            self._reference_queries_cache[cache_key] = queries
             return queries
         except Exception as e:
             logger.error(f"参照クエリ取得エラー ({area}/{provider}): {e}")
