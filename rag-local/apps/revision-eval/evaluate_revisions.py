@@ -251,7 +251,11 @@ class RevisionEvaluator:
             return orchestrator
         except Exception as e:
             logger.error(f"オーケストレーター作成エラー ({area}/{provider}): {e}")
-            traceback.print_exc()
+            console = get_console()
+            if console:
+                console.print_exception(show_locals=False)
+            else:
+                traceback.print_exc()
             return None
 
     def _get_reference_queries(self, area: str, provider: str) -> List[str]:
@@ -443,10 +447,14 @@ class RevisionEvaluator:
                     result["順位"] = i + 1
                 results_by_area[area] = converted_results
                 searched_areas.append(area)
-                logger.info(f"  {area}: {len(results)}件取得")
+                logger.debug(f"  {area}: {len(results)}件取得")
             except Exception as e:
                 logger.error(f"  {area} の検索エラー: {e}")
-                traceback.print_exc()
+                console = get_console()
+                if console:
+                    console.print_exception(show_locals=False)
+                else:
+                    traceback.print_exc()
 
         return results_by_area, llm_query, keywords, searched_areas
 
@@ -1159,6 +1167,7 @@ def main() -> None:
         default="both",
         help="検索プロバイダー: both=両方, azure=Azureのみ, vertex=VertexAIのみ",
     )
+    parser.add_argument("--verbose", action="store_true", help="詳細設定を表示")
     args = parser.parse_args()
 
     print_section("事務改定評価 (多段階検索・横並び比較版)")
@@ -1175,6 +1184,12 @@ def main() -> None:
 
     print_table("ベクトルDB状態", db_status_data, ["改定", "エリア", "Azure", "VertexAI"])
 
+    if any("MISSING" in str(row) for row in db_status_data):
+        print_status(
+            "MISSINGのDBがあります。build_db.py --revisions-only を実行してください",
+            "warning",
+        )
+
     config = SearchConfig(
         base_dir=str(PROJECT_ROOT),
         top_k=MAX_RESULTS,
@@ -1185,34 +1200,35 @@ def main() -> None:
 
     enable_llm = os.getenv("ENABLE_LLM_ANALYSIS", "false").lower() == "true"
 
-    print_section("評価設定")
-    print_status(f"LLM分析: {'[green]有効[/green]' if enable_llm else '[yellow]無効[/yellow]'}", "info")
-    print_status(f"最大検索結果数: {MAX_RESULTS}", "info")
-    print_status(f"デフォルトベクトル重み: {DEFAULT_VECTOR_WEIGHT}", "info")
-
-    # 改定番号別ベクトル重み表示
-    custom_weights = [(rev, w) for rev, w in REVISION_VECTOR_WEIGHTS.items() if w != DEFAULT_VECTOR_WEIGHT]
-    if custom_weights:
-        weight_str = ", ".join([f"{rev}={w}" for rev, w in custom_weights])
-        print_status(f"カスタム重み: {weight_str}", "info")
+    print_section("実行設定")
+    provider_labels = {"both": "Azure + VertexAI", "azure": "Azure のみ", "vertex": "VertexAI のみ"}
+    print_status(f"検索プロバイダー: {provider_labels[args.provider]}", "info")
+    print_status(f"LLM判定: {'有効' if enable_llm else '無効'}", "info")
 
     # 改定番号別検索タイプ表示
+    from src.utils.business_area_translator import get_display_name
     keyword_filter_revisions = [rev for rev, st in REVISION_SEARCH_TYPES.items() if st == "keyword_filter"]
     if keyword_filter_revisions:
-        print_status(f"キーワード必須検索: {', '.join(keyword_filter_revisions)}", "info")
-    hybrid_revisions = [rev for rev, st in REVISION_SEARCH_TYPES.items() if st == "hybrid"]
+        kw_labels = [f"{get_display_name(r)} ({r})" for r in keyword_filter_revisions]
+        print_status(f"キーワード検索: {', '.join(kw_labels)}", "info")
+    hybrid_revisions = [rev for rev, st in REVISION_SEARCH_TYPES.items() if st != "keyword_filter"]
     if hybrid_revisions:
-        print_status(f"類似検索(hybrid): {', '.join(hybrid_revisions)}", "info")
+        hy_labels = [f"{get_display_name(r)} ({r})" for r in hybrid_revisions]
+        print_status(f"類似検索(hybrid): {', '.join(hy_labels)}", "info")
 
-    print_status(f"フィルタモード: {FILTER_MODE}", "info")
-    if FILTER_MODE == "top_k":
-        print_status(f"TOP-K: {TOP_K}件", "info")
-    else:
-        print_status(f"閾値 (Azure): {THRESHOLD_BY_PROVIDER['azure_openai']}", "info")
-        print_status(f"閾値 (VertexAI): {THRESHOLD_BY_PROVIDER['vertex_ai']}", "info")
-
-    provider_labels = {"both": "両方", "azure": "Azure のみ", "vertex": "VertexAI のみ"}
-    print_status(f"プロバイダー: {provider_labels[args.provider]}", "info")
+    if args.verbose:
+        print_status(f"最大検索結果数: {MAX_RESULTS}", "info")
+        print_status(f"デフォルトベクトル重み: {DEFAULT_VECTOR_WEIGHT}", "info")
+        custom_weights = [(rev, w) for rev, w in REVISION_VECTOR_WEIGHTS.items() if w != DEFAULT_VECTOR_WEIGHT]
+        if custom_weights:
+            weight_str = ", ".join([f"{rev}={w}" for rev, w in custom_weights])
+            print_status(f"カスタム重み: {weight_str}", "info")
+        print_status(f"フィルタモード: {FILTER_MODE}", "info")
+        if FILTER_MODE == "top_k":
+            print_status(f"TOP-K: {TOP_K}件", "info")
+        else:
+            print_status(f"閾値 (Azure): {THRESHOLD_BY_PROVIDER['azure_openai']}", "info")
+            print_status(f"閾値 (VertexAI): {THRESHOLD_BY_PROVIDER['vertex_ai']}", "info")
 
     evaluator = RevisionEvaluator(config, enable_llm_analysis=enable_llm)
     results = evaluator.evaluate_all_revisions(providers=args.provider)

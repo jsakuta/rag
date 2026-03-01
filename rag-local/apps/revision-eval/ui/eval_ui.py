@@ -394,8 +394,13 @@ def _search_with_provider(query: str, revision: str, provider: str, areas: List[
 
         except Exception as e:
             logger.error(f"検索エラー ({area}/{provider}): {e}")
-            import traceback
-            traceback.print_exc()
+            from src.utils.logger import get_console
+            console = get_console()
+            if console:
+                console.print_exception(show_locals=False)
+            else:
+                import traceback
+                traceback.print_exc()
 
     all_results.sort(key=lambda x: x.get("Similarity", 0), reverse=True)
     return all_results
