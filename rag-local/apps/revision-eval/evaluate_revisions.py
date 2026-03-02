@@ -16,6 +16,7 @@ import argparse
 import copy
 import os
 import sys
+import time
 import traceback
 from datetime import datetime
 from itertools import zip_longest
@@ -1177,7 +1178,6 @@ class RevisionEvaluator:
 
 
 def main() -> None:
-    import time
     suppress_noise()
     start_time = time.time()
 

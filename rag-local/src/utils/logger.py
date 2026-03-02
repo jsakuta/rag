@@ -358,7 +358,7 @@ def print_startup_summary(app_name: str, checks: list):
         checks: [(label, ok, detail), ...] のリスト
     """
     console = get_console()
-    if console and RICH_AVAILABLE:
+    if RICH_AVAILABLE:
         console.print()
         console.print(Rule(f" {app_name} ", style="bold cyan"))
         console.print()
@@ -398,7 +398,7 @@ def print_query_panel(
     meta_str = "  ".join(f"{k}: {v}" for k, v in metadata.items())
     result_str = "  ".join(f"{k}: {v}件" for k, v in results.items())
 
-    if console and RICH_AVAILABLE:
+    if RICH_AVAILABLE:
         title = f"検索 #{query_number}"
         if metadata:
             title += f"  {meta_str}"

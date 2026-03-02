@@ -1,5 +1,25 @@
 import logging
+
+import pytest
+
 from src.utils.logger import suppress_noise
+
+# suppress_noise() が変更するロガー名のリスト
+_NOISY_LOGGERS = [
+    "chromadb", "httpx", "urllib3", "streamlit",
+    "google.auth", "google.api_core",
+    "azure.core", "azure.identity",
+    "streamlit.runtime.scriptrunner_utils",
+]
+
+
+@pytest.fixture(autouse=True)
+def _reset_logger_levels():
+    """テスト後にロガーレベルをリセットし、グローバル状態の汚染を防ぐ"""
+    original_levels = {name: logging.getLogger(name).level for name in _NOISY_LOGGERS}
+    yield
+    for name, level in original_levels.items():
+        logging.getLogger(name).setLevel(level)
 
 
 def test_suppress_noise_sets_third_party_to_warning():
