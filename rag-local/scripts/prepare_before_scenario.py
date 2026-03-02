@@ -4,7 +4,7 @@
 変更前シナリオの前処理スクリプト
 
 処理内容:
-1. 「データ整理/変更前シナリオ」からExcelファイルを読み込み
+1. 「reference/変更前シナリオ」からExcelファイルを読み込み
 2. 文字数列を削除（Lv1~Lv10, シナリオパスのみ残す）
 3. ファイル名を変換して reference/scenario/ に配置
 
@@ -40,7 +40,7 @@ REVISION_MAP = {
 }
 
 # ソースディレクトリ
-SOURCE_DIR = PROJECT_ROOT / "データ整理" / "変更前シナリオ"
+SOURCE_DIR = PROJECT_ROOT / "reference" / "変更前シナリオ"
 
 # 出力ディレクトリ
 OUTPUT_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "revisions"

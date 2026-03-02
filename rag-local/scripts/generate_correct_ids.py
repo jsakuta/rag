@@ -17,7 +17,7 @@ import pandas as pd
 
 # プロジェクトルートからの相対パス
 PROJECT_ROOT = Path(__file__).parent.parent
-DATA_DIR = PROJECT_ROOT / "データ整理"
+DATA_DIR = PROJECT_ROOT / "reference"
 OUTPUT_DIR = PROJECT_ROOT / "input"
 
 # ボット名の変換
@@ -39,7 +39,7 @@ REVISIONS = {
         {
             'row': 19,
             'merge': '①マージ版シナリオ_smile-bot.xlsx',
-            'individual_folder': '①スマイル機能変更メンテ台帳20',
+            'individual_folder': 'rev01_スマイル機能変更',
             'individual_subfolder': '',
             'individual_pattern': '*諸届*.xlsx',
         },
@@ -48,7 +48,7 @@ REVISIONS = {
         {
             'row': 20,
             'merge': '②マージ版シナリオ_souzoku-bot.xlsx',
-            'individual_folder': '②相続少額払いメンテ台帳21',
+            'individual_folder': 'rev02_相続少額払い',
             'individual_subfolder': '',
             'individual_pattern': '*少額*.xlsx',
         },
@@ -57,49 +57,49 @@ REVISIONS = {
         {
             'row': 24,  # 台帳25: 内部事務/喪失
             'merge': '③マージ版シナリオ_naibujimu-bot.xlsx',
-            'individual_folder': '③保険証→資格確認証メンテ台帳25.26.27.28.29.30.35.36',
+            'individual_folder': 'rev03_保険証→資格確認証',
             'individual_subfolder': '内部事務_喪失',
             'individual_pattern': '*喪失*.xlsx',
         },
         {
             'row': 25,  # 台帳26: 内部事務/届出事項変更
             'merge': '③マージ版シナリオ_naibujimu-bot.xlsx',
-            'individual_folder': '③保険証→資格確認証メンテ台帳25.26.27.28.29.30.35.36',
+            'individual_folder': 'rev03_保険証→資格確認証',
             'individual_subfolder': '内部事務_届出事項変更',
             'individual_pattern': '*届出事項変更*.xlsx',
         },
         {
             'row': 26,  # 台帳27: 内部事務/預金/普通預金・貯蓄預金
             'merge': '③マージ版シナリオ_naibujimu-bot.xlsx',
-            'individual_folder': '③保険証→資格確認証メンテ台帳25.26.27.28.29.30.35.36',
+            'individual_folder': 'rev03_保険証→資格確認証',
             'individual_subfolder': '内部事務_預金',
             'individual_pattern': '*普通預金・貯蓄預金*.xlsx',
         },
         {
             'row': 28,  # 台帳29: 相続/預金/少額払い・簡易払い
             'merge': '③マージ版シナリオ_souzoku-bot.xlsx',
-            'individual_folder': '③保険証→資格確認証メンテ台帳25.26.27.28.29.30.35.36',
+            'individual_folder': 'rev03_保険証→資格確認証',
             'individual_subfolder': '相続_預金',
             'individual_pattern': '*少額払い*.xlsx',
         },
         {
             'row': 29,  # 台帳30: 取引時確認
             'merge': '③マージ版シナリオ_torikaku-bot.xlsx',
-            'individual_folder': '③保険証→資格確認証メンテ台帳25.26.27.28.29.30.35.36',
+            'individual_folder': 'rev03_保険証→資格確認証',
             'individual_subfolder': '取引時確認',
             'individual_pattern': 'シナリオ_取引時確認*.xlsx',
         },
         {
             'row': 34,  # 台帳35: スマイル/取引時確認
             'merge': '③マージ版シナリオ_smile-bot.xlsx',
-            'individual_folder': '③保険証→資格確認証メンテ台帳25.26.27.28.29.30.35.36',
+            'individual_folder': 'rev03_保険証→資格確認証',
             'individual_subfolder': 'スマイル_取引時確認',
             'individual_pattern': '*取引時確認*.xlsx',
         },
         {
             'row': 35,  # 台帳36: スマイル/カード関連
             'merge': '③マージ版シナリオ_smile-bot.xlsx',
-            'individual_folder': '③保険証→資格確認証メンテ台帳25.26.27.28.29.30.35.36',
+            'individual_folder': 'rev03_保険証→資格確認証',
             'individual_subfolder': 'スマイル_カード関連',
             'individual_pattern': '*カード関連*.xlsx',
         },
@@ -108,7 +108,7 @@ REVISIONS = {
         {
             'row': 36,  # 台帳37: 内部事務/預金/普通預金・貯蓄預金
             'merge': '④マージ版シナリオ_naibujimu-bot.xlsx',
-            'individual_folder': '④難易度高_0円新規開設可能メンテ台帳37',
+            'individual_folder': 'rev04_0円新規開設可能',
             'individual_subfolder': '',
             'individual_pattern': '*普通預金・貯蓄預金*.xlsx',
         },
@@ -117,14 +117,14 @@ REVISIONS = {
         {
             'row': 40,  # 台帳41: スマイル/預金関連
             'merge': '⑤マージ版シナリオ_smile-bot.xlsx',
-            'individual_folder': '⑤AMLフィルター→GPLEXメンテ台帳41.42',
+            'individual_folder': 'rev05_AMLフィルター→GPLEX',
             'individual_subfolder': '預金関連',
             'individual_pattern': '*預金関連*.xlsx',
         },
         {
             'row': 41,  # 台帳42: スマイル/喪失
             'merge': '⑤マージ版シナリオ_smile-bot.xlsx',
-            'individual_folder': '⑤AMLフィルター→GPLEXメンテ台帳41.42',
+            'individual_folder': 'rev05_AMLフィルター→GPLEX',
             'individual_subfolder': '喪失',
             'individual_pattern': '*喪失*.xlsx',
         },
@@ -133,21 +133,21 @@ REVISIONS = {
         {
             'row': 42,  # 台帳43: スマイル/諸届
             'merge': '⑥マージ版シナリオ_smile-bot.xlsx',
-            'individual_folder': '⑥DC→MDCメンテ台帳43.44.45',
+            'individual_folder': 'rev06_DC→MDC',
             'individual_subfolder': '諸届',
             'individual_pattern': '*諸届*.xlsx',
         },
         {
             'row': 43,  # 台帳44: スマイル/喪失
             'merge': '⑥マージ版シナリオ_smile-bot.xlsx',
-            'individual_folder': '⑥DC→MDCメンテ台帳43.44.45',
+            'individual_folder': 'rev06_DC→MDC',
             'individual_subfolder': '喪失',
             'individual_pattern': '*喪失*.xlsx',
         },
         {
             'row': 44,  # 台帳45: スマイル/カード関連
             'merge': '⑥マージ版シナリオ_smile-bot.xlsx',
-            'individual_folder': '⑥DC→MDCメンテ台帳43.44.45',
+            'individual_folder': 'rev06_DC→MDC',
             'individual_subfolder': 'カード関連',
             'individual_pattern': '*カード関連*.xlsx',
         },
@@ -173,7 +173,7 @@ def load_ledger() -> pd.DataFrame:
 
 def main() -> None:
     """メイン処理"""
-    revision_dir = DATA_DIR / "事務改定内容"
+    revision_dir = DATA_DIR / "改定内容"
     if not revision_dir.exists():
         print(f"エラー: {revision_dir} が存在しません")
         return
@@ -259,7 +259,7 @@ def find_rows_by_text_matching(
     """テキストマッチングでマージ版の行番号を特定"""
 
     # 個別シナリオファイルを読み込み
-    individual_dir = DATA_DIR / "事務改定前後_個別シナリオ" / individual_folder / "修正前"
+    individual_dir = DATA_DIR / "改定シナリオ" / individual_folder / "修正前"
     if individual_subfolder:
         individual_dir = individual_dir / individual_subfolder
 
@@ -278,7 +278,7 @@ def find_rows_by_text_matching(
 
     # マージ版シナリオを読み込み
     if merge_file not in _merge_cache:
-        merge_path = DATA_DIR / "事務改定前_マージ版シナリオ" / merge_file
+        merge_path = DATA_DIR / "マージ版シナリオ" / "改定前" / merge_file
         if not merge_path.exists():
             print(f"  警告: マージ版シナリオが見つかりません: {merge_path}")
             return []

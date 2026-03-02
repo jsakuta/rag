@@ -109,3 +109,9 @@ LPT[1-9].*
 .plans/
 .review/
 .serena/
+
+# Claude Code設定（開発者固有）
+.claude/
+
+# タスク管理ツール
+.benchmarks/
