@@ -29,6 +29,26 @@ class TextCombiner:
     LABEL_QUERY = "質問"
     LABEL_ANSWER = "回答"
 
+    def build(self, hierarchy: str = "", query: str = "", answer: str = "") -> str:
+        """構造化データから結合テキストを生成（parse の逆操作）
+
+        Args:
+            hierarchy: 階層構造テキスト
+            query: 質問テキスト
+            answer: 回答テキスト
+
+        Returns:
+            str: 結合テキスト（例: "分類: A | 質問: Q | 回答: A"）
+        """
+        parts = []
+        if hierarchy and hierarchy.strip():
+            parts.append(f"{self.LABEL_HIERARCHY}: {hierarchy}")
+        if query and query.strip():
+            parts.append(f"{self.LABEL_QUERY}: {query}")
+        if answer and answer.strip():
+            parts.append(f"{self.LABEL_ANSWER}: {answer}")
+        return self.separator.join(parts)
+
     def parse(self, combined_text: str) -> ParsedCombinedText:
         """結合テキストを解析して構造化データに変換
 

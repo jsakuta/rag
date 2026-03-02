@@ -174,3 +174,20 @@ def get_display_name(area: str) -> str:
         if key in area:
             return name
     return area
+
+
+def resolve_bot_name(area: str, area_to_bot: dict) -> str:
+    """area名からbot名をsubstring-matchで解決
+
+    Args:
+        area: エリア名（例: "rev02_souzoku", "smile"）
+        area_to_bot: エリア→ボット名マッピング dict
+
+    Returns:
+        str: ボット名（マッチなしの場合 "unknown-bot"）
+    """
+    area_lower = area.lower()
+    for keyword, bot_name in area_to_bot.items():
+        if keyword in area_lower:
+            return bot_name
+    return "unknown-bot"
