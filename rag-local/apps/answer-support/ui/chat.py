@@ -12,6 +12,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 import os
 import re
 import html
+import time
 from typing import Dict, List
 
 from config import SearchConfig, load_settings
@@ -142,7 +143,6 @@ def _initialize_processor():
 
 
 def process_query(query: str):
-    import time
     st.session_state.processing_query = True
     try:
         query_number = len(st.session_state.chat_history) // 2 + 1
@@ -158,11 +158,14 @@ def process_query(query: str):
         elapsed = time.time() - start_time
         result_count = len(results) if results else 0
         max_sim = max((r.get('Similarity', 0) for r in results), default=0) if results else 0
+        meta = {"業務": st.session_state.business_area, "モード": st.session_state.config.search_mode}
+        if results:
+            meta["最高類似度"] = f"{max_sim:.2f}"
         print_query_panel(
             query_number=query_number,
             query_text=query,
-            metadata={"業務": st.session_state.business_area, "モード": st.session_state.config.search_mode},
-            results={"結果": result_count, "最高類似度": f"{max_sim:.2f}"} if results else {"結果": 0},
+            metadata=meta,
+            results={"結果": result_count},
             elapsed=elapsed,
         )
 
