@@ -10,15 +10,11 @@
 | ドキュメント | 説明 |
 |-------------|------|
 | [README.md](../README.md) | プロジェクト概要とクイックスタート |
-| [docs/GOOGLE_CLOUD_AUTH.md](../docs/GOOGLE_CLOUD_AUTH.md) | Google Cloud 認証設定 |
-| [docs/CONFIGURATION.md](../docs/CONFIGURATION.md) | 環境変数と設定オプション詳細 |
-| [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) | システムアーキテクチャ |
-| [docs/API_REFERENCE.md](../docs/API_REFERENCE.md) | API仕様 |
-| [docs/SECURITY.md](../docs/SECURITY.md) | セキュリティガイド |
-| [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) | トラブルシューティング |
+| [docs/ANSWER_SUPPORT.md](../docs/ANSWER_SUPPORT.md) | 回答支援AI（類似回答検索・DB構築） |
 | [docs/REVISION_OPS.md](../docs/REVISION_OPS.md) | 改定影響調査システム |
-| [docs/PROMPTS.md](../docs/PROMPTS.md) | プロンプト詳細 |
-| [docs/DB_BUILD_GUIDE.md](../docs/DB_BUILD_GUIDE.md) | DB構築ガイド（回答支援AI（類似回答検索）+ 改定別） |
+| [docs/CONFIGURATION.md](../docs/CONFIGURATION.md) | 環境変数と設定オプション詳細 |
+| [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) | システムアーキテクチャ・API仕様・プロンプト |
+| [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) | トラブルシューティング |
 
 ---
 
@@ -194,24 +190,24 @@ rag-local/
 ├── .env.example                  # 環境変数テンプレート
 │
 ├── docs/                         # ドキュメント
-│   ├── GOOGLE_CLOUD_AUTH.md      # 認証設定
-│   ├── CONFIGURATION.md          # 設定詳細
-│   ├── ARCHITECTURE.md           # アーキテクチャ
-│   ├── API_REFERENCE.md          # API仕様
-│   ├── SECURITY.md               # セキュリティ
+│   ├── ANSWER_SUPPORT.md         # 回答支援AI詳細
+│   ├── REVISION_OPS.md           # 改定影響調査詳細
+│   ├── CONFIGURATION.md          # 設定リファレンス
+│   ├── ARCHITECTURE.md           # アーキテクチャ・API仕様
 │   ├── TROUBLESHOOTING.md        # トラブルシューティング
-│   ├── REVISION_OPS.md           # 改定影響調査
-│   └── PROMPTS.md                # プロンプト詳細
+│   └── plans/                    # 設計書アーカイブ
 │
 ├── src/                          # 共有コアライブラリ
 │   ├── core/                     # コアロジック
 │   │   ├── processor.py          # データ処理エンジン
 │   │   ├── judgment_support.py   # LLM判断支援
 │   │   └── search/               # 検索エンジン
+│   │       ├── search_strategy.py           # 検索戦略切替
 │   │       ├── multi_stage_orchestrator.py  # 多段階検索
 │   │       ├── query_enhancer.py            # クエリ拡張
 │   │       ├── vector_search_engine.py      # ベクトル検索
 │   │       ├── keyword_search_engine.py     # キーワード検索
+│   │       ├── chromadb_keyword_search.py   # ChromaDBキーワード検索
 │   │       └── text_combiner.py             # テキスト結合
 │   │
 │   ├── handlers/                 # 入出力処理

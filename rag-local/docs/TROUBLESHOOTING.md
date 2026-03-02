@@ -45,8 +45,6 @@ GEMINI_LOCATION=us-central1
    - `Vertex AI User`
    - `AI Platform Admin`
 
-詳細は [docs/GOOGLE_CLOUD_AUTH.md](./GOOGLE_CLOUD_AUTH.md) を参照してください。
-
 ### Azure OpenAI 認証エラー
 
 **症状:**
@@ -149,6 +147,17 @@ An instance of Chroma already exists for ... with different settings
 Streamlit を再起動する（Ctrl+C → 再度 `streamlit run ...`）。
 DB・設定変更後は必ず再起動が必要。
 
+### 業務分野が検出されない
+
+**対処**:
+1. `data/source/faq/latest/` と `data/source/scenarios/latest/` にファイルが存在するか確認
+2. ファイル名が `{業務名}_履歴データ_{YYYYMMDD}.xlsx` / `{業務名}_シナリオデータ_{YYYYMMDD}.xlsx` の形式か確認
+3. `config/business_areas.yaml` に業務名のマッピングが登録されているか確認
+
+### DB構築後にUIで業務分野が表示されない
+
+**対処**: `data/vector_db/{業務名}/azure_openai/chroma.sqlite3` が存在するか確認。存在しない場合は `python scripts/build_db.py --force` で再構築
+
 ### タイムスタンプ検証エラー
 
 **症状:**
@@ -168,6 +177,8 @@ rm data/vector_db/update_timestamps.json
 ```bash
 python apps/answer-support/main.py
 ```
+
+改定影響調査に固有の問題は [docs/REVISION_OPS.md](./REVISION_OPS.md) の「既知の問題と注意事項」セクションを参照してください。
 
 ---
 
@@ -465,7 +476,7 @@ python apps/answer-support/main.py
 改定影響調査システムでは、プロバイダーごとに別々のDBディレクトリを使用しています。
 
 ```
-data/vector_db/rev01smile/
+data/vector_db/rev01_smile/
 ├── azure_openai/    # Azure OpenAI専用
 └── vertex_ai/       # VertexAI専用
 ```
@@ -493,6 +504,7 @@ DEFAULT_LLM_MODEL=claude-3-5-sonnet-20241022
 ## 関連ドキュメント
 
 - [README.md](../README.md) - 概要とセットアップ
-- [docs/GOOGLE_CLOUD_AUTH.md](./GOOGLE_CLOUD_AUTH.md) - 認証設定
-- [docs/SECURITY.md](./SECURITY.md) - セキュリティガイド
-- [docs/CONFIGURATION.md](./CONFIGURATION.md) - 設定詳細
+- [docs/ANSWER_SUPPORT.md](./ANSWER_SUPPORT.md) - 回答支援AI詳細
+- [docs/REVISION_OPS.md](./REVISION_OPS.md) - 改定影響調査詳細
+- [docs/CONFIGURATION.md](./CONFIGURATION.md) - 設定リファレンス
+- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - アーキテクチャ

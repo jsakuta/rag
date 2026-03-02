@@ -1,5 +1,7 @@
 # 設定ガイド
 
+> 初回セットアップは [README.md](../README.md) を参照してください。このドキュメントは設定の詳細リファレンスです。
+
 このドキュメントでは、RAG-Localシステムの全環境変数と設定オプションを詳しく説明します。
 
 ## 目次
@@ -320,6 +322,36 @@ OUTPUT_DIR=data/output
 
 ---
 
+## 設定ファイル（YAML）
+
+### config/settings.yaml
+
+検索パラメータとアプリケーション動作を制御する設定ファイル。
+
+| セクション | 用途 | 主な設定 |
+|-----------|------|---------|
+| `common` | 全プログラム共通 | search_type, vector_weight, search_mode, keyword設定 |
+| `ui` | Streamlit UI専用 | top_k, search_type, vector_weight（スライダー初期値） |
+| `batch` | バッチ処理専用 | top_k |
+| `evaluation` | 改定影響調査専用 | max_results, filter_mode, thresholds, revision_areas |
+
+**設定の読み込み方法**:
+- `load_settings("ui")` → common + ui をマージして返す
+- `load_settings("batch")` → common + batch をマージして返す
+- セクション固有の値が common を上書き
+
+### config/business_areas.yaml
+
+業務分野の日本語名から ChromaDB コレクション名への変換マッピング。
+
+| セクション | 用途 |
+|-----------|------|
+| `mappings` | 通常業務分野（スマイル→smile, 内部事務→naibujimu 等） |
+| `revision_mappings` | 改定別DB名（rev01_smile, rev02_souzoku 等） |
+| `collection_constraints` | ChromaDB命名制約（3-512文字、英数字+._-） |
+
+---
+
 ## UI設定
 
 ### Streamlit 設定
@@ -524,8 +556,8 @@ source .env  # Linux/Mac
 
 ## 関連ドキュメント
 
-- [README.md](../README.md) - プロジェクト概要
-- [docs/GOOGLE_CLOUD_AUTH.md](./GOOGLE_CLOUD_AUTH.md) - Google Cloud 認証
-- [docs/SECURITY.md](./SECURITY.md) - セキュリティガイド
-- [docs/API_REFERENCE.md](./API_REFERENCE.md) - API仕様
+- [README.md](../README.md) - プロジェクト概要・セットアップ
+- [docs/ANSWER_SUPPORT.md](./ANSWER_SUPPORT.md) - 回答支援AI詳細
+- [docs/REVISION_OPS.md](./REVISION_OPS.md) - 改定影響調査詳細
+- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - アーキテクチャ・API仕様
 - [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - トラブルシューティング

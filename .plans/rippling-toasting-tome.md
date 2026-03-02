@@ -63,10 +63,16 @@ data/output/latest/
 - Rename: `tests/unit/test_evaluate_revisions_cache.py` → `tests/unit/test_run_eval_cache.py`
 - Rename: `docs/REVISION_EVALUATION.md` → `docs/REVISION_OPS.md`
 
-**Step 1: git mv を順次実行**
+**Step 1: __pycache__ クリーンアップ（git mv 前に古い .pyc を削除）**
 
 ```bash
 cd /c/VSCode/rag/rag-local
+rm -rf apps/revision-eval/__pycache__ apps/revision-eval/ui/__pycache__
+```
+
+**Step 2: git mv を順次実行**
+
+```bash
 git mv apps/revision-eval apps/revision-ops
 git mv apps/revision-ops/evaluate_revisions.py apps/revision-ops/run_eval.py
 git mv apps/revision-ops/ui/eval_ui.py apps/revision-ops/ui/ops_ui.py
@@ -74,7 +80,7 @@ git mv tests/unit/test_evaluate_revisions_cache.py tests/unit/test_run_eval_cach
 git mv docs/REVISION_EVALUATION.md docs/REVISION_OPS.md
 ```
 
-**Step 2: Commit**
+**Step 3: Commit**
 
 ```bash
 git add -A
@@ -458,24 +464,22 @@ cd /c/VSCode/rag/rag-local && python -m pytest tests/unit/test_run_eval_cache.py
 
 Expected: 全テスト PASS
 
-**Step 3: `ui/shared.py` docstring 更新 (L1-5)**
+**Step 3: `ui/shared.py` パス参照更新 (L5, L223)**
 
-変更前:
+L5 docstring:
 ```python
-"""共通UI部品 — 回答支援AI（類似回答検索）・運用保守効率化AI（改定影響調査）共用
-
-このモジュールは以下から import される:
-- apps/answer-support/ui/chat.py（回答支援UI）
+# 変更前
 - apps/revision-eval/ui/eval_ui.py（改定影響調査UI）
+# 変更後
+- apps/revision-ops/ui/ops_ui.py（改定影響調査UI）
 ```
 
-変更後:
+L223 コメント:
 ```python
-"""共通UI部品 — 回答支援AI（類似回答検索）・運用保守効率化AI（改定影響調査）共用
-
-このモジュールは以下から import される:
-- apps/answer-support/ui/chat.py（回答支援UI）
-- apps/revision-ops/ui/ops_ui.py（改定影響調査UI）
+# 変更前
+# 各UI（chat.py, eval_ui.py）にそれぞれ配置する。
+# 変更後
+# 各UI（chat.py, ops_ui.py）にそれぞれ配置する。
 ```
 
 **Step 4: `config.py` の `get_param_summary` に非推奨注記 (L284-288)**
@@ -531,9 +535,7 @@ git commit -m "fix: update path references after revision-ops rename"
 - Modify: `docs/REVISION_OPS.md` (旧 REVISION_EVALUATION.md)
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/TROUBLESHOOTING.md`
-- Modify: `docs/CONFIGURATION.md`
-
-以下の置換を全ドキュメントに適用:
+以下の置換を全ドキュメントに適用（`docs/CONFIGURATION.md` は grep 確認済みで該当なし）:
 
 | 検索 | 置換 |
 |------|------|
@@ -555,13 +557,15 @@ git commit -m "fix: update path references after revision-ops rename"
 - L66: `streamlit run apps/revision-eval/ui/eval_ui.py` → `streamlit run apps/revision-ops/ui/ops_ui.py`
 - L80-83: ディレクトリツリー `revision-eval/` → `revision-ops/`、ファイル名更新
 - L121: 出力パス `revision_evaluation_YYYYMMDD.xlsx` → `rev_eval_batch_YYYYMMDD.xlsx`、`data/output/latest/rev/` パスに
+- L124: `[docs/REVISION_EVALUATION.md](./docs/REVISION_EVALUATION.md)` → `[docs/REVISION_OPS.md](./docs/REVISION_OPS.md)`
+- L162: `[docs/REVISION_EVALUATION.md](./docs/REVISION_EVALUATION.md)` → `[docs/REVISION_OPS.md](./docs/REVISION_OPS.md)`
 
 ### CLAUDE.md 変更箇所
 
+- L19: `[docs/REVISION_EVALUATION.md](../docs/REVISION_EVALUATION.md)` → `[docs/REVISION_OPS.md](../docs/REVISION_OPS.md)`
 - L187: ディレクトリツリー内 `revision-eval/` → `revision-ops/`
 - L188: `evaluate_revisions.py` → `run_eval.py`
-- L201: `REVISION_EVALUATION.md` → `REVISION_OPS.md`
-- 出力ディレクトリ構造セクションがあれば更新
+- L201: `REVISION_EVALUATION.md` → `REVISION_OPS.md` (L19と同一箇所が移動後の行番号)
 
 ### docs/REVISION_OPS.md 変更箇所
 
@@ -581,9 +585,9 @@ git commit -m "fix: update path references after revision-ops rename"
 
 - L291: `python apps/revision-eval/evaluate_revisions.py` → `python apps/revision-ops/run_eval.py`
 
-### docs/CONFIGURATION.md 変更箇所
+### docs/CONFIGURATION.md
 
-- streamlit コマンドパス更新（3箇所程度）
+- grep 確認済み: `revision-eval`, `evaluate_revisions`, `eval_ui`, `REVISION_EVALUATION` のマッチなし → **変更不要**
 
 ### docs/plans/2026-03-02-terminal-log-redesign.md
 
@@ -592,9 +596,21 @@ git commit -m "fix: update path references after revision-ops rename"
 **Commit:**
 
 ```bash
-git add README.md CLAUDE.md docs/REVISION_OPS.md docs/ARCHITECTURE.md docs/TROUBLESHOOTING.md docs/CONFIGURATION.md
+git add README.md CLAUDE.md docs/REVISION_OPS.md docs/ARCHITECTURE.md docs/TROUBLESHOOTING.md
 git commit -m "docs: update all references after revision-ops rename and output naming unification"
 ```
+
+### 変更不要と確認済みのファイル
+
+| ファイル | 理由 |
+|---------|------|
+| `docs/CONFIGURATION.md` | grep で旧名マッチなし |
+| `docs/API_REFERENCE.md` | grep で旧名マッチなし |
+| `docs/DB_BUILD_GUIDE.md` | grep で旧名マッチなし |
+| `scripts/generate_correct_ids.py` | `事務改定` はドメイン用語（業務概念）、旧アプリ名ではない |
+| `src/utils/business_area_translator.py` | 同上 |
+| `config/business_areas.yaml` | 同上 |
+| `docs/plans/2026-03-02-terminal-log-redesign.md` | 過去の計画書、変更不要 |
 
 ---
 

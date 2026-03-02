@@ -70,22 +70,19 @@ Stage 3: 結果をマージ＋カテゴリ分類
 ### ディレクトリ構成
 ```
 data/vector_db/
-├── general/              # 総則（通常検索用）
-│   ├── azure_openai/
-│   └── vertex_ai/
-├── rev01smile/           # 事務改定①用（smile-bot）
+├── rev01_smile/          # 事務改定①用（smile-bot）
 │   ├── azure_openai/
 │   │   └── chroma.sqlite3
 │   └── vertex_ai/
 │       └── chroma.sqlite3
-├── rev02souzoku/         # 事務改定②用（souzoku-bot）
-├── rev03naibujimu/       # 事務改定③用（naibujimu-bot）
-├── rev03smile/           # 事務改定③用（smile-bot）
-├── rev03souzoku/         # 事務改定③用（souzoku-bot）
-├── rev03torikaku/        # 事務改定③用（torikaku-bot）
-├── rev04naibujimu/       # 事務改定④用
-├── rev05smile/           # 事務改定⑤用
-├── rev06smile/           # 事務改定⑥用
+├── rev02_souzoku/        # 事務改定②用（souzoku-bot）
+├── rev03_naibujimu/      # 事務改定③用（naibujimu-bot）
+├── rev03_smile/          # 事務改定③用（smile-bot）
+├── rev03_souzoku/        # 事務改定③用（souzoku-bot）
+├── rev03_torikaku/       # 事務改定③用（torikaku-bot）
+├── rev04_naibujimu/      # 事務改定④用
+├── rev05_smile/          # 事務改定⑤用
+├── rev06_smile/          # 事務改定⑥用
 └── update_timestamps.json
 ```
 
@@ -103,14 +100,14 @@ data/vector_db/
 
 ## 改定番号とDBの対応
 
-| 改定番号 | 台帳No. | 内容 | 対応DB |
-|---------|--------|------|--------|
-| ① | 20 | スマイル機能変更 | rev01smile |
-| ② | 21 | 相続少額払い | rev02souzoku |
-| ③ | 25-30, 35-36 | 保険証→資格確認証 | rev03naibujimu, rev03smile, rev03souzoku, rev03torikaku |
-| ④ | 37 | 0円新規開設可能 | rev04naibujimu |
-| ⑤ | 41-42 | AML→GPLEX | rev05smile |
-| ⑥ | 43-45 | DC→MDC | rev06smile |
+| 改定番号 | 台帳No. | 内容 | 対象ボット | 対応DB |
+|---------|--------|------|----------|--------|
+| ① | 20 | スマイル機能変更 | smile-bot | rev01_smile |
+| ② | 21 | 相続少額払い | souzoku-bot | rev02_souzoku |
+| ③ | 25-30, 35-36 | 保険証→資格確認証 | smile-bot, naibujimu-bot, souzoku-bot, torikaku-bot | rev03_smile, rev03_naibujimu, rev03_souzoku, rev03_torikaku |
+| ④ | 37 | 0円新規開設可能 | naibujimu-bot | rev04_naibujimu |
+| ⑤ | 41-42 | AML→GPLEX | smile-bot | rev05_smile |
+| ⑥ | 43-45 | DC→MDC | smile-bot | rev06_smile |
 
 ---
 
@@ -120,7 +117,7 @@ data/vector_db/
 
 1. **シナリオファイルの配置**
    ```
-   data/source/scenarios/
+   data/source/scenarios/revisions/
    ├── rev01smile_シナリオデータ_YYYYMMDD.xlsx
    ├── rev02souzoku_シナリオデータ_YYYYMMDD.xlsx
    ├── rev03naibujimu_シナリオデータ_YYYYMMDD.xlsx
@@ -231,7 +228,7 @@ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
    | Azure_関連性判定 | 関連あり / 要確認 / 関連なし |
    | Azure_判定根拠 | LLMの判定理由 |
    | Azure_修正案 | LLMの修正提案 |
-   | Azure_ソース | 元ファイル名（rev01smile等） |
+   | Azure_ソース | 元ファイル名（rev01_smile等） |
 
    #### VertexAI側
    | 列 | 説明 |
@@ -245,7 +242,7 @@ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
    | VertexAI_関連性判定 | 関連あり / 要確認 / 関連なし |
    | VertexAI_判定根拠 | LLMの判定理由 |
    | VertexAI_修正案 | LLMの修正提案 |
-   | VertexAI_ソース | 元ファイル名（rev01smile等） |
+   | VertexAI_ソース | 元ファイル名（rev01_smile等） |
 
    **注意**: Azure/VertexAIで候補数が異なる場合、多い方に合わせて少ない方は空欄
 
@@ -281,7 +278,7 @@ rm: cannot remove '...': Device or resource busy
 
 ### DBが見つからない
 ```
-DBが存在しません: data/vector_db/rev01smile/azure_openai
+DBが存在しません: data/vector_db/rev01_smile/azure_openai
 ```
 → `build_db.py --revisions-only`を先に実行してDBを構築。
 
@@ -293,6 +290,148 @@ DBが存在しません: data/vector_db/rev01smile/azure_openai
 ### LLM分析が遅い
 - `ENABLE_LLM_ANALYSIS=false`で無効化可能
 - 各候補に対してLLM呼び出しが発生するため、候補数が多いと時間がかかる
+
+---
+
+## 参照データ管理
+
+### フォルダ構造
+
+改定評価に必要な参照データは `reference/` ディレクトリに格納されています（git管理外）。
+
+```
+reference/
+├── 改定内容/                       # 改定内容の説明 (revXX_*.md)
+├── 改定シナリオ/
+│   ├── rev01_スマイル機能変更/
+│   │   ├── 差分.md                 # 統一フォーマットの差分ファイル
+│   │   ├── 修正前/
+│   │   ├── 修正後/
+│   │   └── 参考資料/               # 協議書・通達 (PDF/DOCX/PPTX)
+│   ├── rev02_相続少額払い/
+│   ├── rev03_保険証→資格確認証/
+│   ├── rev04_0円新規開設可能/
+│   ├── rev05_AMLフィルター→GPLEX/
+│   └── rev06_DC→MDC/
+├── マージ版シナリオ/
+│   ├── 改定前/                     # 改定評価用マージ版
+│   └── 最新/                       # 最新版マージ版
+├── 問い合わせ履歴/
+└── シナリオボットメンテナンス管理台帳.xlsx
+```
+
+### 差分ファイルの書き方（統一フォーマット）
+
+各改定の差分は以下のフォーマットで `差分.md` に記載します:
+
+```markdown
+# X番号_タイトル - 事務改定差分
+
+## メンテナンス管理台帳との照合
+
+**台帳No.XXの記載**:
+- ボット名: XXX
+- 大分類: XXX
+- 変更箇所: 行番号X, Y, Z
+
+**変更行一覧（メンテ台帳 vs 実際の差分）**:
+
+| 台帳記載行 | Excel行 | 実際の差分 | 状態 |
+|-----------|---------|-----------|------|
+| X | Y | あり | 一致 |
+
+## ボット名-bot
+
+### ファイル: シナリオ_XXX.xlsx
+
+**カテゴリ**: Lv1=XXX
+**変更前シナリオExcelでの範囲**: 行X～行Y
+
+**黄色ハイライト行（変更前シナリオExcel）**: N行
+- 行番号: X, Y, Z
+
+---
+変更箇所 N: **カテゴリ内行X** (Excel行Y)
+質問遷移: A → B → C
+
+**LvN**:
+- 変更前: `...`
+- 変更後: `...`
+
+**合計 N 行に変更あり**
+```
+
+---
+
+## データ準備の詳細フロー
+
+### 変更前シナリオDB生成フロー
+
+```
+1. マージ版シナリオ (reference/マージ版シナリオ/最新/マージ版シナリオ_XXX-bot.xlsx)
+        ↓
+    + 修正前カテゴリファイル (手動でカテゴリを置換)
+        ↓ [自動化スクリプトなし - 手動作成]
+
+2. 変更前シナリオ (reference/変更前シナリオ/X.../X変更前シナリオ_XXX-bot.xlsx)
+        ↓
+   prepare_before_scenario.py (文字数列削除・リネーム)
+        ↓
+3. data/source/scenarios/revisions/revXXボット_シナリオデータ_YYYYMMDD.xlsx
+        ↓
+   build_db.py --revisions-only → DynamicDBManager
+        ↓
+4. data/vector_db/revXX_{bot}/ (ベクトルDB)
+```
+
+### 重要なスクリプト
+
+| スクリプト | 用途 |
+|-----------|------|
+| `scripts/prepare_before_scenario.py` | 変更前シナリオの前処理（列削除・リネーム） |
+| `scripts/build_db.py` | DB構築（回答支援AI用 + 改定別、統合スクリプト） |
+| `scripts/generate_correct_ids.py` | 正解ID対応表生成 |
+
+### DB構築コマンド
+
+```bash
+# 改定別DBのみ構築（Azure OpenAI + VertexAI 両方）
+python scripts/build_db.py --revisions-only
+
+# 全DB一括構築（回答支援AI用 + 改定別）
+python scripts/build_db.py --force
+```
+
+---
+
+## 正解ID抽出ロジック (generate_correct_ids.py)
+
+### 抽出パターン
+1. ボット名: `## smile-bot` 形式のセクションヘッダー
+2. 行番号リスト: `- 行番号: 129, 185` または `行番号: X, Y, Z`
+3. 変更箇所: `**カテゴリ内行X** (Excel行Y)` → Excel行Yを抽出
+
+### 出力
+- ファイル: `data/input/multi_stage_input.xlsx`
+- 列: 番号, 改定内容, 正解ID
+
+---
+
+## 既知の問題と注意事項
+
+### 空行問題
+**原因**: 修正前カテゴリファイルの末尾に空行が含まれている
+- 例: `修正前/喪失/シナリオ_スマイルタブレット_喪失_20250731.xlsx` の行132が空行
+- この空行が変更前シナリオにマージされ、Excel行365として残存
+
+**対応案**:
+1. `prepare_before_scenario.py` に空行フィルタリング追加: `df = df[df['Lv1'].notna()]`
+2. 元ファイルを手動で修正
+
+### 行番号の注意点
+- **台帳記載行**: メンテナンス管理台帳に記載された行番号（カテゴリ内の行番号）
+- **Excel行番号**: 変更前シナリオExcelでの実際の行番号（ヘッダー行1 + データ行）
+- 計算式: `Excel行番号 = カテゴリ開始行 + カテゴリ内行番号 - 1`
 
 ---
 
