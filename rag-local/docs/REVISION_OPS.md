@@ -166,7 +166,13 @@ python scripts/build_db.py --revisions-only
 ### Step 2: 評価実行
 
 ```bash
+# 両プロバイダーで実行（デフォルト）
 python apps/revision-ops/run_eval.py
+
+# プロバイダーを指定して実行
+python apps/revision-ops/run_eval.py --provider vertex   # VertexAI のみ
+python apps/revision-ops/run_eval.py --provider azure    # Azure のみ
+python apps/revision-ops/run_eval.py --provider both     # 両方（デフォルト）
 ```
 
 処理内容:

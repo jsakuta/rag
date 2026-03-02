@@ -10,9 +10,6 @@ from src.types.search_types import (
     MetadataDict,
     ReferenceDataDict,
     # dataclass
-    SearchResult,
-    MultiStageSearchResult,
-    VectorSearchResult,
     ParsedCombinedText,
     # 定数
     SearchResultKeys,
@@ -30,9 +27,6 @@ __all__ = [
     'MetadataDict',
     'ReferenceDataDict',
     # dataclass
-    'SearchResult',
-    'MultiStageSearchResult',
-    'VectorSearchResult',
     'ParsedCombinedText',
     # 定数
     'SearchResultKeys',

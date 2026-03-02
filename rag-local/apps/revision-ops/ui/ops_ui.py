@@ -60,6 +60,18 @@ for rev, config in _raw_revision_areas.items():
 INPUT_FILE = PROJECT_ROOT / "data" / "input" / "multi_stage_input.xlsx"
 
 
+def _detect_available_providers() -> Dict[str, str]:
+    """環境変数から利用可能なプロバイダーを検出"""
+    providers = {}
+    if os.getenv("GEMINI_PROJECT_ID"):
+        providers["vertex_ai"] = "VertexAI"
+    if os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_ENDPOINT"):
+        providers["azure_openai"] = "Azure"
+    if len(providers) >= 2:
+        providers = {"both": "両方", **providers}
+    return providers
+
+
 @st.cache_data(ttl=300)
 def load_revision_correct_ids() -> Dict[str, Tuple[str, List[str]]]:
     """改定番号 → (改定内容, 正解IDリスト) マッピングを読み込み"""
@@ -791,19 +803,21 @@ def run_streamlit_ui():
                 st.caption("キーワード検索: マッチする全件を返却します")
 
             st.markdown("---")
-            eval_provider_options = {
-                "both": "両方",
-                "azure_openai": "Azure",
-                "vertex_ai": "VertexAI",
-            }
-            eval_providers = st.radio(
-                "検索プロバイダー",
-                options=list(eval_provider_options.keys()),
-                format_func=lambda x: eval_provider_options[x],
-                key="eval_provider_radio",
-                horizontal=True,
-            )
-            st.session_state.selected_providers = eval_providers
+            eval_provider_options = _detect_available_providers()
+            if not eval_provider_options:
+                st.warning("利用可能なプロバイダーがありません。環境変数を確認してください。")
+            elif len(eval_provider_options) == 1:
+                only_key = next(iter(eval_provider_options))
+                st.session_state.selected_providers = only_key
+            else:
+                eval_providers = st.radio(
+                    "検索プロバイダー",
+                    options=list(eval_provider_options.keys()),
+                    format_func=lambda x: eval_provider_options[x],
+                    key="eval_provider_radio",
+                    horizontal=True,
+                )
+                st.session_state.selected_providers = eval_providers
 
         else:
             # === 影響調査モード ===
@@ -869,19 +883,21 @@ def run_streamlit_ui():
                 st.caption("キーワード検索: マッチする全件を返却します")
 
             st.markdown("---")
-            impact_provider_options = {
-                "both": "両方",
-                "azure_openai": "Azure",
-                "vertex_ai": "VertexAI",
-            }
-            impact_providers = st.radio(
-                "検索プロバイダー",
-                options=list(impact_provider_options.keys()),
-                format_func=lambda x: impact_provider_options[x],
-                key="impact_provider_radio",
-                horizontal=True,
-            )
-            st.session_state.selected_providers = impact_providers
+            impact_provider_options = _detect_available_providers()
+            if not impact_provider_options:
+                st.warning("利用可能なプロバイダーがありません。環境変数を確認してください。")
+            elif len(impact_provider_options) == 1:
+                only_key = next(iter(impact_provider_options))
+                st.session_state.selected_providers = only_key
+            else:
+                impact_providers = st.radio(
+                    "検索プロバイダー",
+                    options=list(impact_provider_options.keys()),
+                    format_func=lambda x: impact_provider_options[x],
+                    key="impact_provider_radio",
+                    horizontal=True,
+                )
+                st.session_state.selected_providers = impact_providers
 
         st.markdown("---")
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):

@@ -39,10 +39,10 @@ def get_available_business_areas() -> list:
     """利用可能な業務分野を動的に取得"""
     try:
         config = SearchConfig(base_dir=str(PROJECT_ROOT))
-        db_manager = DynamicDBManager(config)
-        areas = db_manager.get_all_business_areas(include_revisions=False)
-        if areas:
-            return areas
+        with DynamicDBManager(config) as db_manager:
+            areas = db_manager.get_all_business_areas(include_revisions=False)
+            if areas:
+                return areas
     except Exception as e:
         logger.warning(f"業務分野一覧の取得に失敗: {e}")
     return DEFAULT_BUSINESS_AREAS
@@ -212,8 +212,9 @@ def save_chat_history():
                         })
 
         if chat_data:
-            processor = Processor(st.session_state.config)
-            output_path = processor.output_handler.save_data(chat_data, mode="chat")
+            from src.handlers.output_handler import ExcelOutputHandler
+            output_handler = ExcelOutputHandler(st.session_state.config, app_prefix="answer")
+            output_path = output_handler.save_data(chat_data, mode="chat")
             if output_path:
                 st.sidebar.success(f"チャット履歴を保存しました: {Path(output_path).name}")
         else:
