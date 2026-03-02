@@ -200,8 +200,9 @@ MemoryError: Unable to allocate array
 
 1. バッチサイズを縮小:
 ```python
-# src/utils/gemini_embedding.py
-BATCH_SIZE = 5  # デフォルト値から減らす
+# config.py の SearchConfig クラス定数を変更
+EMBEDDING_BATCH_SIZE: int = 50   # デフォルト250から縮小
+VECTOR_DB_BATCH_SIZE: int = 50   # デフォルト100から縮小
 ```
 
 2. システムメモリを増強（推奨: 16GB以上）
@@ -273,8 +274,8 @@ google.api_core.exceptions.ResourceExhausted: 429 Quota exceeded
 
 2. バッチサイズを縮小:
 ```python
-# config.py
-BATCH_SIZE = 3  # 5 から減らす
+# config.py の SearchConfig クラス定数を変更
+EMBEDDING_BATCH_SIZE: int = 50   # デフォルト250から縮小
 ```
 
 3. Google Cloud Console でクォータ引き上げを申請
@@ -292,11 +293,7 @@ TimeoutError: Request timed out
 
 **解決策:**
 
-1. タイムアウト値を増やす:
-```python
-# config.py
-LLM_TIMEOUT = 60  # 30から増やす
-```
+1. 自動リトライを待つ（tenacity によるリトライ処理が組み込み済み）
 
 2. LLM分析を無効化:
 ```bash
@@ -304,6 +301,8 @@ ENABLE_LLM_ANALYSIS=false python apps/revision-ops/run_eval.py
 ```
 
 3. ネットワーク接続を確認
+
+4. Google Cloud Console でクォータ状況を確認
 
 ## Streamlit / SDK 警告
 
@@ -350,7 +349,7 @@ client = genai.Client(vertexai=True, project=..., location=...)
 client.models.embed_content(model="gemini-embedding-001", contents=...)
 ```
 
-**対応計画:** 6月の為替追加時に `src/` へ手が入るため、そのタイミングでセットで移行するのが効率的。移行対象ファイル: `src/utils/gemini_embedding.py`, `src/utils/auth.py`
+**移行対象ファイル:** `src/utils/gemini_embedding.py`, `src/utils/auth.py`
 
 **参照:** https://cloud.google.com/vertex-ai/generative-ai/docs/deprecations/genai-vertexai-sdk
 

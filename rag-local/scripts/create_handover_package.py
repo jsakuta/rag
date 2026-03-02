@@ -5,9 +5,11 @@
 Usage:
     python scripts/create_handover_package.py DEST
     python scripts/create_handover_package.py DEST --include-data
+    python scripts/create_handover_package.py DEST --include-examples
     python scripts/create_handover_package.py DEST --dry-run
 
 DEST に許可リストのファイルのみをコピーし、秘密情報の混入がないことを検証します。
+--include-examples を指定すると、バッチ処理やUIチャット履歴などの出力例を含めます。
 """
 
 import argparse
@@ -60,6 +62,19 @@ SECRET_PATTERNS = [
 
 # data/ 配下で --include-data 時のみ実データをコピーする対象
 DATA_DIRS = ["data/source/", "data/input/"]
+
+# 空ディレクトリとして常に作成する出力先構造
+OUTPUT_EMPTY_DIRS = ["data/output/latest/answer", "data/output/latest/rev"]
+
+# --- 出力例カテゴリ（--include-examples 時に latest/ から種類ごとに最新1件を選定） ---
+# 2軸（回答支援/運用保守）× 2種（バッチ/UI）= 4ファイル
+EXAMPLE_CATEGORIES = {
+    "回答支援×バッチ": "output_batch_*.xlsx",
+    "回答支援×UI": "output_chat_*.xlsx",
+    "運用保守×バッチ": "★最新版_*.xlsx",
+    "運用保守×UI": "eval_chat_history_*.xlsx",
+}
+EXAMPLE_OUTPUT_DIR = "data/output/examples"
 
 
 def _is_excluded(path: Path) -> bool:
@@ -121,9 +136,32 @@ def _collect_files(include_data: bool) -> list[tuple[Path, Path]]:
     return files
 
 
+def _collect_example_files() -> list[tuple[Path, Path]]:
+    """data/output/latest/ から種類ごとに最新1件を収集する（2軸×2種=4件）。"""
+    output_dir = PROJECT_ROOT / EXAMPLE_OUTPUT_DIR
+    if not output_dir.is_dir():
+        return []
+
+    files: list[tuple[Path, Path]] = []
+    for _category, pattern in EXAMPLE_CATEGORIES.items():
+        candidates = sorted(
+            (p for p in output_dir.glob(pattern) if p.is_file()),
+            reverse=True,
+        )
+        if candidates:
+            latest = candidates[0]
+            rel = latest.relative_to(PROJECT_ROOT)
+            files.append((latest, rel))
+
+    return files
+
+
 def _collect_data_empty_dirs() -> list[Path]:
     """data/ 配下の空ディレクトリ構造として作成すべきパスを収集する"""
     dirs: list[Path] = []
+    # 出力先の固定構造（answer/, rev/）
+    for output_dir in OUTPUT_EMPTY_DIRS:
+        dirs.append(Path(output_dir))
     for data_dir in DATA_DIRS:
         source = PROJECT_ROOT / data_dir
         if not source.is_dir():
@@ -170,7 +208,9 @@ def _format_size(size_bytes: int) -> str:
         return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
 
 
-def run(dest_path: Path, include_data: bool, dry_run: bool) -> int:
+def run(
+    dest_path: Path, include_data: bool, include_examples: bool, dry_run: bool
+) -> int:
     """メイン処理。成功時0、警告・エラー時1を返す。"""
     dest = dest_path.resolve()
 
@@ -182,6 +222,12 @@ def run(dest_path: Path, include_data: bool, dry_run: bool) -> int:
     # ファイル収集
     files = _collect_files(include_data)
 
+    # 出力例ファイル収集
+    example_files: list[tuple[Path, Path]] = []
+    if include_examples:
+        example_files = _collect_example_files()
+        files.extend(example_files)
+
     if not files:
         print("[ERROR] コピー対象ファイルが見つかりません。")
         print(f"  プロジェクトルート: {PROJECT_ROOT}")
@@ -192,6 +238,7 @@ def run(dest_path: Path, include_data: bool, dry_run: bool) -> int:
         print(f"[DRY-RUN] プロジェクトルート: {PROJECT_ROOT}")
         print(f"[DRY-RUN] 出力先: {dest}")
         print(f"[DRY-RUN] --include-data: {include_data}")
+        print(f"[DRY-RUN] --include-examples: {include_examples}")
         print()
 
         total_size = 0
@@ -209,6 +256,12 @@ def run(dest_path: Path, include_data: bool, dry_run: bool) -> int:
                 for d in sorted(empty_dirs):
                     print(f"  {d}/")
 
+        if example_files:
+            print()
+            print(f"[DRY-RUN] 出力例ファイル ({len(example_files)} 件):")
+            for _, rel in sorted(example_files, key=lambda x: x[1]):
+                print(f"  {rel}")
+
         print()
         print(f"[DRY-RUN] ファイル数: {len(files)}")
         print(f"[DRY-RUN] 合計サイズ: {_format_size(total_size)}")
@@ -218,6 +271,7 @@ def run(dest_path: Path, include_data: bool, dry_run: bool) -> int:
     print(f"プロジェクトルート: {PROJECT_ROOT}")
     print(f"出力先: {dest}")
     print(f"--include-data: {include_data}")
+    print(f"--include-examples: {include_examples}")
     print()
 
     copied_count = 0
@@ -248,6 +302,9 @@ def run(dest_path: Path, include_data: bool, dry_run: bool) -> int:
         if empty_dirs:
             print(f"空ディレクトリ作成: {len(empty_dirs)} ディレクトリ (data/)")
 
+    if example_files:
+        print(f"出力例ファイル: {len(example_files)} 件 (data/output/latest/)")
+
     if secrets:
         print()
         print("[WARNING] 秘密情報の可能性があるファイルが検出されました:")
@@ -277,6 +334,12 @@ def main() -> None:
         help="data/source/ と data/input/ の実データも含める（デフォルト: 空ディレクトリ構造のみ）",
     )
     parser.add_argument(
+        "--include-examples",
+        action="store_true",
+        default=False,
+        help="data/output/latest/ から出力例（種類ごとに最新1件 + ★付き）を含める",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
@@ -284,7 +347,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    sys.exit(run(args.dest, args.include_data, args.dry_run))
+    sys.exit(run(args.dest, args.include_data, args.include_examples, args.dry_run))
 
 
 if __name__ == "__main__":

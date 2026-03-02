@@ -130,6 +130,29 @@ class Processor:
 - Searcher + SearchStrategy による検索実行の管理
 - 結果の集約と整形（通常モード / 多段階検索モード）
 
+#### searcher.py - 検索統合管理
+
+```python
+class Searcher:
+    """Processor と SearchStrategy を仲介する統合検索クラス"""
+
+    def __init__(self, config, db_manager=None, embedding_model=None):
+        # 依存性注入対応（テスト時にモック可能）
+
+    def prepare_search(self, reference_data):
+        """参照データの読み込みとキーワードキャッシュ構築"""
+
+    def search(self, input_number, query_text, original_answer, input_file=None):
+        """SearchStrategy に委譲して検索実行"""
+```
+
+**責務:**
+- 動的ベクトルDB選択（業務分野・入力ファイルに基づく）
+- 埋め込みモデル・LLMの初期化管理
+- キーワード抽出・キャッシング（N+1問題解消）
+- ベクトル検索実行とスコア計算
+- SearchStrategy への検索委譲
+
 #### search/multi_stage_orchestrator.py - 多段階検索
 
 ```python
@@ -722,6 +745,68 @@ processor.process_data(mode="batch")
 
 # 件数制限付き
 processor.process_data(mode="batch", limit=10)
+```
+
+#### Searcher
+
+**モジュール:** `src/core/searcher.py`
+
+Processor と SearchStrategy を仲介する統合検索クラス。動的DB選択、キーワードキャッシング、検索委譲を管理する。
+
+```python
+class Searcher:
+    """メタデータ対応ハイブリッド検索クラス"""
+
+    def __init__(
+        self,
+        config: SearchConfig,
+        db_manager: Optional[DynamicDBManager] = None,
+        embedding_model: Optional[BaseEmbeddingModel] = None
+    ):
+        """
+        Args:
+            config: 検索設定
+            db_manager: 動的DB管理（省略時は自動生成）
+            embedding_model: 埋め込みモデル（省略時は自動生成）
+        """
+```
+
+##### メソッド
+
+###### prepare_search
+
+```python
+def prepare_search(self, reference_data: dict):
+    """
+    参照データの読み込みとベクトル化、キーワードキャッシュ構築
+
+    Args:
+        reference_data: 業務分野別の参照データ辞書
+    """
+```
+
+###### search
+
+```python
+def search(
+    self,
+    input_number: str,
+    query_text: str,
+    original_answer: str,
+    input_file: str = None
+) -> list:
+    """
+    SearchStrategy に委譲して検索実行
+
+    Args:
+        input_number: 入力番号
+        query_text: 検索クエリテキスト
+        original_answer: 元の回答
+        input_file: 入力ファイル名（動的DB選択用）
+
+    Returns:
+        検索結果のリスト
+    """
 ```
 
 #### JudgmentSupport

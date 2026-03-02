@@ -53,13 +53,15 @@ Stage 3: 結果をマージ＋カテゴリ分類
     - Original_Only: Stage 1のみで見つかった
     - LLM_Enhanced_Only: Stage 2のみで見つかった
     ↓
-閾値フィルタリング（≥0.45）
+フィルタリング（filter_mode による切替）
 ```
 
 ### 設定値
 | パラメータ | 値 | 説明 |
 |-----------|---|------|
-| THRESHOLD | 0.45 | 統合スコアの閾値 |
+| FILTER_MODE | top_k | フィルタリング方式（`top_k` / `threshold`） |
+| TOP_K | 130 | 上位件数（filter_mode=top_k 時に使用） |
+| THRESHOLDS | Azure=0.40, VertexAI=0.50 | プロバイダー別閾値（filter_mode=threshold 時に使用） |
 | VECTOR_WEIGHT | 0.9 | ベクトルスコアの重み |
 | MAX_RESULTS | 100 | 各検索の最大結果数 |
 
@@ -147,7 +149,7 @@ data/vector_db/
    # VertexAI
    VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 
-   # LLM分析の有効化（オプション、デフォルト: true）
+   # LLM分析の有効化（オプション、デフォルト: false）
    ENABLE_LLM_ANALYSIS=true
    ```
 
@@ -206,9 +208,9 @@ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
    | 改定番号 | ①②③④⑤⑥ |
    | 改定内容（先頭50文字） | クエリの概要 |
    | 正解ID数 | 正解IDの総数 |
-   | Azure_候補数 | Azure閾値0.45以上の候補数 |
+   | Azure_候補数 | Azure検索候補数（filter_mode=top_kなら上位K件、thresholdなら閾値以上） |
    | Azure_正解一致数 | Azure候補のうち正解数 |
-   | VertexAI_候補数 | VertexAI閾値0.45以上の候補数 |
+   | VertexAI_候補数 | VertexAI検索候補数（同上） |
    | VertexAI_正解一致数 | VertexAI候補のうち正解数 |
 
 2. **詳細シート（①～⑥）** - Azure / VertexAI 横並び
@@ -226,7 +228,7 @@ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
    | 列 | 説明 |
    |----|------|
    | Azure_シナリオID | 検索ヒットID |
-   | Azure_類似度 | ハイブリッドスコア（0.45以上） |
+   | Azure_類似度 | ハイブリッドスコア |
    | Azure_カテゴリ | Both / Original_Only / LLM_Enhanced_Only |
    | Azure_正解フラグ | TRUE / FALSE |
    | Azure_質問 | Search_Result_Q（全文） |
@@ -240,7 +242,7 @@ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
    | 列 | 説明 |
    |----|------|
    | VertexAI_シナリオID | 検索ヒットID |
-   | VertexAI_類似度 | ハイブリッドスコア（0.45以上） |
+   | VertexAI_類似度 | ハイブリッドスコア |
    | VertexAI_カテゴリ | Both / Original_Only / LLM_Enhanced_Only |
    | VertexAI_正解フラグ | TRUE / FALSE |
    | VertexAI_質問 | Search_Result_Q（全文） |

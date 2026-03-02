@@ -293,6 +293,9 @@ python scripts/create_handover_package.py ./handover_package
 # パッケージ作成（ソースデータ含む）
 python scripts/create_handover_package.py ./handover_package --include-data
 
+# パッケージ作成（出力例を含む）
+python scripts/create_handover_package.py ./handover_package --include-examples
+
 # 事前確認（コピーせず対象一覧のみ表示）
 python scripts/create_handover_package.py ./handover_package --dry-run
 ```
