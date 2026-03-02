@@ -2,16 +2,9 @@
 """ユーティリティモジュール"""
 
 from src.utils.logger import setup_logger
-from src.utils.db_version_manager import DBVersionManager, DBVersionInfo
-from src.utils.business_area_translator import (
-    BusinessAreaTranslator,
-    get_translator,
-)
+from src.utils.business_area_translator import BusinessAreaTranslator
 
 __all__ = [
     'setup_logger',
-    'DBVersionManager',
-    'DBVersionInfo',
     'BusinessAreaTranslator',
-    'get_translator',
 ]

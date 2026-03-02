@@ -58,7 +58,6 @@
 │  │ データベース管理                                    │   │
 │  │   ├─ dynamic_db_manager.py - 動的DB管理           │   │
 │  │   ├─ vector_db.py - ChromaDB ラッパー             │   │
-│  │   ├─ db_version_manager.py - バージョン管理       │   │
 │  │   └─ business_area_translator.py - 業務領域変換   │   │
 │  └────────────────────────────────────────────────────┘   │
 │  ┌────────────────────────────────────────────────────┐   │
@@ -333,7 +332,6 @@ main.py
   │       │   ├─ src/utils/gemini_embedding.py
   │       │   │   └─ src/utils/auth.py
   │       │   └─ src/utils/azure_embedding.py
-  │       ├─ src/utils/db_version_manager.py
   │       └─ src/utils/business_area_translator.py
   └─ src/utils/logger.py
 ```

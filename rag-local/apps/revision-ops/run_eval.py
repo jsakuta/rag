@@ -1166,7 +1166,7 @@ class RevisionEvaluator:
         for i, key in enumerate(keys):
             value = row_data.get(key, "")
             fmt = formats["correct"] if key == "正解フラグ" and value == "TRUE" else formats["cell"]
-            worksheet.write(row_num, start_col + i, value if value != "" else "", fmt)
+            worksheet.write(row_num, start_col + i, value, fmt)
 
     def _write_unfound_row(
         self, worksheet, row_num: int, start_col: int, row_data: Dict, formats: Dict[str, Any]
@@ -1174,7 +1174,7 @@ class RevisionEvaluator:
         keys = ["シナリオID", "変更内容", "ソースファイル", "質問", "回答"]
         for i, key in enumerate(keys):
             value = row_data.get(key, "")
-            worksheet.write(row_num, start_col + i, value if value != "" else "", formats["cell"])
+            worksheet.write(row_num, start_col + i, value, formats["cell"])
 
 
 def main() -> None:

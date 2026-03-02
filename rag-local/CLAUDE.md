@@ -225,7 +225,6 @@ rag-local/
 │       ├── gemini_embedding.py   # Gemini埋め込み
 │       ├── azure_embedding.py    # Azure埋め込み
 │       ├── auth.py               # Google Cloud認証
-│       ├── db_version_manager.py # DBバージョン管理
 │       ├── business_area_translator.py  # 業務領域変換
 │       └── logger.py             # ログ設定
 │
@@ -277,7 +276,7 @@ rag-local/
 #### データベース管理
 - **dynamic_db_manager.py**: 業務領域別DB管理、タイムスタンプ検証
 - **vector_db.py**: ChromaDB操作ラッパー
-- **db_version_manager.py**: DBバージョン管理
+
 
 #### 埋め込みモデル
 - **base_embedding.py**: 抽象基底クラス

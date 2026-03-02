@@ -155,25 +155,6 @@ class BusinessAreaTranslator:
 
 
 
-# グローバルインスタンス（シングルトンパターン）
-_default_translator: Optional[BusinessAreaTranslator] = None
-
-
-def get_translator(config_path: Optional[str] = None) -> BusinessAreaTranslator:
-    """デフォルトのBusinessAreaTranslatorインスタンスを取得
-
-    Args:
-        config_path: 設定ファイルのパス（初回のみ有効）
-
-    Returns:
-        BusinessAreaTranslator: 変換インスタンス
-    """
-    global _default_translator
-    if _default_translator is None:
-        _default_translator = BusinessAreaTranslator(config_path)
-    return _default_translator
-
-
 # エリア名の日本語表示用マッピング
 _AREA_DISPLAY_NAMES = {
     "naibujimu": "内部事務",
