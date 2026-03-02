@@ -16,7 +16,7 @@
 | [docs/API_REFERENCE.md](../docs/API_REFERENCE.md) | API仕様 |
 | [docs/SECURITY.md](../docs/SECURITY.md) | セキュリティガイド |
 | [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) | トラブルシューティング |
-| [docs/REVISION_EVALUATION.md](../docs/REVISION_EVALUATION.md) | 改定影響調査システム |
+| [docs/REVISION_OPS.md](../docs/REVISION_OPS.md) | 改定影響調査システム |
 | [docs/PROMPTS.md](../docs/PROMPTS.md) | プロンプト詳細 |
 | [docs/DB_BUILD_GUIDE.md](../docs/DB_BUILD_GUIDE.md) | DB構築ガイド（回答支援AI（類似回答検索）+ 改定別） |
 
@@ -184,8 +184,8 @@ rag-local/
 │   │   ├── main.py               # バッチ処理エントリーポイント
 │   │   └── ui/
 │   │       └── chat.py           # Streamlit UI
-│   └── revision-eval/            # 運用保守効率化AI（改定影響調査）
-│       └── evaluate_revisions.py # 評価実行
+│   └── revision-ops/             # 運用保守効率化AI（改定影響調査）
+│       └── run_eval.py           # 評価実行
 │
 ├── config.py                     # 設定管理
 ├── requirements.txt              # 依存パッケージ
@@ -198,7 +198,7 @@ rag-local/
 │   ├── API_REFERENCE.md          # API仕様
 │   ├── SECURITY.md               # セキュリティ
 │   ├── TROUBLESHOOTING.md        # トラブルシューティング
-│   ├── REVISION_EVALUATION.md    # 改定影響調査
+│   ├── REVISION_OPS.md           # 改定影響調査
 │   └── PROMPTS.md                # プロンプト詳細
 │
 ├── src/                          # 共有コアライブラリ

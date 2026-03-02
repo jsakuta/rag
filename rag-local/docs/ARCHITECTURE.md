@@ -300,12 +300,12 @@ class BaseEmbeddingModel(ABC):
    └─ VertexAI でベクトル化
        └─ data/vector_db/revXX/vertex_ai/
 3. 評価実行
-   ↓ scripts/evaluate_revisions.py
+   ↓ apps/revision-ops/run_eval.py
    ├─ 各改定内容をクエリとして検索
    ├─ 正解IDとの照合
    └─ Azure / VertexAI 横並び比較
 4. Excel出力
-   └─ data/output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
+   └─ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
 ```
 
 ---

@@ -7,7 +7,7 @@
 | AI | バッチ | UI | 用途 |
 |----|-------|-----|------|
 | **回答支援AI（類似回答検索）** | `apps/answer-support/main.py` | `apps/answer-support/ui/chat.py` | FAQ/シナリオ検索 |
-| **運用保守効率化AI（改定影響調査）** | `apps/revision-eval/evaluate_revisions.py` | `apps/revision-eval/ui/eval_ui.py` | 改定影響候補の調査 |
+| **運用保守効率化AI（改定影響調査）** | `apps/revision-ops/run_eval.py` | `apps/revision-ops/ui/ops_ui.py` | 改定影響候補の調査 |
 
 ---
 
@@ -60,10 +60,10 @@ streamlit run apps/answer-support/ui/chat.py
 
 ```bash
 # バッチ（Excel出力）
-python apps/revision-eval/evaluate_revisions.py
+python apps/revision-ops/run_eval.py
 
 # 評価UI
-streamlit run apps/revision-eval/ui/eval_ui.py
+streamlit run apps/revision-ops/ui/ops_ui.py
 ```
 
 ---
@@ -77,10 +77,10 @@ rag-local/
 │   │   ├── main.py               # バッチ処理エントリポイント
 │   │   └── ui/
 │   │       └── chat.py           # 回答支援 Streamlit UI
-│   └── revision-eval/            # 運用保守効率化AI（改定影響調査）
-│       ├── evaluate_revisions.py # バッチExcel出力
+│   └── revision-ops/             # 運用保守効率化AI（改定影響調査）
+│       ├── run_eval.py           # バッチExcel出力
 │       └── ui/
-│           └── eval_ui.py        # 評価 Streamlit UI
+│           └── ops_ui.py         # 改定影響調査 Streamlit UI
 ├── ui/
 │   └── shared.py                 # 共通UI部品（apps/*/ui/ から import）
 ├── src/                          # 共有コア（検索エンジン、DB管理等）
@@ -117,11 +117,11 @@ rag-local/
 python scripts/build_db.py --revisions-only
 
 # Step 2: 評価実行
-python apps/revision-eval/evaluate_revisions.py
-# → data/output/revision_evaluation_YYYYMMDD.xlsx
+python apps/revision-ops/run_eval.py
+# → data/output/latest/rev/rev_eval_batch_YYYYMMDD.xlsx
 ```
 
-詳細は [docs/REVISION_EVALUATION.md](./docs/REVISION_EVALUATION.md) を参照。
+詳細は [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) を参照。
 
 ---
 
@@ -159,6 +159,6 @@ python scripts/check_db_content.py
 | [docs/DB_BUILD_GUIDE.md](./docs/DB_BUILD_GUIDE.md) | DB構築ガイド |
 | [docs/GOOGLE_CLOUD_AUTH.md](./docs/GOOGLE_CLOUD_AUTH.md) | Google Cloud 認証設定 |
 | [docs/PROMPTS.md](./docs/PROMPTS.md) | プロンプト詳細 |
-| [docs/REVISION_EVALUATION.md](./docs/REVISION_EVALUATION.md) | 改定影響調査システム |
+| [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) | 改定影響調査システム |
 | [docs/SECURITY.md](./docs/SECURITY.md) | セキュリティガイド |
 | [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) | トラブルシューティング |

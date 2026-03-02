@@ -288,7 +288,7 @@ LLM_TIMEOUT = 60  # 30から増やす
 
 2. LLM分析を無効化:
 ```bash
-ENABLE_LLM_ANALYSIS=false python apps/revision-eval/evaluate_revisions.py
+ENABLE_LLM_ANALYSIS=false python apps/revision-ops/run_eval.py
 ```
 
 3. ネットワーク接続を確認

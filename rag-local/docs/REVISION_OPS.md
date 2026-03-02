@@ -1,4 +1,4 @@
-# 改定影響調査システム（多段階検索・横並び比較版）
+# 改定影響調査システム
 
 事務改定前のシナリオデータをベクトル化し、改定内容をクエリとして検索精度を評価するシステム。
 
@@ -15,7 +15,7 @@
    - 変更前シナリオExcelをベクトル化
    - Azure OpenAI / VertexAI 両方でDB構築
 
-2. evaluate_revisions.py（多段階検索版）
+2. run_eval.py（多段階検索版）
    - 多段階ハイブリッド検索を実行
      - Stage 1: 原文クエリでハイブリッド検索
      - Stage 2: LLM強化クエリでハイブリッド検索
@@ -169,7 +169,7 @@ python scripts/build_db.py --revisions-only
 ### Step 2: 評価実行
 
 ```bash
-python scripts/evaluate_revisions.py
+python apps/revision-ops/run_eval.py
 ```
 
 処理内容:
@@ -182,7 +182,7 @@ python scripts/evaluate_revisions.py
 
 ```bash
 # LLM分析を無効化して高速実行
-ENABLE_LLM_ANALYSIS=false python scripts/evaluate_revisions.py
+ENABLE_LLM_ANALYSIS=false python apps/revision-ops/run_eval.py
 ```
 
 ---
@@ -191,7 +191,7 @@ ENABLE_LLM_ANALYSIS=false python scripts/evaluate_revisions.py
 
 ### ファイル名
 ```
-data/output/revision_evaluation_YYYYMMDD_HHMMSS.xlsx
+data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
 ```
 
 ### シート構成
@@ -301,7 +301,7 @@ DBが存在しません: data/vector_db/rev01smile/azure_openai
 | ファイル | 説明 |
 |---------|------|
 | `scripts/build_db.py` | DB構築スクリプト（回答支援AI（類似回答検索）+ 改定別 統合） |
-| `scripts/evaluate_revisions.py` | 評価スクリプト（多段階検索版） |
+| `apps/revision-ops/run_eval.py` | 評価スクリプト（多段階検索版） |
 | `scripts/generate_correct_ids.py` | 正解ID対応表生成 |
 | `scripts/prepare_before_scenario.py` | 変更前シナリオの前処理 |
 | `src/core/search/multi_stage_orchestrator.py` | 多段階検索オーケストレーター |
