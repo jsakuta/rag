@@ -8,9 +8,10 @@ from datetime import datetime
 logger = setup_logger(__name__)
 
 class OutputHandler:
-    def __init__(self, config: SearchConfig):
+    def __init__(self, config: SearchConfig, app_prefix: str = ""):
         self.config = config
-        self.output_dir = os.path.join(config.base_dir, "data", "output", "latest")
+        base_output_dir = os.path.join(config.base_dir, "data", "output", "latest")
+        self.output_dir = os.path.join(base_output_dir, app_prefix) if app_prefix else base_output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
     def save_data(self, data: list):
@@ -27,11 +28,9 @@ class ExcelOutputHandler(OutputHandler):
         df = pd.DataFrame(data)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        param_summary = self.config.get_param_summary()
-        # ファイル名にモードを追加
         output_file = os.path.join(
             self.output_dir,
-            f"output_{mode}_{param_summary}_{timestamp}.xlsx"
+            f"answer_{mode}_{timestamp}.xlsx"
         )
 
         # ExcelWriter のオプションを修正
@@ -44,6 +43,7 @@ class ExcelOutputHandler(OutputHandler):
             with pd.ExcelWriter(output_file, **writer_options) as writer:
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
                 self._format_excel(writer, df)  # processor.py から移動
+                self._write_metadata_sheet(writer)
             logger.info(f"Results saved to: {output_file}")
             return output_file
         except Exception as e:
@@ -120,7 +120,7 @@ class ExcelOutputHandler(OutputHandler):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = os.path.join(
             self.output_dir,
-            f"output_{mode}_{self.config.get_param_summary()}_{timestamp}.xlsx"
+            f"answer_{mode}_{timestamp}.xlsx"
         )
 
         try:
@@ -138,6 +138,8 @@ class ExcelOutputHandler(OutputHandler):
 
                     output_df.to_excel(writer, index=False, sheet_name=sheet_name)
                     self._format_excel_multi_stage(writer, sheet_name, output_df)
+
+                self._write_metadata_sheet(writer)
 
             logger.info(f"Multi-stage results saved to: {output_file}")
             for name, cat_df in categories.items():
@@ -246,7 +248,7 @@ class ExcelOutputHandler(OutputHandler):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = os.path.join(
             self.output_dir,
-            f"output_{mode}_{self.config.get_param_summary()}_{timestamp}.xlsx"
+            f"answer_{mode}_{timestamp}.xlsx"
         )
 
         try:
@@ -254,6 +256,7 @@ class ExcelOutputHandler(OutputHandler):
                                 engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
                 df.to_excel(writer, index=False, sheet_name='比較結果')
                 self._format_excel_dual_provider(writer, df)
+                self._write_metadata_sheet(writer)
 
             logger.info(f"Dual provider results saved to: {output_file}")
             logger.info(f"  Total rows: {len(df)}")
@@ -419,14 +422,35 @@ class ExcelOutputHandler(OutputHandler):
                 else:
                     worksheet.write(row_num + 1, col_num, value, cell_format)
 
+    def _write_metadata_sheet(self, writer: pd.ExcelWriter):
+        """検索パラメータを Metadata シートに記録"""
+        metadata = {
+            "Parameter": [
+                "vector_weight", "keyword_weight", "search_mode",
+                "search_type", "top_k", "embedding_provider",
+                "embedding_model", "timestamp",
+            ],
+            "Value": [
+                self.config.vector_weight,
+                self.config.keyword_weight,
+                self.config.search_mode,
+                self.config.search_type,
+                self.config.top_k,
+                self.config.embedding_provider,
+                self.config.embedding_model,
+                datetime.now().isoformat(),
+            ],
+        }
+        pd.DataFrame(metadata).to_excel(writer, index=False, sheet_name="Metadata")
+
 
 # 他の出力形式 (CSV, JSONなど) のハンドラーもここに追加可能
 
 class OutputHandlerFactory:
     @staticmethod
-    def create(output_type: str, config: SearchConfig) -> OutputHandler:
+    def create(output_type: str, config: SearchConfig, app_prefix: str = "") -> OutputHandler:
         if output_type == "excel":
-            return ExcelOutputHandler(config)
+            return ExcelOutputHandler(config, app_prefix=app_prefix)
         # 他の出力形式に対応するハンドラーをここに追加
         else:
             raise ValueError(f"Unsupported output type: {output_type}")
