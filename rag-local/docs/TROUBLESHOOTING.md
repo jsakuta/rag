@@ -8,6 +8,7 @@
 - [データベース関連](#データベース関連)
 - [検索・処理関連](#検索処理関連)
 - [API関連](#api関連)
+- [Streamlit / SDK 警告](#streamlit--sdk-警告)
 - [UI関連](#ui関連)
 - [パフォーマンス関連](#パフォーマンス関連)
 
@@ -303,6 +304,55 @@ ENABLE_LLM_ANALYSIS=false python apps/revision-ops/run_eval.py
 ```
 
 3. ネットワーク接続を確認
+
+## Streamlit / SDK 警告
+
+### Streamlit 起動時にログが重複出力される
+
+**症状:**
+```
+業務分野設定を読み込みました: 15件 + 事務改定9件
+業務分野設定を読み込みました: 15件 + 事務改定9件
+業務分野設定を読み込みました: 15件 + 事務改定9件
+```
+
+**原因:**
+Streamlit はユーザー操作（業務分野選択、検索実行等）のたびにスクリプト全体を再実行する設計です。
+`DynamicDBManager` → `BusinessAreaTranslator` が再実行ごとに新規インスタンス化され、設定読み込みログが複数回出力されます。
+
+**影響:** なし（YAML読み込みはミリ秒単位のため、パフォーマンス影響は無視できる）。
+
+---
+
+### Vertex AI SDK 非推奨警告
+
+**症状:**
+```
+UserWarning: This feature is deprecated as of June 24, 2025 and will be removed on June 24, 2026.
+For details, see https://cloud.google.com/vertex-ai/generative-ai/docs/deprecations/genai-vertexai-sdk
+```
+
+**原因:**
+本プロジェクトで使用している `vertexai.language_models.TextEmbeddingModel`（`src/utils/gemini_embedding.py`）と `vertexai.init()`（`src/utils/auth.py`）が非推奨になりました。回答支援AI・運用保守AIの**両方**が VertexAI プロバイダー使用時に影響を受けます。
+
+**影響:** **2026年6月24日まで**は正常動作。それ以降は SDK リリースから該当モジュールが除外されます。
+
+**移行先:** `google-cloud-aiplatform` → `google-genai` SDK
+
+```python
+# 現行（非推奨）
+from vertexai.language_models import TextEmbeddingModel
+model = TextEmbeddingModel.from_pretrained("gemini-embedding-001")
+
+# 移行先
+from google import genai
+client = genai.Client(vertexai=True, project=..., location=...)
+client.models.embed_content(model="gemini-embedding-001", contents=...)
+```
+
+**対応計画:** 6月の為替追加時に `src/` へ手が入るため、そのタイミングでセットで移行するのが効率的。移行対象ファイル: `src/utils/gemini_embedding.py`, `src/utils/auth.py`
+
+**参照:** https://cloud.google.com/vertex-ai/generative-ai/docs/deprecations/genai-vertexai-sdk
 
 ---
 

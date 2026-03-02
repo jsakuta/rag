@@ -79,7 +79,7 @@ class BusinessAreaTranslator:
             self.constraints = config.get('collection_constraints', self.constraints)
             self.defaults = config.get('defaults', self.defaults)
 
-            logger.info(f"業務分野設定を読み込みました: {len(self.mappings)}件 + 事務改定{len(self.revision_mappings)}件")
+            logger.debug(f"業務分野設定を読み込みました: {len(self.mappings)}件 + 事務改定{len(self.revision_mappings)}件")
 
         except yaml.YAMLError as e:
             logger.warning(f"YAML解析エラー: {e}")
