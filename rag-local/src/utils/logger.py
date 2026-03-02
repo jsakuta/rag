@@ -334,20 +334,21 @@ def print_completion(output_file: str, elapsed_time: float = 0):
 
 
 def suppress_noise():
-    """サードパーティライブラリ + Streamlit のノイズログを抑制"""
+    """サードパーティライブラリのノイズログを抑制
+
+    Note: Streamlit の ScriptRunContext 警告は .streamlit/config.toml の
+    [logger] level = "error" で抑制済み（アプリコード実行前に効く）。
+    ここではアプリコード実行後に初期化されるサードパーティのみ対象。
+    """
     noisy_loggers = [
         "chromadb", "chromadb.config", "chromadb.telemetry",
         "httpx", "httpcore", "urllib3",
         "google.auth", "google.api_core", "google.cloud",
         "azure.core", "azure.identity",
-        "streamlit", "streamlit.logger",
         "altair",
     ]
     for name in noisy_loggers:
         logging.getLogger(name).setLevel(logging.WARNING)
-
-    # ScriptRunContext 警告を完全に抑制
-    logging.getLogger("streamlit.runtime.scriptrunner_utils").setLevel(logging.ERROR)
 
 
 def print_startup_summary(app_name: str, checks: list):
