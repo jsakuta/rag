@@ -1,4 +1,4 @@
-"""evaluate_revisions.py のキャッシュ機構テスト"""
+"""run_eval.py のキャッシュ機構テスト"""
 import importlib
 import sys
 from pathlib import Path
@@ -6,12 +6,12 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock, patch
 
-# apps/revision-eval はハイフン付きディレクトリのため importlib で読み込む
+# apps/revision-ops はハイフン付きディレクトリのため importlib で読み込む
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-_mod_path = PROJECT_ROOT / "apps" / "revision-eval" / "evaluate_revisions.py"
-_spec = importlib.util.spec_from_file_location("evaluate_revisions", _mod_path)
+_mod_path = PROJECT_ROOT / "apps" / "revision-ops" / "run_eval.py"
+_spec = importlib.util.spec_from_file_location("run_eval", _mod_path)
 _mod = importlib.util.module_from_spec(_spec)
-sys.modules["evaluate_revisions"] = _mod
+sys.modules["run_eval"] = _mod
 _spec.loader.exec_module(_mod)
 
 RevisionEvaluator = _mod.RevisionEvaluator

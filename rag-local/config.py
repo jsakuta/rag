@@ -282,7 +282,11 @@ class SearchConfig:
     }
 
     def get_param_summary(self) -> str:
-        """パラメータのサマリー文字列を生成（LLM拡張検索対応）"""
+        """パラメータのサマリー文字列を生成（LLM拡張検索対応）
+
+        Note: ファイル名への使用は廃止。Excel Metadata シートに移行済み。
+        ログ出力・デバッグ用に保持。
+        """
         hierarchy_flag = "h" if self.include_hierarchy_in_vector else "nh"
         search_flag = self.SEARCH_MODE_FLAGS.get(self.search_mode, "orig")
         return f"v{self.vector_weight:.1f}_k{self.keyword_weight:.1f}_{hierarchy_flag}_{search_flag}"

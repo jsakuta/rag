@@ -2,7 +2,7 @@
 
 このモジュールは以下から import される:
 - apps/answer-support/ui/chat.py（回答支援UI）
-- apps/revision-eval/ui/eval_ui.py（改定影響調査UI）
+- apps/revision-ops/ui/ops_ui.py（改定影響調査UI）
 
 責務: UIレンダリング部品 + 共通CSS + 共通セッション状態初期化
 Processor 等の重い依存は持たない（各UI側で管理する）。
@@ -220,4 +220,4 @@ def render_vector_weight_slider(default_value: float, key: Optional[str] = None)
 
 
 # 注: save_chat_history() は Processor に依存するため shared.py には含めない。
-# 各UI（chat.py, eval_ui.py）にそれぞれ配置する。
+# 各UI（chat.py, ops_ui.py）にそれぞれ配置する。
