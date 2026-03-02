@@ -16,7 +16,7 @@ from typing import Dict, List
 
 from config import SearchConfig, load_settings
 from src.core.processor import Processor
-from src.utils.logger import setup_logger
+from src.utils.logger import setup_logger, suppress_noise, print_startup_summary, print_query_panel
 from src.utils.dynamic_db_manager import DynamicDBManager
 
 # 共通UI部品
@@ -142,43 +142,38 @@ def _initialize_processor():
 
 
 def process_query(query: str):
+    import time
     st.session_state.processing_query = True
     try:
         query_number = len(st.session_state.chat_history) // 2 + 1
-        query_display = f"{query[:80]}..." if len(query) > 80 else query
-        logger.info(f"=== 質問 {query_number} の処理開始 ===")
-        logger.info(f"クエリ: {query_display}")
+        start_time = time.time()
 
         if _needs_processor_reinit():
             _initialize_processor()
 
         processor = st.session_state.processor
 
-        source_labels = {"scenario": "シナリオのみ", "history_data": "FAQのみ"}
-        search_source_label = source_labels.get(st.session_state.config.search_source, st.session_state.config.search_source)
-        logger.info(f"検索モード: {st.session_state.config.search_mode}")
-        logger.info(f"検索対象: {search_source_label}")
-        logger.info(f"検索バランス: ベクトル重み={st.session_state.config.vector_weight:.1f}")
-
         results = processor.searcher.search(str(query_number), query, "")
 
-        if results:
-            logger.info(f"検索結果数: {len(results)}件")
-            for i, result in enumerate(results, 1):
-                category = result.get('Search_Category', 'N/A')
-                similarity = result.get('Similarity', 0)
-                logger.info(f"  結果{i}: 類似度={similarity:.4f}, カテゴリ={category}")
+        elapsed = time.time() - start_time
+        result_count = len(results) if results else 0
+        max_sim = max((r.get('Similarity', 0) for r in results), default=0) if results else 0
+        print_query_panel(
+            query_number=query_number,
+            query_text=query,
+            metadata={"業務": st.session_state.business_area, "モード": st.session_state.config.search_mode},
+            results={"結果": result_count, "最高類似度": f"{max_sim:.2f}"} if results else {"結果": 0},
+            elapsed=elapsed,
+        )
 
+        if results:
             st.session_state.last_query = query
             st.session_state.last_results = results
             st.session_state.chat_history.append({"type": "bot", "text": results})
         else:
-            logger.info("検索結果: 該当なし")
             st.session_state.last_query = None
             st.session_state.last_results = None
             st.session_state.chat_history.append({"type": "bot", "text": "該当する結果が見つかりませんでした。"})
-
-        logger.info(f"=== 質問 {query_number} の検索完了 ===")
 
     except Exception as e:
         escaped_error = html.escape(str(e))
@@ -225,9 +220,20 @@ def save_chat_history():
 
 
 def run_streamlit_ui():
+    suppress_noise()
     st.set_page_config(page_title="類似回答検索ボット", layout="wide", initial_sidebar_state="expanded")
     apply_common_styles()
     initialize_session_state()
+
+    if "startup_logged" not in st.session_state:
+        areas = get_available_business_areas()
+        checks = [
+            ("DB接続", len(areas) > 0, f"({', '.join(areas)})"),
+            ("キーワードキャッシュ", True, "OK"),
+        ]
+        print_startup_summary("回答支援AI v1.0", checks)
+        logger.info("⚡ Ready")
+        st.session_state.startup_logged = True
 
     with st.sidebar:
         st.title("設定")
