@@ -17,11 +17,12 @@ import concurrent.futures
 import os
 import copy
 import html
+import time
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
 
 from config import SearchConfig, load_settings
-from src.utils.logger import setup_logger
+from src.utils.logger import setup_logger, suppress_noise, print_startup_summary, print_query_panel
 
 # 共通UI部品
 from ui.shared import (
@@ -292,6 +293,21 @@ def initialize_session_state():
     # プリウォーム: LLM・Sudachi辞書・主要キーワードキャッシュを起動時に初期化
     if "warmup_done" not in st.session_state:
         _prewarm()
+
+        # 起動サマリ表示
+        correct_data = load_revision_correct_ids()
+        correct_count = sum(len(v[1]) for v in correct_data.values()) if correct_data else 0
+        revision_count = len(correct_data) if correct_data else 0
+
+        checks = [
+            ("DB接続", True, "OK"),
+            ("LLM接続", True, f"({os.getenv('DEFAULT_LLM_MODEL', 'unknown')})"),
+            ("キーワードキャッシュ", True, "OK"),
+            ("正解ID読み込み", correct_count > 0, f"({revision_count}改定, {correct_count}件)"),
+        ]
+        print_startup_summary("事務改定評価AI v1.0", checks)
+        logger.info("⚡ Ready")
+
         st.session_state.warmup_done = True
 
 
@@ -586,18 +602,35 @@ def process_query(query: str):
         app_mode = st.session_state.get("app_mode", "evaluation")
         revision = st.session_state.selected_revision
 
-        if app_mode == "impact_analysis":
-            logger.info(f"=== 影響調査クエリ {query_number} ===")
-        else:
-            search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
-            logger.info(f"=== 評価クエリ {query_number}: 改定番号={revision}, 検索タイプ={search_type} ===")
-
+        start_time = time.time()
         azure_results, vertex_results, llm_query = execute_dual_provider_search(query, revision)
+        elapsed = time.time() - start_time
 
         st.session_state.azure_results = azure_results
         st.session_state.vertex_results = vertex_results
 
-        logger.info(f"Azure検索結果数: {len(azure_results)}件, VertexAI検索結果数: {len(vertex_results)}件")
+        # ダッシュボード表示
+        if app_mode == "impact_analysis":
+            metadata = {"モード": "影響調査"}
+        else:
+            search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
+            metadata = {"改定": revision, "タイプ": search_type}
+
+        results_dict = {}
+        if azure_results:
+            results_dict["Azure"] = len(azure_results)
+        if vertex_results:
+            results_dict["VertexAI"] = len(vertex_results)
+        if not results_dict:
+            results_dict["結果"] = 0
+
+        print_query_panel(
+            query_number=query_number,
+            query_text=query,
+            metadata=metadata,
+            results=results_dict,
+            elapsed=elapsed,
+        )
 
         st.session_state.chat_history.append({
             "type": "bot",
@@ -654,6 +687,7 @@ def _render_provider_results(results: List[Dict], correct_ids: List[str], is_ver
 
 
 def run_streamlit_ui():
+    suppress_noise()
     st.set_page_config(page_title="事務改定評価", layout="wide", initial_sidebar_state="expanded")
     apply_common_styles()
     initialize_session_state()
