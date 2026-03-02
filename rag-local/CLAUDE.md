@@ -185,7 +185,9 @@ rag-local/
 │   │   └── ui/
 │   │       └── chat.py           # Streamlit UI
 │   └── revision-ops/             # 運用保守効率化AI（改定影響調査）
-│       └── run_eval.py           # 評価実行
+│       ├── run_eval.py           # バッチExcel出力
+│       └── ui/
+│           └── ops_ui.py         # 改定影響調査 Streamlit UI
 │
 ├── config.py                     # 設定管理
 ├── requirements.txt              # 依存パッケージ
