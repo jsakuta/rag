@@ -330,3 +330,20 @@ def print_completion(output_file: str, elapsed_time: float = 0):
     else:
         print(f"\n✓ 評価完了")
         print(f"  出力: {output_file}")
+
+
+def suppress_noise():
+    """サードパーティライブラリ + Streamlit のノイズログを抑制"""
+    noisy_loggers = [
+        "chromadb", "chromadb.config", "chromadb.telemetry",
+        "httpx", "httpcore", "urllib3",
+        "google.auth", "google.api_core", "google.cloud",
+        "azure.core", "azure.identity",
+        "streamlit", "streamlit.logger",
+        "altair",
+    ]
+    for name in noisy_loggers:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+    # ScriptRunContext 警告を完全に抑制
+    logging.getLogger("streamlit.runtime.scriptrunner_utils").setLevel(logging.ERROR)
