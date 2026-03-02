@@ -147,7 +147,7 @@ class SearchConfig:
     llm_provider: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_PROVIDER", ""))
     llm_model: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_MODEL", ""))
     vector_weight: float = DEFAULT_VECTOR_WEIGHT
-    keyword_weight: float = field(init=False)  # keyword_weight は vector_weight から自動計算
+    # keyword_weight は @property で vector_weight から自動計算
     base_dir: str = "."
     input_type: str = "excel"  # 新規: 入力ファイル形式
     output_type: str = "excel" # 新規: 出力ファイル形式
@@ -199,7 +199,6 @@ class SearchConfig:
         # Input Validation: 数値パラメータの範囲検証
         if not 0 <= self.vector_weight <= 1:
             raise ValueError("vector_weight must be between 0 and 1")
-        self.keyword_weight = 1.0 - self.vector_weight
         self.base_dir = os.path.abspath(self.base_dir)
 
         # Input Validation: top_k（1以上の整数）
@@ -280,6 +279,11 @@ class SearchConfig:
         "llm_enhanced": "llm",
         "original": "orig"
     }
+
+    @property
+    def keyword_weight(self) -> float:
+        """vector_weight から自動計算（常に 1.0 - vector_weight）"""
+        return 1.0 - self.vector_weight
 
     def get_param_summary(self) -> str:
         """パラメータのサマリー文字列を生成（LLM拡張検索対応）

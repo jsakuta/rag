@@ -95,31 +95,26 @@ def extract_bot_name_from_area(area: str) -> str:
     return resolve_bot_name(area, AREA_TO_BOT)
 
 
-def build_scenario_id(result: Dict) -> str:
-    """検索結果からシナリオIDを構築"""
-    sheet_name = result.get("Sheet_Name", "")
-    row_index = result.get("Row_Index", "")
+def build_scenario_id(result: Dict, area: str = "") -> str:
+    """検索結果からシナリオIDを構築
 
-    if not sheet_name or row_index == "":
-        return ""
-
-    try:
-        excel_row = int(row_index) + 2
-        bot_name = extract_bot_name_from_category(sheet_name)
-        return f"{bot_name}_{excel_row}"
-    except (ValueError, TypeError):
-        return ""
-
-
-def build_scenario_id_from_area(result: Dict, area: str) -> str:
-    """エリア名を使用してシナリオIDを構築"""
+    Args:
+        result: 検索結果 dict
+        area: エリア名（指定時はsubstring-match、未指定時はSheet_Nameから辞書参照）
+    """
     row_index = result.get("Row_Index", "")
     if row_index == "":
         return ""
 
     try:
         excel_row = int(row_index) + 2
-        bot_name = extract_bot_name_from_area(area)
+        if area:
+            bot_name = extract_bot_name_from_area(area)
+        else:
+            sheet_name = result.get("Sheet_Name", "")
+            if not sheet_name:
+                return ""
+            bot_name = extract_bot_name_from_category(sheet_name)
         return f"{bot_name}_{excel_row}"
     except (ValueError, TypeError):
         return ""
@@ -127,10 +122,7 @@ def build_scenario_id_from_area(result: Dict, area: str) -> str:
 
 def check_if_correct(result: Dict, correct_ids: List[str], area: Optional[str] = None) -> Tuple[str, bool]:
     """検索結果が正解IDとマッチするか判定"""
-    if area:
-        scenario_id = build_scenario_id_from_area(result, area)
-    else:
-        scenario_id = build_scenario_id(result)
+    scenario_id = build_scenario_id(result, area)
 
     is_correct = scenario_id in correct_ids if scenario_id else False
     return scenario_id, is_correct
@@ -783,7 +775,6 @@ def run_streamlit_ui():
                 )
                 weight = render_vector_weight_slider(default_vector_weight, key="eval_vector_weight")
                 st.session_state.config.vector_weight = weight
-                st.session_state.config.keyword_weight = 1.0 - weight
 
                 st.markdown("---")
                 eval_top_k = st.number_input(
@@ -864,7 +855,6 @@ def run_streamlit_ui():
             if impact_search_type == "hybrid":
                 weight = render_vector_weight_slider(DEFAULT_VECTOR_WEIGHT, key="impact_vector_weight")
                 st.session_state.config.vector_weight = weight
-                st.session_state.config.keyword_weight = 1.0 - weight
 
                 impact_top_k = st.number_input(
                     "候補数",

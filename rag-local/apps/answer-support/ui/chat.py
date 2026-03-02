@@ -249,7 +249,6 @@ def run_streamlit_ui():
 
             weight = render_vector_weight_slider(st.session_state.config.vector_weight)
             st.session_state.config.vector_weight = weight
-            st.session_state.config.keyword_weight = 1.0 - weight
 
             search_modes = ["original", "llm_enhanced"]
             mode_labels = {"original": "原文検索", "llm_enhanced": "LLMクエリ検索"}

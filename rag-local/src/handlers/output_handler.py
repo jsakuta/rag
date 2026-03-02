@@ -18,6 +18,11 @@ class OutputHandler:
         """データを保存"""
         raise NotImplementedError
 
+    def _make_output_path(self, mode: str) -> str:
+        """タイムスタンプ付き出力ファイルパスを生成"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return os.path.join(self.output_dir, f"answer_{mode}_{timestamp}.xlsx")
+
 class ExcelOutputHandler(OutputHandler):
     def save_data(self, data: list, mode: str = "batch"):
         if not data:
@@ -26,12 +31,7 @@ class ExcelOutputHandler(OutputHandler):
         
         # dataが空でないことを確認してからDataFrameを作成
         df = pd.DataFrame(data)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = os.path.join(
-            self.output_dir,
-            f"answer_{mode}_{timestamp}.xlsx"
-        )
+        output_file = self._make_output_path(mode)
 
         # ExcelWriter のオプションを修正
         writer_options = {
@@ -117,11 +117,7 @@ class ExcelOutputHandler(OutputHandler):
             for name in ['Both', 'Original_Only', 'LLM_Enhanced_Only']
         }
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = os.path.join(
-            self.output_dir,
-            f"answer_{mode}_{timestamp}.xlsx"
-        )
+        output_file = self._make_output_path(mode)
 
         try:
             with pd.ExcelWriter(output_file, engine='xlsxwriter',
@@ -245,11 +241,7 @@ class ExcelOutputHandler(OutputHandler):
 
         df = pd.DataFrame(merged_data)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = os.path.join(
-            self.output_dir,
-            f"answer_{mode}_{timestamp}.xlsx"
-        )
+        output_file = self._make_output_path(mode)
 
         try:
             with pd.ExcelWriter(output_file, engine='xlsxwriter',
