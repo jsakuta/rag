@@ -20,7 +20,7 @@ class Processor:
     def __init__(self, config: SearchConfig):
         self.config = config
         self.input_handler = InputHandlerFactory.create(config.input_type, config)
-        self.output_handler = OutputHandlerFactory.create(config.output_type, config)
+        self.output_handler = OutputHandlerFactory.create(config.output_type, config, app_prefix="answer")
         self.searcher = Searcher(config)
         # 参照データ用のハンドラーを別途作成
         self.reference_handler = InputHandlerFactory.create(config.reference_type, config)
