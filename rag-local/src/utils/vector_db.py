@@ -37,7 +37,7 @@ class LRUCache:
                 if len(self._cache) >= self._max_size:
                     # 最も古いエントリを削除
                     oldest_key, oldest_value = self._cache.popitem(last=False)
-                    logger.info(f"LRUCache: Evicting oldest entry: {oldest_key}")
+                    logger.debug(f"LRUCache: Evicting oldest entry: {oldest_key}")
                     # ChromaDBクライアントの場合はクローズを試みる
                     if hasattr(oldest_value, '_server') and oldest_value._server:
                         try:
@@ -84,7 +84,7 @@ class MetadataVectorDB:
                     )
                 )
                 self._client_cache.put(self.db_path, cached_client)
-                logger.info(f"New ChromaDB client created for {self.db_path}")
+                logger.debug(f"New ChromaDB client created for {self.db_path}")
             self.client = cached_client
         
         # コレクションの取得または作成
@@ -93,7 +93,7 @@ class MetadataVectorDB:
             
         try:
             self.collection = self.client.get_collection(name=self.collection_name)
-            logger.info(f"Existing collection '{self.collection_name}' loaded")
+            logger.debug(f"Existing collection '{self.collection_name}' loaded")
         except (ValueError, ChromaNotFoundError) as e:
             # コレクションが存在しない場合（ChromaDBのバージョンにより例外型が異なる）
             logger.debug(f"Collection not found, creating new one: {e}")
@@ -104,7 +104,7 @@ class MetadataVectorDB:
                     "hnsw:space": "cosine"  # コサイン距離を明示指定
                 }
             )
-            logger.info(f"New collection '{self.collection_name}' created")
+            logger.debug(f"New collection '{self.collection_name}' created")
         except Exception as e:
             logger.error(f"Unexpected error accessing collection '{self.collection_name}': {e}")
             raise
@@ -182,7 +182,7 @@ class MetadataVectorDB:
                 ids=batch_ids
             )
 
-        logger.info(f"Added {len(texts)} documents to vector database")
+        logger.debug(f"Added {len(texts)} documents to vector database")
     
     # セキュリティ: 許可されたメタデータキーと期待される型のホワイトリスト
     ALLOWED_METADATA_KEYS = {
@@ -273,5 +273,5 @@ class MetadataVectorDB:
     def delete_collection(self) -> None:
         """コレクションを削除"""
         self.client.delete_collection(name=self.collection_name)
-        logger.info(f"Collection '{self.collection_name}' deleted")
+        logger.debug(f"Collection '{self.collection_name}' deleted")
     

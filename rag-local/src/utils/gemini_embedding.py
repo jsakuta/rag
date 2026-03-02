@@ -74,7 +74,7 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
                     instance._init_project_id = config.gemini_project_id
                     # 完全に初期化が完了してからクラス変数に代入
                     cls._instance = instance
-                    logger.info("GeminiEmbeddingModel singleton instance created")
+                    logger.debug("GeminiEmbeddingModel singleton instance created")
         else:
             # 異なる設定で呼び出された場合は警告（primitive values で比較）
             if hasattr(cls._instance, '_init_model_name'):
@@ -101,7 +101,7 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
             model_name = self.config.embedding_model or "gemini-embedding-001"
             model = TextEmbeddingModel.from_pretrained(model_name)
 
-            logger.info(f"Gemini Embedding API initialized successfully (model: {model_name})")
+            logger.debug(f"Gemini Embedding API initialized successfully (model: {model_name})")
             return model
 
         except Exception as e:
@@ -174,7 +174,7 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
             # numpy配列に変換
             result = np.array(all_embeddings)
 
-            logger.info(f"Generated embeddings for {len(texts)} texts using Gemini")
+            logger.debug(f"Generated embeddings for {len(texts)} texts using Gemini")
             return result
 
         except Exception as e:

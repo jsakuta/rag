@@ -38,7 +38,7 @@ class VectorSearchEngine:
         self.embedding_model = embedding_model
         self.vector_db = vector_db
 
-        logger.info("VectorSearchEngineを初期化しました")
+        logger.debug("VectorSearchEngineを初期化しました")
 
     def encode_query(self, query: str) -> List[float]:
         """クエリをベクトルに変換
@@ -77,7 +77,7 @@ class VectorSearchEngine:
         query_vector = self.encode_query(query)
 
         if filter_metadata:
-            logger.info(f"  Search source filter: {filter_metadata}")
+            logger.debug(f"  Search source filter: {filter_metadata}")
 
         search_results = self.vector_db.search(
             query_embedding=query_vector,
@@ -85,14 +85,14 @@ class VectorSearchEngine:
             filter_metadata=filter_metadata
         )
 
-        logger.info(f"  Vector search returned {len(search_results)} results")
+        logger.debug(f"  Vector search returned {len(search_results)} results")
 
         # 検索結果のソース分布をログ出力
         source_counts: Dict[str, int] = {}
         for result in search_results:
             source = result['metadata'].get('source', 'unknown')
             source_counts[source] = source_counts.get(source, 0) + 1
-        logger.info(f"  Search results by source: {source_counts}")
+        logger.debug(f"  Search results by source: {source_counts}")
 
         return search_results
 

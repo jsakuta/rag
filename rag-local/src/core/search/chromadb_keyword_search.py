@@ -6,7 +6,6 @@
 ChromaDB の collection.get() で全件取得し、Python側でキーワードマッチングを行う。
 """
 import os
-import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -17,7 +16,8 @@ from chromadb.errors import NotFoundError as ChromaNotFoundError
 from src.core.search.keyword_search_engine import KeywordSearchEngine
 from src.core.search.text_combiner import get_text_combiner
 
-logger = logging.getLogger(__name__)
+from src.utils.logger import setup_logger
+logger = setup_logger(__name__)
 
 
 @dataclass
@@ -88,10 +88,10 @@ class ChromaDBKeywordSearcher:
         """
         keywords = self.keyword_engine.extract_keywords(query)
         if not keywords:
-            logger.info("キーワード抽出結果が空です")
+            logger.debug("キーワード抽出結果が空です")
             return []
 
-        logger.info(f"抽出キーワード: {keywords}")
+        logger.debug(f"抽出キーワード: {keywords}")
         all_results: List[MatchResult] = []
 
         for col_name in collection_names:
@@ -145,7 +145,7 @@ class ChromaDBKeywordSearcher:
         documents, metadatas = self._get_collection_data(collection_name, provider)
 
         if not documents:
-            logger.info(f"{collection_name}: ドキュメントなし")
+            logger.debug(f"{collection_name}: ドキュメントなし")
             return []
 
         area = self.extract_area(collection_name)
@@ -180,7 +180,7 @@ class ChromaDBKeywordSearcher:
                 source=meta.get("source", "unknown"),
             ))
 
-        logger.info(f"{collection_name}: {len(matched)}件ヒット（キーワード検索）")
+        logger.debug(f"{collection_name}: {len(matched)}件ヒット（キーワード検索）")
         return matched
 
     @staticmethod

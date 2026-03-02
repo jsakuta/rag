@@ -77,7 +77,7 @@ class MultiStageOrchestrator:
         self.filter_mode = filter_mode
         self.top_k = top_k
 
-        logger.info("MultiStageOrchestratorを初期化しました")
+        logger.debug("MultiStageOrchestratorを初期化しました")
 
     def execute(
         self,
@@ -101,11 +101,11 @@ class MultiStageOrchestrator:
         """
         logger.info(f"=== 多段階OR検索開始 (No.{input_number}) ===")
         filter_info = f"TOP-K: {self.top_k}" if self.filter_mode == "top_k" else f"Threshold: {self.threshold}"
-        logger.info(f"  FilterMode: {self.filter_mode}, {filter_info}, Max: {self.max_results}")
+        logger.debug(f"  FilterMode: {self.filter_mode}, {filter_info}, Max: {self.max_results}")
 
         # キーワード抽出
         keywords = self.keyword_engine.extract_keywords(query_text)
-        logger.info(f"  Keywords: {keywords}")
+        logger.debug(f"  Keywords: {keywords}")
 
         # Stage 1: 原文検索
         original_results = self._execute_hybrid_search(
@@ -283,7 +283,7 @@ class MultiStageOrchestrator:
         original_only_ids = original_ids - llm_ids
         llm_only_ids = llm_ids - original_ids
 
-        logger.info(f"    Both: {len(both_ids)}, Original_Only: {len(original_only_ids)}, LLM_Only: {len(llm_only_ids)}")
+        logger.debug(f"    Both: {len(both_ids)}, Original_Only: {len(original_only_ids)}, LLM_Only: {len(llm_only_ids)}")
 
         merged_results: List[MultiStageSearchResultDict] = []
         processed_ids: Set[str] = set()

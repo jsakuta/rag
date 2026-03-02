@@ -40,7 +40,7 @@ class KeywordSearchEngine:
             with cls._tokenizer_lock:
                 if cls._shared_tokenizer is None:  # Double-checked locking
                     cls._shared_tokenizer = Dictionary().create()
-                    logger.info("Sudachi辞書を共有インスタンスとして初期化")
+                    logger.debug("Sudachi辞書を共有インスタンスとして初期化")
         return cls._shared_tokenizer
 
     def __init__(
@@ -62,7 +62,7 @@ class KeywordSearchEngine:
         # パフォーマンス: キーワードキャッシュ（N+1問題解消）
         self._keyword_cache: Dict[int, Set[str]] = {}
 
-        logger.info("KeywordSearchEngineを初期化しました")
+        logger.debug("KeywordSearchEngineを初期化しました")
 
     def extract_keywords(self, text: str, top_k: int = 5) -> List[str]:
         """テキストからキーワードを抽出
@@ -170,7 +170,7 @@ class KeywordSearchEngine:
         if cache_path and self._try_load_cache(cache_path, len(queries), content_hash):
             return
 
-        logger.info("キーワードキャッシュを構築中...")
+        logger.debug("キーワードキャッシュを構築中...")
         self._keyword_cache = {}
 
         active_count = 0
@@ -181,7 +181,7 @@ class KeywordSearchEngine:
             else:
                 self._keyword_cache[i] = set()
 
-        logger.info(f"キーワードキャッシュ構築完了: {active_count}/{len(queries)}件")
+        logger.debug(f"キーワードキャッシュ構築完了: {active_count}/{len(queries)}件")
 
         if cache_path:
             self._save_cache(cache_path, len(queries), content_hash)
@@ -202,13 +202,13 @@ class KeywordSearchEngine:
             with open(cache_path, "r", encoding="utf-8") as f:
                 raw = json.load(f)
             if raw.get("count") != expected_count:
-                logger.info(f"キャッシュ件数不一致 ({raw.get('count')} != {expected_count}), 再構築")
+                logger.debug(f"キャッシュ件数不一致 ({raw.get('count')} != {expected_count}), 再構築")
                 return False
             if raw.get("hash") != content_hash:
-                logger.info("キャッシュコンテンツハッシュ不一致, 再構築")
+                logger.debug("キャッシュコンテンツハッシュ不一致, 再構築")
                 return False
             self._keyword_cache = {int(k): set(v) for k, v in raw["data"].items()}
-            logger.info(f"キーワードキャッシュをディスクから読み込み: {len(self._keyword_cache)}件")
+            logger.debug(f"キーワードキャッシュをディスクから読み込み: {len(self._keyword_cache)}件")
             return True
         except Exception as e:
             logger.warning(f"キャッシュ読み込み失敗: {e}")
@@ -225,7 +225,7 @@ class KeywordSearchEngine:
             }
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(raw, f, ensure_ascii=False)
-            logger.info(f"キーワードキャッシュをディスクに保存: {cache_path}")
+            logger.debug(f"キーワードキャッシュをディスクに保存: {cache_path}")
         except Exception as e:
             logger.warning(f"キャッシュ保存失敗: {e}")
 
