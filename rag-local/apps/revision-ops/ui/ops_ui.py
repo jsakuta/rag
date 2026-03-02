@@ -23,6 +23,7 @@ import pandas as pd
 from typing import Dict, List, Optional, Tuple
 
 from config import SearchConfig, load_settings
+from src.utils.business_area_translator import resolve_bot_name
 from src.utils.logger import setup_logger, suppress_noise, print_startup_summary, print_query_panel
 
 # 共通UI部品
@@ -91,7 +92,6 @@ def extract_bot_name_from_category(category: str) -> str:
 
 def extract_bot_name_from_area(area: str) -> str:
     """エリア名からボット名を抽出"""
-    from src.utils.business_area_translator import resolve_bot_name
     return resolve_bot_name(area, AREA_TO_BOT)
 
 
@@ -122,7 +122,7 @@ def build_scenario_id(result: Dict, area: str = "") -> str:
 
 def check_if_correct(result: Dict, correct_ids: List[str], area: Optional[str] = None) -> Tuple[str, bool]:
     """検索結果が正解IDとマッチするか判定"""
-    scenario_id = build_scenario_id(result, area)
+    scenario_id = build_scenario_id(result, area or "")
 
     is_correct = scenario_id in correct_ids if scenario_id else False
     return scenario_id, is_correct

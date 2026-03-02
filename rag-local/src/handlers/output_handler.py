@@ -18,12 +18,12 @@ class OutputHandler:
         """データを保存"""
         raise NotImplementedError
 
+class ExcelOutputHandler(OutputHandler):
     def _make_output_path(self, mode: str) -> str:
         """タイムスタンプ付き出力ファイルパスを生成"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return os.path.join(self.output_dir, f"answer_{mode}_{timestamp}.xlsx")
 
-class ExcelOutputHandler(OutputHandler):
     def save_data(self, data: list, mode: str = "batch"):
         if not data:
             logger.warning("No data to save.")

@@ -195,7 +195,7 @@ class SearchConfig:
     azure_openai_embedding_api_version: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"))
 
     def __post_init__(self):
-        """パラメータの検証とkeyword_weightの計算"""
+        """パラメータの検証"""
         # Input Validation: 数値パラメータの範囲検証
         if not 0 <= self.vector_weight <= 1:
             raise ValueError("vector_weight must be between 0 and 1")

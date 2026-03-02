@@ -15,6 +15,7 @@ from chromadb.errors import NotFoundError as ChromaNotFoundError
 
 from src.core.search.keyword_search_engine import KeywordSearchEngine
 from src.core.search.text_combiner import get_text_combiner
+from src.utils.business_area_translator import resolve_bot_name
 
 from src.utils.logger import setup_logger
 logger = setup_logger(__name__)
@@ -196,5 +197,4 @@ class ChromaDBKeywordSearcher:
 
     def _resolve_bot_name(self, area: str) -> str:
         """area名からbot名を解決"""
-        from src.utils.business_area_translator import resolve_bot_name
         return resolve_bot_name(area, self.area_to_bot)
