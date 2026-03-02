@@ -1,7 +1,8 @@
-"""運用保守効率化AI（改定影響調査）— 評価 Streamlit UI
+"""運用保守効率化AI（改定影響調査）— Streamlit UI
 
-改定番号を選択し、Azure OpenAI / VertexAI 両方で検索して正解IDとのマッチを評価する。
-バッチ版は evaluate_revisions.py（Excel出力）。
+評価モード: 改定番号を選択し、Azure/VertexAI 両方で検索して正解IDとのマッチを評価。
+影響調査モード: キーワード検索で改定の影響範囲を調査。
+バッチ版は run_eval.py（Excel出力）。
 """
 import sys
 from pathlib import Path
@@ -593,11 +594,13 @@ def save_chat_history():
 
         if chat_data:
             df = pd.DataFrame(chat_data)
-            output_dir = PROJECT_ROOT / "data" / "output" / "latest"
+            output_dir = PROJECT_ROOT / "data" / "output" / "latest" / "rev"
             output_dir.mkdir(parents=True, exist_ok=True)
             import datetime
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = output_dir / f"eval_chat_history_{timestamp}.xlsx"
+            app_mode = st.session_state.get("app_mode", "evaluation")
+            mode_prefix = "rev_impact" if app_mode == "impact_analysis" else "rev_eval"
+            output_path = output_dir / f"{mode_prefix}_chat_{timestamp}.xlsx"
             df.to_excel(str(output_path), index=False)
             st.sidebar.success(f"チャット履歴を保存しました: {output_path.name}")
         else:
@@ -705,12 +708,12 @@ def _render_provider_results(results: List[Dict], correct_ids: List[str], is_ver
 
 def run_streamlit_ui():
     suppress_noise()
-    st.set_page_config(page_title="改定影響調査", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="運用保守効率化AI", layout="wide", initial_sidebar_state="expanded")
     apply_common_styles()
     initialize_session_state()
 
     with st.sidebar:
-        st.title("事務改定 AI")
+        st.title("改定影響調査")
 
         # モード選択（最上部）
         app_mode = st.radio(
