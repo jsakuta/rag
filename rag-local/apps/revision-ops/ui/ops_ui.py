@@ -708,12 +708,12 @@ def _render_provider_results(results: List[Dict], correct_ids: List[str], is_ver
 
 def run_streamlit_ui():
     suppress_noise()
-    st.set_page_config(page_title="運用保守効率化AI", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="運用保守効率化AI（改定影響調査）", layout="wide", initial_sidebar_state="expanded")
     apply_common_styles()
     initialize_session_state()
 
     with st.sidebar:
-        st.title("改定影響調査")
+        st.title("運用保守効率化AI（改定影響調査）")
 
         # モード選択（最上部）
         app_mode = st.radio(
@@ -904,11 +904,11 @@ def run_streamlit_ui():
     if st.session_state.get("app_mode") == "impact_analysis":
         cats = st.session_state.get("impact_categories", [])
         cat_label = " + ".join(AREA_TO_CATEGORY.get(c, c) for c in cats)
-        st.title(f"影響調査【{cat_label}】")
+        st.title(f"運用保守効率化AI（影響調査）【{cat_label}】")
     elif st.session_state.selected_revision:
-        st.title(f"改定影響調査【改定{st.session_state.selected_revision}】")
+        st.title(f"運用保守効率化AI（改定影響調査）【改定{st.session_state.selected_revision}】")
     else:
-        st.title("改定影響調査")
+        st.title("運用保守効率化AI（改定影響調査）")
 
     chat_container = st.container()
     with chat_container:

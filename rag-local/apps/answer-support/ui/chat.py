@@ -19,6 +19,7 @@ from config import SearchConfig, load_settings
 from src.core.processor import Processor
 from src.utils.logger import setup_logger, suppress_noise, print_startup_summary, print_query_panel
 from src.utils.dynamic_db_manager import DynamicDBManager
+from src.utils.business_area_translator import get_display_name
 
 # 共通UI部品
 from ui.shared import (
@@ -225,7 +226,7 @@ def save_chat_history():
 
 def run_streamlit_ui():
     suppress_noise()
-    st.set_page_config(page_title="類似回答検索ボット", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="回答支援AI（類似回答検索）", layout="wide", initial_sidebar_state="expanded")
     apply_common_styles()
     initialize_session_state()
 
@@ -288,6 +289,7 @@ def run_streamlit_ui():
             "業務分野",
             business_areas,
             index=business_areas.index(current_area),
+            format_func=get_display_name,
             label_visibility="collapsed"
         )
 
@@ -295,7 +297,7 @@ def run_streamlit_ui():
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
             save_chat_history()
 
-    st.title(f"類似回答検索ボット【{st.session_state.business_area}】")
+    st.title(f"回答支援AI（類似回答検索）【{get_display_name(st.session_state.business_area)}】")
 
     chat_container = st.container()
     with chat_container:
