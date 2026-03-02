@@ -91,11 +91,8 @@ def extract_bot_name_from_category(category: str) -> str:
 
 def extract_bot_name_from_area(area: str) -> str:
     """エリア名からボット名を抽出"""
-    area_lower = area.lower()
-    for keyword, bot_name in AREA_TO_BOT.items():
-        if keyword in area_lower:
-            return bot_name
-    return "unknown-bot"
+    from src.utils.business_area_translator import resolve_bot_name
+    return resolve_bot_name(area, AREA_TO_BOT)
 
 
 def build_scenario_id(result: Dict) -> str:

@@ -14,6 +14,7 @@ Strategies:
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, TYPE_CHECKING
 
+from src.core.search.text_combiner import get_text_combiner
 from src.utils.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -272,16 +273,16 @@ class KeywordFilterSearchStrategy(SearchStrategy):
                 if idx < len(self.searcher.reference_metadatas) else {}
             )
             combined_text = self.searcher.reference_texts[idx]
-            parsed = self.searcher.parse_enhanced_combined_text(combined_text)
+            parsed = get_text_combiner().parse(combined_text)
 
             if metadata.get('source') == 'scenario':
                 hierarchy = metadata.get('hierarchy', '')
-                q = parsed['query']
+                q = parsed.query
                 sq = f"{hierarchy} > {q}" if hierarchy and q else (hierarchy or q)
-                sa = parsed['answer']
+                sa = parsed.answer
             else:
-                sq = parsed['query']
-                sa = parsed['answer']
+                sq = parsed.query
+                sa = parsed.answer
 
             sheet_name = metadata.get('sheet_name', '')
             row_index = metadata.get('row_index', '')

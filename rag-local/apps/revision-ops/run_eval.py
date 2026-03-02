@@ -37,6 +37,7 @@ from src.core.search.keyword_search_engine import KeywordSearchEngine
 from src.core.search.multi_stage_orchestrator import MultiStageOrchestrator
 from src.core.search.query_enhancer import QueryEnhancer
 from src.core.search.text_combiner import get_text_combiner
+from src.utils.business_area_translator import resolve_bot_name
 from src.core.search.vector_search_engine import VectorSearchEngine
 from src.types.search_types import SearchResultKeys
 from src.utils.auth import create_embedding_model, create_llm
@@ -182,11 +183,7 @@ class RevisionEvaluator:
         return create_embedding_model(provider_config)
 
     def _extract_bot_name_from_area(self, area: str) -> str:
-        area_lower = area.lower()
-        for keyword, bot_name in AREA_TO_BOT.items():
-            if keyword in area_lower:
-                return bot_name
-        return "unknown-bot"
+        return resolve_bot_name(area, AREA_TO_BOT)
 
     def _get_source_file(self, revision: str, bot_name: str, lv1: str) -> str:
         """改定番号・ボット名・Lv1カテゴリからソースファイル名を取得"""

@@ -4,6 +4,7 @@ import glob
 import re
 import pandas as pd
 from config import SearchConfig
+from src.core.search.text_combiner import get_text_combiner
 from src.utils.logger import setup_logger
 from typing import List, Tuple, Optional, Dict, Any
 
@@ -180,13 +181,7 @@ class ExcelInputHandler(InputHandler):
           date_text = str(row[date_col]) if date_col and pd.notna(row[date_col]) else ""
           
           # 質問と回答を結合したテキストを生成（ベクトル化対象）
-          # 新形式に統一
-          text_parts = []
-          if query_text.strip():
-              text_parts.append(f"質問: {query_text}")
-          if answer_text.strip():
-              text_parts.append(f"回答: {answer_text}")
-          combined_text = " | ".join(text_parts) if text_parts else ""
+          combined_text = get_text_combiner().build(query=query_text, answer=answer_text)
           combined_texts.append(combined_text)
           
           # 個別の質問と回答も保持（表示用）
@@ -360,29 +355,16 @@ class HierarchicalExcelInputHandler(InputHandler):
             
             logger.info(f"Extracted {len(all_metadatas)} items so far")
         
-        all_combined_texts = []
-        for query, answer, metadata in zip(all_queries, all_answers, all_metadatas):
-            hierarchy = metadata.get('hierarchy', '') if metadata else ''
-            
-            # 新形式に統一：階層構造、質問、回答をラベル付きで結合
-            text_parts = []
-            
-            # 階層構造を追加（存在する場合）
-            if hierarchy.strip():
-                text_parts.append(f"分類: {hierarchy}")
-            
-            # 質問を追加（存在する場合）
-            if query.strip():
-                text_parts.append(f"質問: {query}")
-            
-            # 回答を追加（存在する場合）
-            if answer.strip():
-                text_parts.append(f"回答: {answer}")
-            
-            # 全体を結合
-            combined_text = " | ".join(text_parts) if text_parts else ""
-            all_combined_texts.append(combined_text)
-        
+        text_combiner = get_text_combiner()
+        all_combined_texts = [
+            text_combiner.build(
+                hierarchy=(metadata.get('hierarchy', '') if metadata else ''),
+                query=query,
+                answer=answer,
+            )
+            for query, answer, metadata in zip(all_queries, all_answers, all_metadatas)
+        ]
+
         logger.info(f"Total extracted {len(all_queries)} reference items from all sheets")
         
         return {
@@ -392,28 +374,8 @@ class HierarchicalExcelInputHandler(InputHandler):
             'metadatas': all_metadatas
         }
 
-class MultiFolderInputHandler(InputHandler):
+class MultiFolderInputHandler(ExcelInputHandler):
     """複数フォルダから参照データを読み込むハンドラー"""
-
-    def load_data(self) -> list:
-        # 入力データの読み込み（従来通り）
-        input_file = self._get_latest_file(self.input_dir, "*.xlsx", name_regex=self.config.INPUT_FILE_PATTERN)
-        self.current_file = os.path.basename(input_file)  # DB選択用
-        logger.info(f"Processing input file: {self.current_file}")
-        input_df = pd.read_excel(input_file)
-
-        # 列名チェックとデータ抽出
-        number_col, query_col, answer_col = self._get_column_names(input_df)
-        valid_input_df = input_df.dropna(subset=[query_col])
-
-        data = []
-        for _, row in valid_input_df.iterrows():
-            data.append({
-                "number": str(row[number_col]),
-                "query": str(row[query_col]),
-                "answer": str(row[answer_col]) if answer_col and pd.notna(row[answer_col]) else ""
-            })
-        return data
 
     def load_reference_data(self) -> dict:
         """複数フォルダから参照データを読み込み、統合
@@ -470,28 +432,15 @@ class MultiFolderInputHandler(InputHandler):
                 logger.warning(f"Error processing history file: {e}")
         
         # 質問、回答、階層構造を結合したテキストを生成
-        all_combined_texts = []
-        for query, answer, metadata in zip(all_queries, all_answers, all_metadatas):
-            hierarchy = metadata.get('hierarchy', '') if metadata else ''
-            
-            # 階層構造、質問、回答を組み合わせてベクトル化対象テキストを作成
-            text_parts = []
-            
-            # 階層構造を追加（存在する場合）
-            if hierarchy.strip():
-                text_parts.append(f"分類: {hierarchy}")
-            
-            # 質問を追加（存在する場合）
-            if query.strip():
-                text_parts.append(f"質問: {query}")
-            
-            # 回答を追加（存在する場合）
-            if answer.strip():
-                text_parts.append(f"回答: {answer}")
-            
-            # 全体を結合
-            combined_text = " | ".join(text_parts) if text_parts else ""
-            all_combined_texts.append(combined_text)
+        text_combiner = get_text_combiner()
+        all_combined_texts = [
+            text_combiner.build(
+                hierarchy=(metadata.get('hierarchy', '') if metadata else ''),
+                query=query,
+                answer=answer,
+            )
+            for query, answer, metadata in zip(all_queries, all_answers, all_metadatas)
+        ]
         
         if not all_queries:
             raise ValueError("No reference data found in any folder")

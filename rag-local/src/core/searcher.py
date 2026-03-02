@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import SearchConfig
+from src.core.search.text_combiner import get_text_combiner
 from src.utils.logger import setup_logger
 from src.utils.auth import create_llm, create_embedding_model
 from src.utils.dynamic_db_manager import DynamicDBManager, DynamicDBError
@@ -258,31 +259,6 @@ class Searcher:
             self._reference_keywords_cache[i] = set(self._extract_keywords(query))
         logger.debug(f"キーワードキャッシュ構築完了: {len(self._reference_keywords_cache)}件")
 
-    def parse_enhanced_combined_text(self, combined_text: str) -> dict:
-        """階層構造を含む結合テキストを解析（新形式：ラベル付き）"""
-        # 新形式の解析：「分類: 階層 | 質問: 質問内容 | 回答: 回答内容」
-        hierarchy = ""
-        query = ""
-        answer = ""
-        
-        # 「|」で分割
-        parts = combined_text.split(" | ")
-        
-        for part in parts:
-            part = part.strip()
-            if part.startswith("分類: "):
-                hierarchy = part[3:].strip()  # "分類: "を除去
-            elif part.startswith("質問: "):
-                query = part[3:].strip()  # "質問: "を除去
-            elif part.startswith("回答: "):
-                answer = part[3:].strip()  # "回答: "を除去
-        
-        return {
-            'hierarchy': hierarchy,
-            'query': query,
-            'answer': answer
-        }
-
     # _build_filter_metadataメソッドを削除（タグレス対応）
 
     def search(self, input_number: str, query_text: str, original_answer: str, input_file: str = None) -> list:
@@ -456,22 +432,22 @@ class Searcher:
         """
         metadata = search_result['metadata']
         combined_text = search_result['document']
-        parsed_text = self.parse_enhanced_combined_text(combined_text)
+        parsed_text = get_text_combiner().parse(combined_text)
 
         # 階層構造 + 質問を表示
         if metadata.get('source') == 'scenario':
             hierarchy = metadata.get('hierarchy', '')
-            query = parsed_text['query']
+            query = parsed_text.query
             if hierarchy and query:
                 search_result_query = f"{hierarchy} > {query}"
             elif hierarchy:
                 search_result_query = hierarchy
             else:
                 search_result_query = query
-            search_result_answer = parsed_text['answer']
+            search_result_answer = parsed_text.answer
         else:
-            search_result_query = parsed_text['query']
-            search_result_answer = parsed_text['answer']
+            search_result_query = parsed_text.query
+            search_result_answer = parsed_text.answer
 
         # シナリオIDを生成（シート名_行番号）
         sheet_name = metadata.get('sheet_name', '')

@@ -11,6 +11,7 @@ from chromadb.config import Settings
 from chromadb.errors import NotFoundError as ChromaNotFoundError
 from config import SearchConfig
 from src.utils.business_area_translator import BusinessAreaTranslator
+from src.core.search.text_combiner import get_text_combiner
 from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -1002,18 +1003,15 @@ class DynamicDBManager:
                 logger.warning(f"FAQファイルが見つかりません: {faq_path}")
 
         # combined_textsを生成
-        all_combined_texts = []
-        for query, answer, metadata in zip(all_queries, all_answers, all_metadatas):
-            hierarchy = metadata.get('hierarchy', '') if metadata else ''
-            text_parts = []
-            if hierarchy.strip():
-                text_parts.append(f"分類: {hierarchy}")
-            if query.strip():
-                text_parts.append(f"質問: {query}")
-            if answer.strip():
-                text_parts.append(f"回答: {answer}")
-            combined_text = " | ".join(text_parts) if text_parts else ""
-            all_combined_texts.append(combined_text)
+        text_combiner = get_text_combiner()
+        all_combined_texts = [
+            text_combiner.build(
+                hierarchy=(metadata.get('hierarchy', '') if metadata else ''),
+                query=query,
+                answer=answer,
+            )
+            for query, answer, metadata in zip(all_queries, all_answers, all_metadatas)
+        ]
 
         logger.debug(f"参照データ準備完了: {len(all_combined_texts)}件")
 
@@ -1068,12 +1066,7 @@ class DynamicDBManager:
                     answer_text = supplement_text
 
             # combined_text生成
-            text_parts = []
-            if query_text.strip():
-                text_parts.append(f"質問: {query_text}")
-            if answer_text.strip():
-                text_parts.append(f"回答: {answer_text}")
-            combined_texts.append(" | ".join(text_parts) if text_parts else "")
+            combined_texts.append(get_text_combiner().build(query=query_text, answer=answer_text))
 
             queries.append(query_text)
             answers.append(answer_text)

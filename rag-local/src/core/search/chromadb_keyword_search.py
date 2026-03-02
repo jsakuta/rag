@@ -196,8 +196,5 @@ class ChromaDBKeywordSearcher:
 
     def _resolve_bot_name(self, area: str) -> str:
         """area名からbot名を解決"""
-        area_lower = area.lower()
-        for keyword, bot_name in self.area_to_bot.items():
-            if keyword in area_lower:
-                return bot_name
-        return "unknown-bot"
+        from src.utils.business_area_translator import resolve_bot_name
+        return resolve_bot_name(area, self.area_to_bot)
