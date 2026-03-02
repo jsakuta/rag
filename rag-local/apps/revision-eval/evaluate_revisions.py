@@ -45,9 +45,11 @@ from src.utils.logger import (
     print_revision_header,
     print_search_result,
     print_section,
+    print_startup_summary,
     print_status,
     print_table,
     setup_logger,
+    suppress_noise,
 )
 from src.utils.vector_db import MetadataVectorDB
 
@@ -1176,6 +1178,7 @@ class RevisionEvaluator:
 
 def main() -> None:
     import time
+    suppress_noise()
     start_time = time.time()
 
     parser = argparse.ArgumentParser(description="事務改定評価スクリプト")
@@ -1218,21 +1221,13 @@ def main() -> None:
 
     enable_llm = os.getenv("ENABLE_LLM_ANALYSIS", "false").lower() == "true"
 
-    print_section("実行設定")
     provider_labels = {"both": "Azure + VertexAI", "azure": "Azure のみ", "vertex": "VertexAI のみ"}
-    print_status(f"検索プロバイダー: {provider_labels[args.provider]}", "info")
-    print_status(f"LLM判定: {'有効' if enable_llm else '無効'}", "info")
-
-    # 改定番号別検索タイプ表示
-    from src.utils.business_area_translator import get_display_name
-    keyword_filter_revisions = [rev for rev, st in REVISION_SEARCH_TYPES.items() if st == "keyword_filter"]
-    if keyword_filter_revisions:
-        kw_labels = [f"{get_display_name(r)} ({r})" for r in keyword_filter_revisions]
-        print_status(f"キーワード検索: {', '.join(kw_labels)}", "info")
-    hybrid_revisions = [rev for rev, st in REVISION_SEARCH_TYPES.items() if st != "keyword_filter"]
-    if hybrid_revisions:
-        hy_labels = [f"{get_display_name(r)} ({r})" for r in hybrid_revisions]
-        print_status(f"類似検索(hybrid): {', '.join(hy_labels)}", "info")
+    db_all_ok = not any("MISSING" in str(row) for row in db_status_data)
+    print_startup_summary("事務改定評価 (バッチ)", [
+        ("DB接続", db_all_ok, "OK" if db_all_ok else "一部MISSING"),
+        ("LLM判定", enable_llm, f"{'有効' if enable_llm else '無効'} ({config.llm_model})"),
+        ("プロバイダー", True, provider_labels[args.provider]),
+    ])
 
     if args.verbose:
         print_status(f"最大検索結果数: {MAX_RESULTS}", "info")
