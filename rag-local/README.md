@@ -83,8 +83,7 @@ cp .env.example .env
 |------|------|-----|
 | `DEFAULT_LLM_PROVIDER` | LLMプロバイダー | `gemini` |
 | `DEFAULT_LLM_MODEL` | LLMモデル名 | `gemini-2.5-flash-lite` |
-| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー | `azure_openai` |
-| `DEFAULT_EMBEDDING_MODEL` | 埋め込みモデル名 | `text-embedding-3-large` |
+| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー（モデルは自動解決） | `azure_openai` |
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI API キー | `your-api-key` |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI エンドポイント | `https://your-resource.openai.azure.com/` |
 | `GEMINI_PROJECT_ID` | Google Cloud プロジェクトID | `your-project-id` |
@@ -181,6 +180,7 @@ rag-local/
 ├── src/                          # 共有コアライブラリ
 │   ├── core/                     # コアロジック
 │   │   ├── processor.py          # データ処理エンジン
+│   │   ├── searcher.py           # 検索統合（Processor から使用）
 │   │   ├── judgment_support.py   # LLM判断支援
 │   │   └── search/               # 検索エンジン
 │   │       ├── multi_stage_orchestrator.py  # 多段階検索
@@ -190,6 +190,9 @@ rag-local/
 │   │       ├── keyword_search_engine.py     # キーワード検索
 │   │       ├── chromadb_keyword_search.py   # ChromaDBキーワード検索
 │   │       └── text_combiner.py             # テキスト結合
+│   │
+│   ├── types/                    # 型定義
+│   │   └── search_types.py       # 検索関連の型定義
 │   │
 │   ├── handlers/                 # 入出力処理
 │   │   ├── input_handler.py      # 入力処理

@@ -55,29 +55,31 @@ def _deep_merge(base: Dict, override: Dict) -> Dict:
     return result
 
 
-# バッチ処理用のデフォルト設定をYAMLから読み込み
+# 設定をYAMLから読み込み（モジュールロード時に1回だけ）
+# settings.yaml が存在しない・壊れている場合は即座にエラー
+_common_settings = load_settings("common")
 _batch_settings = load_settings("batch")
-_common_settings = load_settings("common") if load_settings("common") else {}
+if not _common_settings:
+    raise RuntimeError("config/settings.yaml の読み込みに失敗しました（common セクション）")
 
 @dataclass
 class SearchConfig:
     """
     検索設定を管理するデータクラス
     """
-    # デフォルト設定（YAMLから読み込み、フォールバック値付き）
-    DEFAULT_TOP_K: int = _batch_settings.get("top_k", 4)
-    DEFAULT_MODEL_NAME: str = "intfloat/multilingual-e5-base"
-    DEFAULT_VECTOR_WEIGHT: float = _batch_settings.get("vector_weight", 0.9)  # バッチ処理用
+    # デフォルト設定（settings.yaml から読み込み、フォールバックなし）
+    DEFAULT_TOP_K: int = _batch_settings["top_k"]
+    DEFAULT_VECTOR_WEIGHT: float = _batch_settings["vector_weight"]
 
     # 検索タイプ設定（類似検索 / キーワード必須）
-    DEFAULT_SEARCH_TYPE: str = _common_settings.get("search_type", "hybrid")
+    DEFAULT_SEARCH_TYPE: str = _common_settings["search_type"]
     VALID_SEARCH_TYPES: Tuple[str, ...] = ("hybrid", "keyword_filter")
 
     # 検索方式設定（LLM拡張検索対応）
-    DEFAULT_SEARCH_MODE: str = _common_settings.get("search_mode", "original")
+    DEFAULT_SEARCH_MODE: str = _common_settings["search_mode"]
 
     # 検索対象設定
-    DEFAULT_SEARCH_SOURCE: str = _common_settings.get("search_source", "scenario")
+    DEFAULT_SEARCH_SOURCE: str = _common_settings["search_source"]
     VALID_SEARCH_SOURCES: Tuple[str, ...] = ("scenario", "history_data")
 
     # 多段階検索設定
@@ -87,10 +89,8 @@ class SearchConfig:
     # 両プロバイダー比較モード（多段階検索時のみ有効）
     DEFAULT_DUAL_PROVIDER_MODE: bool = False
 
-    # 正解ID列の候補（YAMLから読み込み）
-    CORRECT_ID_COLUMNS: Tuple[str, ...] = tuple(
-        _common_settings.get("columns", {}).get("correct_id", ['正解ID', '正解', 'CorrectID', 'Expected'])
-    )
+    # 正解ID列の候補
+    CORRECT_ID_COLUMNS: Tuple[str, ...] = tuple(_common_settings["columns"]["correct_id"])
     
     # 埋め込みモデル設定
     # 有効なプロバイダー: "vertex_ai" (Gemini), "azure_openai" (text-embedding-3-large)
@@ -115,44 +115,28 @@ class SearchConfig:
     # VECTOR_SEARCH_MULTIPLIER: top_k に対する取得倍率。
     # リランキング用に多めに取得します。2-3が推奨。
     VECTOR_SEARCH_MULTIPLIER: int = 2
-    # POSITION_WEIGHT: キーワードがテキスト前半にある場合の重み係数（YAMLから読み込み）
-    POSITION_WEIGHT: float = _common_settings.get("keyword", {}).get("position_weight", 1.2)
-    # STOP_WORDS: キーワード抽出時に除外する一般的な単語（YAMLから読み込み）
-    STOP_WORDS: Tuple[str, ...] = tuple(
-        _common_settings.get("keyword", {}).get("stop_words", ['こと', 'もの', 'これ', 'それ', 'ところ', '方', 'する', 'ある', 'いる', 'れる', 'られる', 'なる', 'その'])
-    )
+    # POSITION_WEIGHT: キーワードがテキスト前半にある場合の重み係数
+    POSITION_WEIGHT: float = _common_settings["keyword"]["position_weight"]
+    # STOP_WORDS: キーワード抽出時に除外する一般的な単語
+    STOP_WORDS: Tuple[str, ...] = tuple(_common_settings["keyword"]["stop_words"])
 
-    # 列名候補（YAMLから読み込み）
-    # Excel/CSVファイルから質問・回答・タグ列を自動検出する際の候補名。
-    QUERY_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(
-        _common_settings.get("columns", {}).get("query", ['分割後質問', '問合せ内容', '質問内容', '問い合わせ', '質問', 'query', 'Query'])
-    )
-    ANSWER_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(
-        _common_settings.get("columns", {}).get("answer", ['分割後回答', '回答', '既存回答', 'answer', 'Answer'])
-    )
-    TAG_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(
-        _common_settings.get("columns", {}).get("tag", ['タグ付け', 'タグ', '分類', 'category', 'Category', 'tag', 'Tag'])
-    )
-
-    # 原則文判定マーカー
-    # このテキストを含む回答は「原則文」として特別扱いされます。
-    PRINCIPLE_MARKER: str = "以下の選択肢から選んでください"
+    # 列名候補（Excel/CSVファイルから質問・回答・タグ列を自動検出する際の候補名）
+    QUERY_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(_common_settings["columns"]["query"])
+    ANSWER_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(_common_settings["columns"]["answer"])
+    TAG_COLUMN_CANDIDATES: Tuple[str, ...] = tuple(_common_settings["columns"]["tag"])
 
     # ファイル名パターン（既存ファイル対応版）
     REFERENCE_FILE_PATTERN: str = r"(.+?)_(履歴データ|シナリオデータ)_?(\d{8})?.*?\.xlsx$"
     INPUT_FILE_PATTERN: str = r"^([^_]+)_(\d{8})\.xlsx$"
 
     top_k: int = DEFAULT_TOP_K
-    model_name: str = DEFAULT_MODEL_NAME
     llm_provider: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_PROVIDER", ""))
     llm_model: str = field(default_factory=lambda: os.getenv("DEFAULT_LLM_MODEL", ""))
     vector_weight: float = DEFAULT_VECTOR_WEIGHT
     # keyword_weight は @property で vector_weight から自動計算
     base_dir: str = "."
-    input_type: str = "excel"  # 新規: 入力ファイル形式
-    output_type: str = "excel" # 新規: 出力ファイル形式
-    input_config: Dict[str, Any] = field(default_factory=dict)  # 新規: 入力設定
-    output_config: Dict[str, Any] = field(default_factory=dict) # 新規: 出力設定
+    input_type: str = "excel"
+    output_type: str = "excel"
     
     # 検索タイプ設定
     search_type: str = DEFAULT_SEARCH_TYPE
@@ -170,9 +154,9 @@ class SearchConfig:
     judgment_support_prompt_path: str = "prompt/judgment_support.txt"  # 判断支援プロンプトファイル
     dual_provider_mode: bool = DEFAULT_DUAL_PROVIDER_MODE  # 両プロバイダー比較モード
     
-    # 埋め込みモデル設定（環境変数から読み込み、未設定時はエラー）
+    # 埋め込みモデル設定（プロバイダーから自動解決）
     embedding_provider: str = field(default_factory=lambda: os.getenv("DEFAULT_EMBEDDING_PROVIDER", ""))
-    embedding_model: str = field(default_factory=lambda: os.getenv("DEFAULT_EMBEDDING_MODEL", ""))
+    embedding_model: str = ""  # __post_init__ でプロバイダーに応じて自動設定
     
     # 動的DB管理設定
     force_db_update: bool = DEFAULT_FORCE_DB_UPDATE  # 強制DB更新フラグ
@@ -192,7 +176,7 @@ class SearchConfig:
     azure_openai_embedding_endpoint: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_ENDPOINT", ""))
     azure_openai_embedding_api_key: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_API_KEY", ""))
     azure_openai_embedding_deployment: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"))
-    azure_openai_embedding_api_version: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"))
+    azure_openai_embedding_api_version: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"))
 
     def __post_init__(self):
         """パラメータの検証"""
@@ -237,11 +221,20 @@ class SearchConfig:
         if self.search_source not in self.VALID_SEARCH_SOURCES:
             raise ValueError(f"search_source must be one of {self.VALID_SEARCH_SOURCES}")
 
-        # 埋め込み設定の必須チェック（環境変数未設定時はエラー）
+        # 埋め込み設定の必須チェック
         if not self.embedding_provider:
             raise ValueError("DEFAULT_EMBEDDING_PROVIDER環境変数が設定されていません")
+
+        # 埋め込みモデルをプロバイダーから自動解決
         if not self.embedding_model:
-            raise ValueError("DEFAULT_EMBEDDING_MODEL環境変数が設定されていません")
+            provider_model_map = {
+                "vertex_ai": ("VERTEX_AI_EMBEDDING_MODEL", "gemini-embedding-001"),
+                "azure_openai": ("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"),
+            }
+            env_key, default = provider_model_map.get(self.embedding_provider, ("", ""))
+            self.embedding_model = os.getenv(env_key, default) if env_key else ""
+            if not self.embedding_model:
+                raise ValueError(f"embedding_model を解決できません (provider: {self.embedding_provider})")
 
         # 埋め込みプロバイダーの検証
         if self.embedding_provider not in self.VALID_EMBEDDING_PROVIDERS:

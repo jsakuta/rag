@@ -200,6 +200,7 @@ rag-local/
 ├── src/                          # 共有コアライブラリ
 │   ├── core/                     # コアロジック
 │   │   ├── processor.py          # データ処理エンジン
+│   │   ├── searcher.py           # 検索統合（Processor から使用）
 │   │   ├── judgment_support.py   # LLM判断支援
 │   │   └── search/               # 検索エンジン
 │   │       ├── search_strategy.py           # 検索戦略切替
@@ -209,6 +210,9 @@ rag-local/
 │   │       ├── keyword_search_engine.py     # キーワード検索
 │   │       ├── chromadb_keyword_search.py   # ChromaDBキーワード検索
 │   │       └── text_combiner.py             # テキスト結合
+│   │
+│   ├── types/                    # 型定義
+│   │   └── search_types.py       # 検索関連の型定義
 │   │
 │   ├── handlers/                 # 入出力処理
 │   │   ├── input_handler.py      # 入力処理
@@ -232,7 +236,8 @@ rag-local/
 │   ├── build_db.py               # DB構築（回答支援AI（類似回答検索）+ 改定別 統合）
 │   ├── generate_correct_ids.py   # 正解ID生成
 │   ├── prepare_before_scenario.py # データ前処理
-│   └── check_db_content.py       # DB内容確認
+│   ├── check_db_content.py       # DB内容確認
+│   └── create_handover_package.py # 引き継ぎパッケージ作成
 │
 ├── data/                         # データディレクトリ
 │   ├── vector_db/                # ベクトルDB
@@ -291,12 +296,10 @@ rag-local/
 DEFAULT_LLM_PROVIDER=gemini
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 
-# 埋め込みモデル設定
+# 埋め込みモデル設定（モデルはプロバイダーから自動解決）
 DEFAULT_EMBEDDING_PROVIDER=azure_openai
-DEFAULT_EMBEDDING_MODEL=text-embedding-3-large
 
 # Google Cloud
-GEMINI_CREDENTIALS_PATH=gemini_credentials.json
 GEMINI_PROJECT_ID=your-project-id
 GEMINI_LOCATION=us-central1
 

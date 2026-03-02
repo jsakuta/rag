@@ -26,13 +26,13 @@
 | `DEFAULT_LLM_PROVIDER` | LLMプロバイダー | **必須** | `gemini` |
 | `DEFAULT_LLM_MODEL` | LLMモデル名 | **必須** | `gemini-2.5-flash-lite` |
 | `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー | **必須** | `azure_openai` |
-| `DEFAULT_EMBEDDING_MODEL` | 埋め込みモデル名 | **必須** | `text-embedding-3-large` |
+
+> **Note:** `DEFAULT_EMBEDDING_MODEL` は廃止されました。埋め込みモデルはプロバイダーから自動解決されます（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`）。
 
 ### Google Cloud / VertexAI 設定
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
-| `GEMINI_CREDENTIALS_PATH` | 認証ファイルパス | `gemini_credentials.json` | `./secrets/credentials.json` |
 | `GEMINI_PROJECT_ID` | Google Cloud プロジェクトID | **必須** | `pj-cbk001` |
 | `GEMINI_LOCATION` | リージョン | `us-central1` | `asia-northeast1` |
 | `VERTEX_AI_EMBEDDING_MODEL` | VertexAI埋め込みモデル | `gemini-embedding-001` | `text-embedding-004` |
@@ -46,13 +46,13 @@
 | `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | 埋め込みデプロイメント名 | `text-embedding-3-large` | `your-deployment-name` |
 | `AZURE_OPENAI_API_VERSION` | APIバージョン | `2024-12-01-preview` | `2024-12-01-preview` |
 
-### Anthropic (Claude) 設定
+### Anthropic (Claude) 設定（オプション）
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
 | `ANTHROPIC_API_KEY` | API キー | - | `sk-ant-...` |
 
-### OpenAI (ChatGPT) 設定
+### OpenAI (ChatGPT) 設定（オプション）
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
@@ -63,14 +63,14 @@
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
 | `AZURE_KEY_VAULT_URL` | Key Vault URL | - | `https://your-vault.vault.azure.net/` |
-| `AZURE_KEY_VAULT_SCOPES` | スコープ | - | `https://www.googleapis.com/auth/cloud-platform` |
+| `AZURE_KEY_VAULT_SECRET_NAME` | シークレット名 | - | `your-secret-name` |
+| `AZURE_KEY_VAULT_SCOPES` | スコープ | `https://www.googleapis.com/auth/cloud-platform` | `https://www.googleapis.com/auth/cloud-platform` |
 
 ### その他
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
 | `LOG_LEVEL` | ログレベル | `INFO` | `DEBUG` |
-| `ENABLE_LLM_ANALYSIS` | LLM分析の有効化 | `true` | `false` |
 
 ---
 
@@ -85,7 +85,6 @@ DEFAULT_LLM_PROVIDER=gemini
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 
 # 必須: Google Cloud認証
-GEMINI_CREDENTIALS_PATH=gemini_credentials.json
 GEMINI_PROJECT_ID=your-project-id
 GEMINI_LOCATION=us-central1
 ```
@@ -116,8 +115,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 - 高コスト
 
 **利用可能なモデル:**
-- `claude-3-5-sonnet-20241022` - 最新（推奨）
-- `claude-3-5-haiku-20241022` - 高速・低コスト
+- `claude-sonnet-4-6` - バランス型（推奨）
+- `claude-haiku-4-5` - 高速・低コスト
 - `claude-opus-4-6` - 最高精度
 
 #### OpenAI ChatGPT
@@ -149,7 +148,7 @@ OPENAI_API_KEY=sk-...
 
 ```env
 DEFAULT_EMBEDDING_PROVIDER=azure_openai
-DEFAULT_EMBEDDING_MODEL=text-embedding-3-large
+# モデルは AZURE_OPENAI_EMBEDDING_DEPLOYMENT から自動解決
 
 # 必須: Azure OpenAI認証
 AZURE_OPENAI_API_KEY=your-api-key
@@ -171,10 +170,9 @@ AZURE_OPENAI_API_VERSION=2024-12-01-preview
 
 ```env
 DEFAULT_EMBEDDING_PROVIDER=vertex_ai
-DEFAULT_EMBEDDING_MODEL=gemini-embedding-001
+# モデルは VERTEX_AI_EMBEDDING_MODEL から自動解決
 
 # 必須: Google Cloud認証
-GEMINI_CREDENTIALS_PATH=gemini_credentials.json
 GEMINI_PROJECT_ID=your-project-id
 VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 ```
@@ -203,10 +201,9 @@ from config import SearchConfig
 config = SearchConfig(
     # 検索パラメータ
     top_k=4,                    # 返却する結果数
-    vector_weight=0.9,          # ベクトル検索の重み
-    keyword_weight=0.1,         # キーワード検索の重み
+    vector_weight=0.9,          # ベクトル検索の重み（keyword_weight は 1.0 - vector_weight で自動計算）
 
-    # 検索モード: original | llm_enhanced | multi_stage
+    # 検索モード: original | llm_enhanced | multi_stage（multi_stage は改定影響調査専用）
     search_mode="original",
 
     # 参照データ形式
@@ -250,32 +247,15 @@ search_mode="multi_stage"
 
 ### 重み調整
 
-#### ベクトル重視（推奨）
+`keyword_weight` は `1.0 - vector_weight` で自動計算されます。`vector_weight` のみ設定してください。
+設定場所は `config/settings.yaml` の各セクション（`common`, `ui`, `batch`, `evaluation.revision_areas`）。
 
-```python
-vector_weight=0.9
-keyword_weight=0.1
-```
-
-**用途:** 意味的類似性を重視
-
-#### バランス型
-
-```python
-vector_weight=0.7
-keyword_weight=0.3
-```
-
-**用途:** 意味とキーワード両方を考慮
-
-#### キーワード重視
-
-```python
-vector_weight=0.5
-keyword_weight=0.5
-```
-
-**用途:** 専門用語の完全一致を重視
+| vector_weight | keyword_weight（自動） | 用途 |
+|---|---|---|
+| 0.9 | 0.1 | 意味的類似性を重視（推奨） |
+| 0.7 | 0.3 | 意味とキーワード両方を考慮 |
+| 0.5 | 0.5 | 専門用語の完全一致を重視 |
+| 0.3 | 0.7 | キーワード重視（用語置換検出等） |
 
 ---
 
@@ -283,13 +263,14 @@ keyword_weight=0.5
 
 ### ディレクトリ構造
 
-```env
-# デフォルト設定
-DB_BASE_DIR=data/vector_db
-REFERENCE_SCENARIO_DIR=data/source/scenarios
-REFERENCE_FAQ_DIR=data/source/faq
-INPUT_DIR=data/input
-OUTPUT_DIR=data/output
+以下のパスは `SearchConfig.base_dir`（デフォルト: プロジェクトルート）を基点としたハードコードパスで、環境変数では変更できません。
+
+```
+data/vector_db/          # ベクトルDB
+data/source/scenarios/   # シナリオExcel
+data/source/faq/         # FAQデータ
+data/input/              # 入力ファイル
+data/output/             # 出力ファイル
 ```
 
 ### コレクション命名規則
@@ -332,8 +313,10 @@ OUTPUT_DIR=data/output
 |-----------|------|---------|
 | `common` | 全プログラム共通 | search_type, vector_weight, search_mode, keyword設定 |
 | `ui` | Streamlit UI専用 | top_k, search_type, vector_weight（スライダー初期値） |
-| `batch` | バッチ処理専用 | top_k |
+| `batch` | バッチ処理専用 | top_k, vector_weight |
 | `evaluation` | 改定影響調査専用 | max_results, filter_mode, thresholds, revision_areas |
+
+> **重要:** settings.yaml は起動時に必須です。ファイルが存在しないか common セクションが欠落している場合、`RuntimeError` が発生します。全キーはフォールバックなしの直接アクセスのため、キー欠落時は `KeyError` になります。
 
 **設定の読み込み方法**:
 - `load_settings("ui")` → common + ui をマージして返す
@@ -388,10 +371,9 @@ LOG_LEVEL=INFO  # DEBUG | INFO | WARNING | ERROR | CRITICAL
 
 ```python
 # コード内
-import logging
 from src.utils.logger import setup_logger
 
-logger = setup_logger(__name__, level=logging.DEBUG)
+logger = setup_logger(__name__)  # ログレベルは LOG_LEVEL 環境変数で制御
 ```
 
 ### ログフォーマット
@@ -416,70 +398,35 @@ logs/
 ### .env.example（開発環境）
 
 ```env
-# ===== LLM設定 =====
-DEFAULT_LLM_PROVIDER=gemini
-DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
+# === プロバイダー固有設定 ===
 
-# ===== 埋め込みモデル設定 =====
-DEFAULT_EMBEDDING_PROVIDER=azure_openai
-DEFAULT_EMBEDDING_MODEL=text-embedding-3-large
+# Azure Key Vault設定（Key Vaultから認証情報を取得する場合）
+AZURE_KEY_VAULT_URL=https://your-keyvault.vault.azure.net/
+AZURE_KEY_VAULT_SECRET_NAME=your-secret-name
+AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
 
-# ===== Google Cloud / VertexAI =====
-GEMINI_CREDENTIALS_PATH=gemini_credentials.json
-GEMINI_PROJECT_ID=your-project-id
-GEMINI_LOCATION=us-central1
-VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
-
-# ===== Azure OpenAI =====
-AZURE_OPENAI_API_KEY=your-api-key
+# Azure OpenAI設定（埋め込みプロバイダーがazure_openaiの場合必須）
+AZURE_OPENAI_API_KEY=your-api-key-here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
 AZURE_OPENAI_API_VERSION=2024-12-01-preview
 
-# ===== Anthropic (オプション) =====
-# ANTHROPIC_API_KEY=sk-ant-...
+# Vertex AI設定（LLMまたは埋め込みでgeminiを使う場合必須）
+GEMINI_PROJECT_ID=your-project-id
+GEMINI_LOCATION=us-central1
+VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 
-# ===== OpenAI (オプション) =====
-# OPENAI_API_KEY=sk-...
+# === デフォルト選択（ここを変えればプロバイダー切替） ===
 
-# ===== Azure Key Vault (オプション) =====
-# AZURE_KEY_VAULT_URL=https://your-vault.vault.azure.net/
-# AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
-
-# ===== その他 =====
-LOG_LEVEL=INFO
-ENABLE_LLM_ANALYSIS=true
-```
-
-### .env（本番環境）
-
-```env
-# ===== LLM設定 =====
+# LLM設定
 DEFAULT_LLM_PROVIDER=gemini
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 
-# ===== 埋め込みモデル設定 =====
+# 埋め込みモデル設定
+# モデルはプロバイダーに応じて自動解決:
+#   azure_openai → AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+#   vertex_ai    → VERTEX_AI_EMBEDDING_MODEL
 DEFAULT_EMBEDDING_PROVIDER=azure_openai
-DEFAULT_EMBEDDING_MODEL=text-embedding-3-large
-
-# ===== Google Cloud / VertexAI =====
-GEMINI_CREDENTIALS_PATH=/app/secrets/gemini_credentials.json
-GEMINI_PROJECT_ID=prod-project-id
-GEMINI_LOCATION=asia-northeast1
-
-# ===== Azure OpenAI =====
-AZURE_OPENAI_API_KEY=${KEY_VAULT:azure-openai-key}
-AZURE_OPENAI_ENDPOINT=https://prod-resource.openai.azure.com/
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large-prod
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-
-# ===== Azure Key Vault =====
-AZURE_KEY_VAULT_URL=https://prod-vault.vault.azure.net/
-AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
-
-# ===== その他 =====
-LOG_LEVEL=WARNING
-ENABLE_LLM_ANALYSIS=true
 ```
 
 ---
@@ -489,25 +436,16 @@ ENABLE_LLM_ANALYSIS=true
 ### 起動時チェック
 
 ```python
-# config.py で実装済み
-def validate_config():
-    """設定の妥当性をチェック"""
-
-    required_vars = [
-        "DEFAULT_LLM_PROVIDER",
-        "DEFAULT_LLM_MODEL",
-        "DEFAULT_EMBEDDING_PROVIDER",
-        "DEFAULT_EMBEDDING_MODEL",
-    ]
-
-    for var in required_vars:
-        if not os.getenv(var):
-            raise ValueError(f"Required environment variable {var} is not set")
-
-    # プロバイダー別の必須変数チェック
-    if os.getenv("DEFAULT_EMBEDDING_PROVIDER") == "azure_openai":
-        if not os.getenv("AZURE_OPENAI_API_KEY"):
-            raise ValueError("AZURE_OPENAI_API_KEY is required for azure_openai provider")
+# SearchConfig.__post_init__() で自動検証（config.py）
+# SearchConfig インスタンス生成時に以下を検証:
+# - vector_weight が 0〜1 の範囲
+# - top_k が 1 以上の整数
+# - search_mode が有効な値（original / llm_enhanced / multi_stage）
+# - EMBEDDING_BATCH_SIZE が 1〜250 の範囲
+# - embedding_provider が必須（未設定時 ValueError）
+# - embedding_model をプロバイダーから自動解決:
+#     azure_openai → AZURE_OPENAI_EMBEDDING_DEPLOYMENT 環境変数（デフォルト: text-embedding-3-large）
+#     vertex_ai    → VERTEX_AI_EMBEDDING_MODEL 環境変数（デフォルト: gemini-embedding-001）
 ```
 
 ### 手動検証

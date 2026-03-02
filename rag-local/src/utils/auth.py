@@ -10,7 +10,7 @@ from src.utils.logger import setup_logger
 # 遅延インポート: Vertex AI関連（インストールされていない場合もエラーにしない）
 vertexai = None
 service_account = None
-ChatVertexAI = None
+ChatGoogleGenerativeAI = None
 
 if TYPE_CHECKING:
     from config import SearchConfig
@@ -27,14 +27,14 @@ LLM_PROVIDER_CONFIG: Dict[str, Tuple[str, Type, str]] = {
 
 def _load_vertex_ai_modules():
     """Vertex AI関連モジュールを遅延ロード"""
-    global vertexai, service_account, ChatVertexAI
+    global vertexai, service_account, ChatGoogleGenerativeAI
     if vertexai is None:
         import vertexai as _vertexai
         from google.oauth2 import service_account as _service_account
-        from langchain_google_vertexai import ChatVertexAI as _ChatVertexAI
+        from langchain_google_genai import ChatGoogleGenerativeAI as _ChatGoogleGenerativeAI
         vertexai = _vertexai
         service_account = _service_account
-        ChatVertexAI = _ChatVertexAI
+        ChatGoogleGenerativeAI = _ChatGoogleGenerativeAI
 
 
 def get_google_credentials(config: 'SearchConfig'):
@@ -93,7 +93,7 @@ def create_llm(config: 'SearchConfig'):
         config: SearchConfig インスタンス
 
     Returns:
-        LLMインスタンス（ChatAnthropic, ChatOpenAI, または ChatVertexAI）
+        LLMインスタンス（ChatAnthropic, ChatOpenAI, または ChatGoogleGenerativeAI）
 
     Raises:
         ValueError: サポートされていないプロバイダーまたはAPI キーが未設定の場合
@@ -106,8 +106,7 @@ def create_llm(config: 'SearchConfig'):
         if not config.gemini_project_id:
             raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
         credentials = get_google_credentials(config)
-        initialize_vertex_ai(config, credentials)
-        return ChatVertexAI(
+        return ChatGoogleGenerativeAI(
             model=config.llm_model,
             temperature=0,
             project=config.gemini_project_id,

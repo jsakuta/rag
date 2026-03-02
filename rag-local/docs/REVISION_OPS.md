@@ -158,9 +158,9 @@ data/vector_db/
 python scripts/build_db.py --revisions-only
 ```
 
-処理内容:
-- 既存のrev* DBディレクトリを削除
-- タイムスタンプファイルをリセット
+処理内容（`--force` なしの場合は差分構築）:
+- タイムスタンプを確認し、更新があるDBのみ再構築
+- `--force` 指定時: 既存のrev* DBディレクトリを削除 → タイムスタンプリセット → 全DB再構築
 - 全9つのDBをAzure OpenAI / VertexAI両方で構築
 
 ### Step 2: 評価実行

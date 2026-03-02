@@ -207,9 +207,9 @@ BATCH_SIZE = 5  # デフォルト値から減らす
 
 3. 処理データを分割:
 ```bash
-# データを複数ファイルに分割して処理
-python apps/answer-support/main.py --input input1.xlsx
-python apps/answer-support/main.py --input input2.xlsx
+# --limit オプションで処理件数を制限
+python apps/answer-support/main.py --limit 50
+python apps/answer-support/main.py --business 内部事務 --limit 50
 ```
 
 ### コレクション名エラー
@@ -379,16 +379,17 @@ streamlit run apps/answer-support/ui/chat.py --server.port 8502
 **解決策:**
 
 1. 原文検索モードに変更:
-```python
-# config.py
-DEFAULT_SEARCH_MODE = "original"
-DEFAULT_ENABLE_QUERY_ENHANCEMENT = False
+```yaml
+# config/settings.yaml の common セクション
+common:
+  search_mode: original
 ```
 
 2. キーワード重みを下げる:
-```python
-# config.py
-KEYWORD_WEIGHT = 0.0  # キーワード検索を無効化
+```yaml
+# config/settings.yaml の common セクション
+common:
+  vector_weight: 1.0  # keyword_weight は 1.0 - vector_weight で自動計算（= 0.0）
 ```
 
 ### ディスク容量不足

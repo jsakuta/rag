@@ -112,22 +112,23 @@
 #### processor.py - データ処理エンジン
 
 ```python
-class DataProcessor:
+class Processor:
     """データ処理の統合管理"""
 
     def __init__(self, config: SearchConfig):
         self.config = config
-        self.orchestrator = MultiStageOrchestrator(config)
+        self.searcher = Searcher(config)
 
-    def process_batch(self, input_data: pd.DataFrame) -> pd.DataFrame:
-        """バッチ処理実行"""
-        # 入力データ → 検索 → 結果集約
+    def process_data(self, mode: str = "batch", limit: int = None):
+        """データ処理のメイン関数"""
+        # 入力データ読み込み → 参照データ読み込み → 検索準備 →
+        # 各質問の検索実行 → 結果出力
 ```
 
 **責務:**
-- 入力データの検証
-- 検索実行の管理
-- 結果の集約と整形
+- 入力データの読み込みと検証
+- Searcher + SearchStrategy による検索実行の管理
+- 結果の集約と整形（通常モード / 多段階検索モード）
 
 #### search/multi_stage_orchestrator.py - 多段階検索
 
@@ -135,16 +136,32 @@ class DataProcessor:
 class MultiStageOrchestrator:
     """多段階ハイブリッド検索のオーケストレーター"""
 
-    def __init__(self, config: SearchConfig):
-        self.vector_engine = VectorSearchEngine(config)
-        self.keyword_engine = KeywordSearchEngine()
-        self.query_enhancer = QueryEnhancer(config)
+    def __init__(
+        self,
+        vector_engine: VectorSearchEngine,
+        keyword_engine: KeywordSearchEngine,
+        query_enhancer: QueryEnhancer,
+        text_combiner: TextCombiner,
+        vector_weight: float = 0.9,
+        threshold: float = 0.45,
+        max_results: int = 100,
+        filter_mode: str = "threshold",
+        top_k: int = 50
+    ):
+        ...
 
-    def search(self, query: str) -> List[SearchResult]:
-        """多段階検索実行"""
-        # Stage 1: 原文検索
-        # Stage 2: LLM強化検索
-        # Stage 3: 結果マージ
+    def execute(
+        self,
+        input_number: str,
+        query_text: str,
+        original_answer: str,
+        filter_metadata: Dict[str, str] = None,
+        pre_enhanced_query: Optional[str] = None,
+    ) -> List[MultiStageSearchResultDict]:
+        """多段階OR検索を実行"""
+        # Stage 1: 原文でハイブリッド検索
+        # Stage 2: LLMクエリでハイブリッド検索
+        # Stage 3: OR結合と3分類（Both / Original_Only / LLM_Enhanced_Only）
 ```
 
 **責務:**
@@ -174,13 +191,13 @@ class JudgmentSupport:
 
 ```python
 class InputHandler:
-    """Excel入力ファイルの処理"""
+    """入力処理の基底クラス"""
 
-    def read_input_file(self, file_path: str) -> pd.DataFrame:
-        """入力ファイル読み込み"""
+    def load_data(self) -> list:
+        """入力データを読み込み、共通の形式に変換"""
 
-    def read_reference_data(self, folder_path: str) -> List[Dict]:
-        """参照データ読み込み"""
+    def load_reference_data(self) -> dict:
+        """参照データを読み込み、共通の形式に変換"""
 ```
 
 **責務:**
@@ -192,10 +209,10 @@ class InputHandler:
 
 ```python
 class OutputHandler:
-    """Excel出力ファイルの生成"""
+    """出力処理の基底クラス"""
 
-    def save_results(self, results: pd.DataFrame, output_path: str):
-        """結果を保存"""
+    def save_data(self, data: list):
+        """データを保存"""
 ```
 
 **責務:**
@@ -214,25 +231,28 @@ class DynamicDBManager:
     """業務領域別のベクトルDB管理"""
 
     def __init__(self, config: SearchConfig):
-        self.db_map = {}  # 業務領域 → VectorDB
+        self.translator = BusinessAreaTranslator()
 
-    def get_or_create_db(self, business_area: str) -> VectorDB:
-        """DBの取得または作成"""
-        # タイムスタンプ検証
-        # 必要に応じて再ベクトル化
+    def update_business_db(self, business_area: str, files: Dict):
+        """業務分野のDBを更新（タイムスタンプ検証、差分ベクトル化）"""
+
+    def get_db_path_for_business(self, business_area: str) -> str:
+        """業務分野に対応するDBパスを返す"""
 ```
 
 **vector_db.py** - ChromaDB ラッパー
 
 ```python
-class VectorDB:
-    """ChromaDBの操作ラッパー"""
+class MetadataVectorDB:
+    """メタデータ対応のベクトルデータベースクラス"""
 
-    def add_documents(self, documents: List[Dict]):
-        """ドキュメント追加"""
+    def add_documents(self, texts: List[str], embeddings, metadatas: List[Dict],
+                      ids: Optional[List[str]] = None):
+        """ドキュメントとメタデータをベクトルDBに追加"""
 
-    def search(self, query_vector: List[float], top_k: int) -> List[Dict]:
-        """ベクトル検索"""
+    def search(self, query_embedding: List[float], n_results: int = 10,
+               filter_metadata: Optional[Dict] = None) -> List[Dict]:
+        """メタデータフィルタリング付きベクトル検索"""
 ```
 
 #### 埋め込みモデル
@@ -244,19 +264,20 @@ class BaseEmbeddingModel(ABC):
     """埋め込みモデルの共通インターフェース"""
 
     @abstractmethod
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        """テキストをベクトル化"""
+    def encode(self, texts: Union[str, List[str]],
+               normalize_embeddings: bool = True) -> np.ndarray:
+        """テキストをベクトル化（2次元配列を返す）"""
 
-    @abstractmethod
-    def embed_query(self, query: str) -> List[float]:
-        """クエリをベクトル化"""
+    def encode_single(self, text: str,
+                      normalize_embeddings: bool = True) -> np.ndarray:
+        """単一テキストをベクトル化（1次元配列を返す）"""
 ```
 
 **gemini_embedding.py** / **azure_embedding.py**
 
 各プロバイダー固有の実装:
 - API呼び出し
-- バッチ処理
+- バッチ処理（`EMBEDDING_BATCH_SIZE = 250`）
 - エラーハンドリング
 - リトライロジック
 
@@ -264,15 +285,36 @@ class BaseEmbeddingModel(ABC):
 
 ## データフロー
 
-### バッチ処理フロー
+### 通常バッチ処理フロー（回答支援AI）
 
 ```
 1. 入力ファイル読み込み
-   ↓ input_handler.py
+   ↓ input_handler.py (load_data)
 2. 参照データ読み込み + ベクトル化
    ↓ dynamic_db_manager.py → embedding → vector_db.py
 3. 各行を検索実行
-   ↓ multi_stage_orchestrator.py
+   ↓ processor.py → searcher.py → search_strategy.py
+   ├─ OriginalSearchStrategy: 原文ハイブリッド検索（search_mode=original）
+   │   ├─ vector_search_engine.py（ベクトル検索）
+   │   └─ keyword_search_engine.py（キーワード類似度計算）
+   └─ LLMEnhancedSearchStrategy: LLM拡張検索（search_mode=llm_enhanced）
+       ├─ searcher.summarize_text()（LLMクエリ生成）
+       ├─ vector_search_engine.py
+       └─ keyword_search_engine.py
+4. 結果出力
+   ↓ output_handler.py (save_data)
+5. Excelファイル保存
+```
+
+### 多段階検索バッチフロー（改定影響調査）
+
+```
+1. 入力ファイル読み込み
+   ↓ input_handler.py (load_data)
+2. 参照データ読み込み + ベクトル化
+   ↓ dynamic_db_manager.py → embedding → vector_db.py
+3. 各行を検索実行（search_mode=multi_stage）
+   ↓ multi_stage_orchestrator.py (execute)
    ├─ Stage 1: 原文でハイブリッド検索
    │   ├─ vector_search_engine.py
    │   └─ keyword_search_engine.py
@@ -280,11 +322,11 @@ class BaseEmbeddingModel(ABC):
    │   ├─ query_enhancer.py
    │   ├─ vector_search_engine.py
    │   └─ keyword_search_engine.py
-   └─ Stage 3: 結果マージ + カテゴリ分類
-4. LLM判断支援（オプション）
+   └─ Stage 3: OR結合と3分類（Both / Original_Only / LLM_Enhanced_Only）
+4. LLM判断支援（オプション、ThreadPoolExecutor で並列実行）
    ↓ judgment_support.py
-5. 結果出力
-   ↓ output_handler.py
+5. 結果出力（3シート形式）
+   ↓ output_handler.py (save_data_multi_stage)
 6. Excelファイル保存
 ```
 
@@ -296,9 +338,9 @@ class BaseEmbeddingModel(ABC):
 2. DB再構築
    ↓ scripts/build_db.py --revisions-only
    ├─ Azure OpenAI でベクトル化
-   │   └─ data/vector_db/revXX/azure_openai/
+   │   └─ data/vector_db/revXX_{bot}/azure_openai/
    └─ VertexAI でベクトル化
-       └─ data/vector_db/revXX/vertex_ai/
+       └─ data/vector_db/revXX_{bot}/vertex_ai/
 3. 評価実行
    ↓ apps/revision-ops/run_eval.py
    ├─ 各改定内容をクエリとして検索
@@ -363,8 +405,9 @@ main.py
 ### 新しい埋め込みモデルの追加
 
 1. `src/utils/base_embedding.py` を継承
-2. 必要なメソッドを実装
-3. `config.py` に設定を追加
+2. `encode()`, `embedding_dimension`, `provider_name` を実装
+3. `src/utils/auth.py` の `create_embedding_model()` にプロバイダー分岐を追加
+4. `config.py` の `VALID_EMBEDDING_PROVIDERS` タプルにプロバイダー名を追加
 
 ```python
 # src/utils/custom_embedding.py
@@ -372,22 +415,33 @@ from src.utils.base_embedding import BaseEmbeddingModel
 
 class CustomEmbeddingModel(BaseEmbeddingModel):
     def __init__(self, config: SearchConfig):
-        # 初期化処理
+        super().__init__(config)
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def encode(self, texts: Union[str, List[str]],
+               normalize_embeddings: bool = True) -> np.ndarray:
         # 実装
 
-    def embed_query(self, query: str) -> List[float]:
-        # 実装
+    @property
+    def embedding_dimension(self) -> int:
+        return 1024  # 例
+
+    @property
+    def provider_name(self) -> str:
+        return "custom"
 ```
 
 ```python
 # config.py
-EMBEDDING_PROVIDERS = {
-    "azure_openai": AzureEmbeddingModel,
-    "vertex_ai": GeminiEmbeddingModel,
-    "custom": CustomEmbeddingModel,  # 追加
-}
+VALID_EMBEDDING_PROVIDERS: Tuple[str, ...] = ("vertex_ai", "azure_openai", "custom")  # 追加
+```
+
+```python
+# src/utils/auth.py の create_embedding_model() に分岐追加
+def create_embedding_model(config, use_singleton=True):
+    ...
+    elif provider == "custom":
+        from src.utils.custom_embedding import CustomEmbeddingModel
+        return CustomEmbeddingModel(config)
 ```
 
 ### 新しい検索エンジンの追加
@@ -400,27 +454,32 @@ class CustomSearchEngine:
         pass
 ```
 
+MultiStageOrchestrator は個別引数でエンジンを受け取るため、呼び出し元で注入する:
+
 ```python
-# src/core/search/multi_stage_orchestrator.py
-def __init__(self, config: SearchConfig):
-    self.vector_engine = VectorSearchEngine(config)
-    self.keyword_engine = KeywordSearchEngine()
-    self.custom_engine = CustomSearchEngine()  # 追加
+# 呼び出し元で MultiStageOrchestrator を構築する際にカスタムエンジンを渡す
+orchestrator = MultiStageOrchestrator(
+    vector_engine=vector_engine,
+    keyword_engine=keyword_engine,
+    query_enhancer=query_enhancer,
+    text_combiner=text_combiner,
+    vector_weight=0.9
+)
 ```
 
 ### 新しいLLMプロバイダーの追加
 
-1. `config.py` の `LLM_PROVIDERS` に追加
-2. 必要に応じて `src/core/search/query_enhancer.py` を拡張
+1. `src/utils/auth.py` の `LLM_PROVIDER_CONFIG` 辞書に追加
+2. `src/utils/auth.py` の `create_llm()` 関数を拡張
 
 ```python
-# config.py
-LLM_PROVIDERS = {
-    "gemini": "VertexAI",
-    "anthropic": "Anthropic",
-    "openai": "OpenAI",
-    "custom": "CustomLLM",  # 追加
+# src/utils/auth.py
+LLM_PROVIDER_CONFIG: Dict[str, Tuple[str, Type, str]] = {
+    "anthropic": ("ANTHROPIC_API_KEY", ChatAnthropic, "anthropic_api_key"),
+    "openai": ("OPENAI_API_KEY", ChatOpenAI, "api_key"),
+    "custom": ("CUSTOM_API_KEY", CustomLLM, "api_key"),  # 追加
 }
+# Note: gemini は create_llm() 内で専用の認証フローを持つため辞書外で処理
 ```
 
 ---
@@ -440,12 +499,15 @@ LLM_PROVIDERS = {
 ### 並列処理
 
 1. **バッチベクトル化**
-   - バッチサイズ: 5（Gemini）/ 16（Azure）
+   - バッチサイズ: `EMBEDDING_BATCH_SIZE = 250`（Vertex AI / Azure 共通、`config.py`）
    - 並列API呼び出し
 
-2. **検索の並列化**（将来実装予定）
-   - ベクトル検索とキーワード検索を並列実行
-   - ThreadPoolExecutor 使用
+2. **LLM判断支援の並列化**（実装済み）
+   - `processor.py`: `ThreadPoolExecutor(max_workers=10)` でLLM評価を並列実行
+
+3. **検索の並列化**（実装済み）
+   - `ops_ui.py`: `ThreadPoolExecutor(max_workers=2)` でAzure / VertexAI検索を並列実行
+   - `run_eval.py`: `ThreadPoolExecutor(max_workers=5)` で複数エリアの検索を並列実行
 
 ---
 
@@ -469,28 +531,26 @@ LLM_PROVIDERS = {
 
 ---
 
-## テスト戦略（将来実装予定）
+## テスト
+
+`pytest` で実行（`tests/`, `pytest.ini`, `requirements-dev.txt`）。
 
 ### ユニットテスト
 
 ```
-tests/
-├── unit/
-│   ├── test_embedding.py
-│   ├── test_vector_db.py
-│   └── test_search_engine.py
-├── integration/
-│   ├── test_processor.py
-│   └── test_orchestrator.py
-└── e2e/
-    └── test_batch_processing.py
+tests/unit/
+├── test_business_area_mapping.py    # 業務分野マッピング・DB選択
+├── test_chromadb_keyword_search.py  # ChromaDBキーワード検索
+├── test_keyword_search_engine.py    # キーワード抽出・類似度計算
+├── test_keyword_similarity_sync.py  # Searcher/Orchestrator間のキーワード同期
+├── test_logger_dashboard.py         # ダッシュボードログ出力
+├── test_logger_noise.py             # サードパーティログ抑制
+├── test_run_eval_cache.py           # 評価キャッシュ動作
+├── test_search_strategy.py          # 検索戦略パターン（4戦略）
+├── test_text_combiner.py            # テキスト結合・パース
+├── test_timestamp_migration.py      # タイムスタンプ移行
+└── test_ui_shared.py               # UI共通ユーティリティ
 ```
-
-### カバレッジ目標
-
-- ユニットテスト: 80%
-- 統合テスト: 60%
-- E2Eテスト: 主要フロー
 
 ---
 
@@ -547,16 +607,18 @@ class SearchConfig:
     llm_provider: str   # DEFAULT_LLM_PROVIDER 環境変数（必須）
     llm_model: str      # DEFAULT_LLM_MODEL 環境変数（必須）
 
-    # 埋め込みモデル設定（環境変数から読み込み）
+    # 埋め込みモデル設定
     embedding_provider: str  # DEFAULT_EMBEDDING_PROVIDER（必須、vertex_ai / azure_openai）
-    embedding_model: str     # DEFAULT_EMBEDDING_MODEL（必須）
+    embedding_model: str     # __post_init__ でプロバイダーから自動解決
 
-    # 検索設定（settings.yaml batch セクションから読み込み）
+    # 検索設定（settings.yaml batch セクションから読み込み、フォールバックなし）
     top_k: int = 4                    # 返却する結果数
-    vector_weight: float = 0.9        # ベクトル検索の重み（0〜1）
+    vector_weight: float = 0.9        # ベクトル検索の重み（0〜1）※ batch セクション固有値
     keyword_weight: float             # 自動計算（1.0 - vector_weight）
 
     # 検索モード: original | llm_enhanced | multi_stage
+    # 回答支援AIでは original / llm_enhanced のみ使用。
+    # multi_stage は改定影響調査（apps/revision-ops/）専用。
     search_mode: str = "original"
 
     # 入出力設定
@@ -576,7 +638,7 @@ class SearchConfig:
 | `top_k` | int | settings.yaml | 返却する結果数 |
 | `vector_weight` | float | settings.yaml | ベクトル検索の重み（0〜1） |
 | `keyword_weight` | float | 自動計算 | キーワード検索の重み（1.0 - vector_weight） |
-| `search_mode` | str | settings.yaml | 検索モード（original/llm_enhanced/multi_stage） |
+| `search_mode` | str | settings.yaml | 検索モード（original/llm_enhanced/multi_stage）。multi_stage は改定影響調査（`apps/revision-ops/`）専用 |
 | `search_type` | str | settings.yaml | 検索タイプ（hybrid/keyword_filter） |
 | `search_source` | str | settings.yaml | 検索対象（scenario/history_data） |
 | `reference_type` | str | "multi_folder" | 参照データ形式（excel/hierarchical_excel/multi_folder） |
@@ -1018,46 +1080,44 @@ class OutputHandlerFactory:
 
 **モジュール:** `src/utils/business_area_translator.py`
 
-業務領域の日本語→英語変換。
+業務領域の日本語→英語変換。YAMLファイル（`config/business_areas.yaml`）からマッピングを読み込む。
 
 ```python
 class BusinessAreaTranslator:
-    """業務領域変換"""
+    """業務分野名変換クラス"""
 
-    TRANSLATION_MAP = {
-        "預金": "deposit",
-        "融資": "loan",
-        "外貨": "foreign_currency",
-        ...
-    }
-
-    @classmethod
-    def translate(cls, japanese_name: str) -> str:
+    def __init__(self, config_path: Optional[str] = None):
         """
-        日本語名を英語に変換
+        Args:
+            config_path: 設定ファイルのパス（省略時はデフォルトパス）
+        """
+        self.mappings: Dict[str, str] = {}         # YAMLから読み込み
+        self.revision_mappings: Dict[str, str] = {} # 事務改定用マッピング
+
+    def translate(self, business_area: str) -> str:
+        """
+        業務分野名を英語に変換
 
         Args:
-            japanese_name: 日本語名（例: 預金）
+            business_area: 日本語の業務分野名（例: 内部事務）
 
         Returns:
-            英語名（例: deposit）
+            ChromaDB互換の英語名（例: naibujimu）
 
-        Raises:
-            ValueError: 未定義の業務領域
-        """
-
-    @classmethod
-    def get_collection_name(cls, japanese_name: str) -> str:
-        """
-        コレクション名を取得
-
-        Args:
-            japanese_name: 日本語名
-
-        Returns:
-            コレクション名（例: deposit_DB）
+        Note:
+            完全一致 → 部分一致 → 英数字サニタイズのフォールバック順で変換。
+            revXXで始まる場合は revision_mappings を優先チェック。
         """
 ```
+
+現在の主要マッピング（`config/business_areas.yaml`から読み込み）:
+
+| 日本語名 | 英語名 |
+|----------|--------|
+| 内部事務 | naibujimu |
+| スマイル | smile |
+| 相続 | souzoku |
+| 取引時確認 | torikaku |
 
 #### Logger
 

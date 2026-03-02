@@ -116,13 +116,13 @@ cd rag-local
 python apps/answer-support/main.py
 
 # 特定業務分野のみ
-python apps/answer-support/main.py --business 総則
+python apps/answer-support/main.py --business 内部事務
 
 # 処理件数を制限（先頭 N 件のみ）
 python apps/answer-support/main.py --limit 5
 
 # 組み合わせ
-python apps/answer-support/main.py --business 総則 --limit 10
+python apps/answer-support/main.py --business 内部事務 --limit 10
 ```
 
 #### コマンドライン引数
@@ -254,7 +254,7 @@ data/source/
 
 1. **Streamlit UI の停止**: ChromaDB はファイルロックを使用するため、UI と同時にスクリプトを実行するとロックエラーが発生する
 2. **環境変数の設定**: `.env` に以下が必要
-   - `DEFAULT_EMBEDDING_PROVIDER` / `DEFAULT_EMBEDDING_MODEL`
+   - `DEFAULT_EMBEDDING_PROVIDER`（モデルはプロバイダーから自動解決）
    - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
    - `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL`
 3. **参照データの配置**: `data/source/faq/latest/` と `data/source/scenarios/latest/` に対象 Excel ファイルが必要

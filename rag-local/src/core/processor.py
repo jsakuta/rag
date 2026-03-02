@@ -2,9 +2,7 @@
 import logging
 import pandas as pd
 import os
-import json
 import copy
-from datetime import datetime
 from config import SearchConfig
 from src.handlers.input_handler import InputHandlerFactory
 from src.handlers.output_handler import OutputHandlerFactory
