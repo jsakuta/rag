@@ -3,20 +3,20 @@
 ## 概要
 
 RAG-Local のベクトルDBは **ChromaDB** で構成され、業務分野ごとに独立したDBを持ちます。
-本ガイドでは、回答支援AI用DBと改定別DB（事務改定評価AI用）の構築手順を説明します。
+本ガイドでは、回答支援AI（類似回答検索）用DBと改定別DB（運用保守効率化AI（改定影響調査）用）の構築手順を説明します。
 
 ---
 
 ## 業務分野構造
 
-### 回答支援AI用（通常業務）
+### 回答支援AI（類似回答検索）用（通常業務）
 
 | 業務分野 | DB名 | 内容 |
 |---------|------|------|
 | 内部事務 | `naibujimu` | 預金+総則FAQ + naibujimu-botシナリオ |
 | スマイル | `smile` | スマイルFAQ + smile-botシナリオ |
 
-### 改定別（事務改定評価AI専用）
+### 改定別（運用保守効率化AI（改定影響調査）専用）
 
 | DB名 | 改定内容 |
 |------|---------|
@@ -42,7 +42,7 @@ data/source/
 │   ├── 内部事務_履歴データ_20260224.xlsx
 │   └── スマイル_履歴データ_20250205.xlsx
 ├── scenarios/
-│   ├── latest/             # 最新シナリオ（回答支援AI用）
+│   ├── latest/             # 最新シナリオ（回答支援AI（類似回答検索）用）
 │   │   ├── 内部事務_シナリオデータ_20260224.xlsx
 │   │   └── スマイル_シナリオデータ_20260224.xlsx
 │   └── revisions/          # 変更前シナリオ（改定別DB用）
@@ -64,9 +64,9 @@ data/source/
 
 ## DB構築コマンド
 
-統合スクリプト `build_db.py` で回答支援AI用DB・改定別DBの両方を構築できます。
+統合スクリプト `build_db.py` で回答支援AI（類似回答検索）用DB・改定別DBの両方を構築できます。
 
-### 回答支援AI用DB
+### 回答支援AI（類似回答検索）用DB
 
 ```bash
 cd rag-local
@@ -81,7 +81,7 @@ python scripts/build_db.py --force
 python scripts/build_db.py --business naibujimu
 python scripts/build_db.py --business smile
 
-# 回答支援AI用DBのみ（改定別を除外）
+# 回答支援AI（類似回答検索）用DBのみ（改定別を除外）
 python scripts/build_db.py --no-revisions
 ```
 
@@ -90,13 +90,13 @@ python scripts/build_db.py --no-revisions
 - DB未存在 or 参照ファイル更新あり → 構築/更新実行
 - `--force` 指定時のみ既存DB削除→全再構築
 
-### 改定別DB（事務改定評価AI用）
+### 改定別DB（運用保守効率化AI（改定影響調査）用）
 
 ```bash
 # 改定別DBのみ構築（Azure OpenAI + VertexAI 両方）
 python scripts/build_db.py --revisions-only
 
-# 全DB一括構築（回答支援AI用 + 改定別）
+# 全DB一括構築（回答支援AI（類似回答検索）用 + 改定別）
 python scripts/build_db.py --force
 ```
 
@@ -107,10 +107,10 @@ python scripts/build_db.py --force
 ```
 data/vector_db/
 ├── update_timestamps.json          # 更新日時記録
-├── naibujimu/                      # 回答支援AI: 内部事務
+├── naibujimu/                      # 回答支援AI（類似回答検索）: 内部事務
 │   └── azure_openai/
 │       └── chroma.sqlite3
-├── smile/                          # 回答支援AI: スマイル
+├── smile/                          # 回答支援AI（類似回答検索）: スマイル
 │   └── azure_openai/
 │       └── chroma.sqlite3
 ├── rev01_smile/                    # 改定別

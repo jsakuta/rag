@@ -8,7 +8,7 @@
 #   common:     全プログラム共通設定
 #   ui:         UI専用設定（streamlit）
 #   batch:      バッチ処理専用設定（main.py）
-#   evaluation: 事務改定評価専用設定（evaluate_revisions.py）
+#   evaluation: 改定影響調査専用設定（evaluate_revisions.py）
 
 # ===========================================
 # 共通設定（全プログラムで使用）
@@ -108,7 +108,7 @@ batch:
   top_k: 4
 
 # ===========================================
-# 事務改定評価専用設定（evaluate_revisions.py）
+# 改定影響調査専用設定（evaluate_revisions.py）
 # ===========================================
 # ※ commonセクションの設定は自動的に継承されます
 evaluation:

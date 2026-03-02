@@ -1,4 +1,4 @@
-# 事務改定評価システム（多段階検索・横並び比較版）
+# 改定影響調査システム（多段階検索・横並び比較版）
 
 事務改定前のシナリオデータをベクトル化し、改定内容をクエリとして検索精度を評価するシステム。
 
@@ -300,7 +300,7 @@ DBが存在しません: data/vector_db/rev01smile/azure_openai
 
 | ファイル | 説明 |
 |---------|------|
-| `scripts/build_db.py` | DB構築スクリプト（回答支援AI + 改定別 統合） |
+| `scripts/build_db.py` | DB構築スクリプト（回答支援AI（類似回答検索）+ 改定別 統合） |
 | `scripts/evaluate_revisions.py` | 評価スクリプト（多段階検索版） |
 | `scripts/generate_correct_ids.py` | 正解ID対応表生成 |
 | `scripts/prepare_before_scenario.py` | 変更前シナリオの前処理 |

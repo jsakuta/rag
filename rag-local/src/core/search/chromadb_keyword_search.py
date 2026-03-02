@@ -117,7 +117,10 @@ class ChromaDBKeywordSearcher:
         try:
             client = chromadb.PersistentClient(
                 path=db_path,
-                settings=Settings(anonymized_telemetry=False),
+                settings=Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True,
+                ),
             )
             collection = client.get_collection("default")
         except ChromaNotFoundError:

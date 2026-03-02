@@ -1,8 +1,8 @@
-"""共通UI部品 — 回答支援AI・事務改定評価AI 共用
+"""共通UI部品 — 回答支援AI（類似回答検索）・運用保守効率化AI（改定影響調査）共用
 
 このモジュールは以下から import される:
 - apps/answer-support/ui/chat.py（回答支援UI）
-- apps/revision-eval/ui/eval_ui.py（事務改定評価UI）
+- apps/revision-eval/ui/eval_ui.py（改定影響調査UI）
 
 責務: UIレンダリング部品 + 共通CSS + 共通セッション状態初期化
 Processor 等の重い依存は持たない（各UI側で管理する）。
@@ -165,6 +165,11 @@ def _create_llm_analysis_section(
     return f"""<div style="background-color: #f0f7ff; padding: 12px; border-radius: 8px; margin: 8px 0;"><div style="font-weight: 600; margin-bottom: 5px;">LLM分析</div><div>関連性: {html.escape(str(relevance_judgment))}</div><div>根拠: {reason_text}</div></div>"""
 
 
+def _clean_excel_artifacts(text: str) -> str:
+    """Excel由来のアーティファクト(_x000D_ 等)を除去"""
+    return text.replace("_x000D_", "")
+
+
 def format_response_card(
     number: int,
     similarity: float,
@@ -177,8 +182,8 @@ def format_response_card(
     is_correct: bool = False,
 ) -> str:
     """検索結果カードのHTMLを生成"""
-    query = html.escape(str(query))
-    answer = html.escape(str(answer))
+    query = html.escape(_clean_excel_artifacts(str(query)))
+    answer = html.escape(_clean_excel_artifacts(str(answer)))
 
     category_badge = _create_category_badge(category)
     correct_badge = _create_correct_badge(is_correct)

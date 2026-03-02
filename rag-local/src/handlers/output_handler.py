@@ -45,6 +45,7 @@ class ExcelOutputHandler(OutputHandler):
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
                 self._format_excel(writer, df)  # processor.py から移動
             logger.info(f"Results saved to: {output_file}")
+            return output_file
         except Exception as e:
             logger.error(f"Error saving data to Excel: {e}", exc_info=True)
             raise  # 呼び出し元に例外を伝播

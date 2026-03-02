@@ -1,4 +1,4 @@
-"""回答支援AI — Streamlit UI"""
+"""回答支援AI（類似回答検索）— Streamlit UI"""
 import sys
 from pathlib import Path
 
@@ -212,8 +212,9 @@ def save_chat_history():
 
         if chat_data:
             processor = Processor(st.session_state.config)
-            processor.output_handler.save_data(chat_data, mode="chat")
-            st.sidebar.success("チャット履歴を保存しました。")
+            output_path = processor.output_handler.save_data(chat_data, mode="chat")
+            if output_path:
+                st.sidebar.success(f"チャット履歴を保存しました: {Path(output_path).name}")
         else:
             st.sidebar.warning("保存するチャット履歴がありません。")
 
@@ -234,7 +235,7 @@ def run_streamlit_ui():
             ("DB接続", len(areas) > 0, f"({', '.join(areas)})"),
             ("キーワードキャッシュ", True, "OK"),
         ]
-        print_startup_summary("回答支援AI v1.0", checks)
+        print_startup_summary("回答支援AI（類似回答検索）v1.0", checks)
         logger.info("⚡ Ready")
         st.session_state.startup_logged = True
 

@@ -288,7 +288,7 @@ class BaseEmbeddingModel(ABC):
 6. Excelファイル保存
 ```
 
-### 事務改定評価フロー
+### 改定影響調査フロー
 
 ```
 1. 変更前シナリオExcel配置

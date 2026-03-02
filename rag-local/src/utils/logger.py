@@ -355,7 +355,7 @@ def print_startup_summary(app_name: str, checks: list):
     """起動サマリをダッシュボード形式で表示
 
     Args:
-        app_name: アプリ名（例: "回答支援AI v1.0"）
+        app_name: アプリ名（例: "回答支援AI（類似回答検索）v1.0"）
         checks: [(label, ok, detail), ...] のリスト
     """
     console = get_console()

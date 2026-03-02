@@ -131,6 +131,24 @@ pkill -f streamlit
 
 3. DBファイルのロック解除後に再実行
 
+### ChromaDB エラー: An instance of Chroma already exists with different settings
+
+**症状:**
+
+DB再構築後や設定変更後に検索結果が0件になる、または以下のエラーが表示される:
+```
+An instance of Chroma already exists for ... with different settings
+```
+
+**原因:**
+- ChromaDB はプロセス内で同一パスに1つのクライアントしか許可しない
+- DB再構築後も古いクライアントインスタンスがメモリに残っている
+
+**解決策:**
+
+Streamlit を再起動する（Ctrl+C → 再度 `streamlit run ...`）。
+DB・設定変更後は必ず再起動が必要。
+
 ### タイムスタンプ検証エラー
 
 **症状:**
@@ -444,7 +462,7 @@ python apps/answer-support/main.py
 ### Q: 複数の埋め込みモデルを同時に使用できる?
 
 いいえ。同一コレクションに異なるモデルのベクトルは混在できません。
-事務改定評価システムでは、プロバイダーごとに別々のDBディレクトリを使用しています。
+改定影響調査システムでは、プロバイダーごとに別々のDBディレクトリを使用しています。
 
 ```
 data/vector_db/rev01smile/

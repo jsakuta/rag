@@ -156,7 +156,12 @@ class KeywordSearchEngine:
 
         return len(intersection) / len(union)
 
-    def build_cache(self, queries: List[str], cache_path: Optional[Path] = None) -> None:
+    def build_cache(
+        self,
+        queries: List[str],
+        cache_path: Optional[Path] = None,
+        index_mapping: Optional[List[int]] = None,
+    ) -> None:
         """参照クエリのキーワードキャッシュを構築（ディスクキャッシュ対応）
 
         cache_path が指定され、ファイルが存在し、件数が一致する場合はディスクから読み込む。
@@ -165,8 +170,15 @@ class KeywordSearchEngine:
         Args:
             queries: キャッシュ対象のクエリリスト
             cache_path: キャッシュファイルパス（省略時はディスクキャッシュなし）
+            index_mapping: キャッシュキーとして使うインデックスのリスト。
+                指定時は queries[i] を index_mapping[i] のキーで格納する。
+                省略時は 0, 1, 2, ... の連番。
         """
-        content_hash = self._compute_content_hash(queries)
+        # index_mapping 使用時はハッシュに含めて旧キャッシュを無効化
+        hash_queries = queries
+        if index_mapping:
+            hash_queries = [f"{index_mapping[i]}:{q}" for i, q in enumerate(queries)]
+        content_hash = self._compute_content_hash(hash_queries)
         if cache_path and self._try_load_cache(cache_path, len(queries), content_hash):
             return
 
@@ -175,11 +187,12 @@ class KeywordSearchEngine:
 
         active_count = 0
         for i, query in enumerate(queries):
+            key = index_mapping[i] if index_mapping else i
             if query:
-                self._keyword_cache[i] = set(self.extract_keywords(query))
+                self._keyword_cache[key] = set(self.extract_keywords(query))
                 active_count += 1
             else:
-                self._keyword_cache[i] = set()
+                self._keyword_cache[key] = set()
 
         logger.debug(f"キーワードキャッシュ構築完了: {active_count}/{len(queries)}件")
 

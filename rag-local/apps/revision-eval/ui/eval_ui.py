@@ -1,4 +1,4 @@
-"""事務改定評価AI — 評価 Streamlit UI
+"""運用保守効率化AI（改定影響調査）— 評価 Streamlit UI
 
 改定番号を選択し、Azure OpenAI / VertexAI 両方で検索して正解IDとのマッチを評価する。
 バッチ版は evaluate_revisions.py（Excel出力）。
@@ -203,6 +203,7 @@ def _get_cached_keyword_engine(area: str, source_filter: str = ""):
         get_kwargs["where"] = {"source": source_filter}
     result = vector_db.collection.get(**get_kwargs)
     documents = result.get("documents", [])
+    doc_ids = result.get("ids", [])
     reference_queries = []
     for doc in documents:
         if doc:
@@ -214,6 +215,17 @@ def _get_cached_keyword_engine(area: str, source_filter: str = ""):
     if not any(reference_queries):
         return None
 
+    # ChromaDB IDからグローバルインデックスを抽出（doc_N → N）
+    # source_filter 適用時はフィルタ後の連番ではなくDB内の実IDでキャッシュする
+    index_mapping = None
+    if source_filter and doc_ids:
+        index_mapping = []
+        for did in doc_ids:
+            if did.startswith("doc_"):
+                index_mapping.append(int(did.split("_")[1]))
+            else:
+                index_mapping.append(int(did))
+
     config = SearchConfig(base_dir=str(PROJECT_ROOT))
     keyword_engine = KeywordSearchEngine(
         stop_words=config.STOP_WORDS,
@@ -221,7 +233,7 @@ def _get_cached_keyword_engine(area: str, source_filter: str = ""):
     )
     cache_key = f"{area}__{source_filter}" if source_filter else area
     cache_path = KEYWORD_CACHE_DIR / f"{cache_key}.json"
-    keyword_engine.build_cache(reference_queries, cache_path=cache_path)
+    keyword_engine.build_cache(reference_queries, cache_path=cache_path, index_mapping=index_mapping)
 
     return keyword_engine, reference_queries, text_combiner
 
@@ -305,7 +317,7 @@ def initialize_session_state():
             ("キーワードキャッシュ", True, "OK"),
             ("正解ID読み込み", correct_count > 0, f"({revision_count}改定, {correct_count}件)"),
         ]
-        print_startup_summary("事務改定評価AI v1.0", checks)
+        print_startup_summary("運用保守効率化AI（改定影響調査）v1.0", checks)
         logger.info("⚡ Ready")
 
         st.session_state.warmup_done = True
@@ -522,11 +534,12 @@ def _search_with_provider(
                 top_k=top_k,
             )
 
+            filter_metadata = {"source": source_filter} if source_filter else None
             results = orchestrator.execute(
                 input_number=revision,
                 query_text=query,
                 original_answer="",
-                filter_metadata=None,
+                filter_metadata=filter_metadata,
                 pre_enhanced_query=pre_enhanced_query,
             )
 
@@ -667,11 +680,15 @@ def _render_provider_results(results: List[Dict], correct_ids: List[str], is_ver
             st.info("該当する結果がありません")
         return
 
-    correct_count = sum(
-        1 for r in results
-        if check_if_correct(r, correct_ids, r.get("_area"))[1]
-    )
-    st.caption(f"検索結果: {len(results)}件（正解: {correct_count}件）")
+    app_mode = st.session_state.get("app_mode", "evaluation")
+    if app_mode == "evaluation":
+        correct_count = sum(
+            1 for r in results
+            if check_if_correct(r, correct_ids, r.get("_area"))[1]
+        )
+        st.caption(f"検索結果: {len(results)}件（正解: {correct_count}件）")
+    else:
+        st.caption(f"検索結果: {len(results)}件")
 
     with st.container(height=600):
         for idx, response in enumerate(results, 1):
@@ -688,7 +705,7 @@ def _render_provider_results(results: List[Dict], correct_ids: List[str], is_ver
 
 def run_streamlit_ui():
     suppress_noise()
-    st.set_page_config(page_title="事務改定評価", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="改定影響調査", layout="wide", initial_sidebar_state="expanded")
     apply_common_styles()
     initialize_session_state()
 
@@ -880,19 +897,15 @@ def run_streamlit_ui():
         if st.button("チャット履歴を保存", use_container_width=True, key="save_chat_history_button"):
             save_chat_history()
 
-        if st.button("キャッシュクリア", use_container_width=True):
-            st.cache_resource.clear()
-            st.rerun()
-
     # メインエリア タイトル
     if st.session_state.get("app_mode") == "impact_analysis":
         cats = st.session_state.get("impact_categories", [])
         cat_label = " + ".join(AREA_TO_CATEGORY.get(c, c) for c in cats)
         st.title(f"影響調査【{cat_label}】")
     elif st.session_state.selected_revision:
-        st.title(f"事務改定評価【改定{st.session_state.selected_revision}】")
+        st.title(f"改定影響調査【改定{st.session_state.selected_revision}】")
     else:
-        st.title("事務改定評価")
+        st.title("改定影響調査")
 
     chat_container = st.container()
     with chat_container:

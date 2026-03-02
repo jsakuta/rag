@@ -16,9 +16,9 @@
 | [docs/API_REFERENCE.md](../docs/API_REFERENCE.md) | API仕様 |
 | [docs/SECURITY.md](../docs/SECURITY.md) | セキュリティガイド |
 | [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) | トラブルシューティング |
-| [docs/REVISION_EVALUATION.md](../docs/REVISION_EVALUATION.md) | 事務改定評価システム |
+| [docs/REVISION_EVALUATION.md](../docs/REVISION_EVALUATION.md) | 改定影響調査システム |
 | [docs/PROMPTS.md](../docs/PROMPTS.md) | プロンプト詳細 |
-| [docs/DB_BUILD_GUIDE.md](../docs/DB_BUILD_GUIDE.md) | DB構築ガイド（回答支援AI + 改定別） |
+| [docs/DB_BUILD_GUIDE.md](../docs/DB_BUILD_GUIDE.md) | DB構築ガイド（回答支援AI（類似回答検索）+ 改定別） |
 
 ---
 
@@ -138,7 +138,7 @@ reference/                          # .gitignore対象（git管理外）
 
 ### 重要なスクリプト
 - `scripts/prepare_before_scenario.py`: 変更前シナリオの前処理（列削除・リネーム）
-- `scripts/build_db.py`: DB構築（回答支援AI用 + 改定別、統合スクリプト）
+- `scripts/build_db.py`: DB構築（回答支援AI（類似回答検索）用 + 改定別、統合スクリプト）
 - `scripts/generate_correct_ids.py`: 正解ID対応表生成
 
 ---
@@ -180,11 +180,11 @@ reference/                          # .gitignore対象（git管理外）
 ```
 rag-local/
 ├── apps/                         # アプリケーション
-│   ├── answer-support/           # 回答支援AI
+│   ├── answer-support/           # 回答支援AI（類似回答検索）
 │   │   ├── main.py               # バッチ処理エントリーポイント
 │   │   └── ui/
 │   │       └── chat.py           # Streamlit UI
-│   └── revision-eval/            # 事務改定評価
+│   └── revision-eval/            # 運用保守効率化AI（改定影響調査）
 │       └── evaluate_revisions.py # 評価実行
 │
 ├── config.py                     # 設定管理
@@ -198,7 +198,7 @@ rag-local/
 │   ├── API_REFERENCE.md          # API仕様
 │   ├── SECURITY.md               # セキュリティ
 │   ├── TROUBLESHOOTING.md        # トラブルシューティング
-│   ├── REVISION_EVALUATION.md    # 事務改定評価
+│   ├── REVISION_EVALUATION.md    # 改定影響調査
 │   └── PROMPTS.md                # プロンプト詳細
 │
 ├── src/                          # 共有コアライブラリ
@@ -232,7 +232,7 @@ rag-local/
 │   └── judgment_support.txt      # 関連性判定
 │
 ├── scripts/                      # ユーティリティスクリプト
-│   ├── build_db.py               # DB構築（回答支援AI + 改定別 統合）
+│   ├── build_db.py               # DB構築（回答支援AI（類似回答検索）+ 改定別 統合）
 │   ├── generate_correct_ids.py   # 正解ID生成
 │   ├── prepare_before_scenario.py # データ前処理
 │   └── check_db_content.py       # DB内容確認

@@ -244,7 +244,7 @@ search_mode="multi_stage"
 **特徴:**
 - 原文検索 + LLM拡張検索のOR結合
 - 最高の網羅性
-- 事務改定評価に適する
+- 改定影響調査に適する
 
 ### 重み調整
 
@@ -296,7 +296,7 @@ OUTPUT_DIR=data/output
 |--------|----------------|------|
 | 内部事務 | naibujimu | 預金+総則を統合 |
 | スマイル | smile | |
-| rev01_smile | rev01_smile | 改定別（事務改定評価AI用） |
+| rev01_smile | rev01_smile | 改定別（運用保守効率化AI（改定影響調査）用） |
 | rev02_souzoku | rev02_souzoku | 改定別 |
 | ... | rev{XX}_{bot} | 改定番号_ボット名 |
 
