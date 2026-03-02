@@ -72,7 +72,7 @@ def load_revision_correct_ids() -> Dict[str, Tuple[str, List[str]]]:
             correct_ids = group["正解ID"].tolist()
             result[revision] = (revision_content, correct_ids)
 
-        logger.info(f"正解IDデータを読み込み: {len(result)}改定, {sum(len(v[1]) for v in result.values())}件")
+        logger.debug(f"正解IDデータを読み込み: {len(result)}改定, {sum(len(v[1]) for v in result.values())}件")
         return result
     except Exception as e:
         logger.error(f"正解IDデータの読み込みエラー: {e}")
@@ -301,7 +301,7 @@ def _prewarm():
     def _warm_llm():
         try:
             _get_cached_llm()
-            logger.info("プリウォーム完了: LLM")
+            logger.debug("プリウォーム完了: LLM")
         except Exception as e:
             logger.warning(f"LLMプリウォーム失敗: {e}")
 
@@ -309,7 +309,7 @@ def _prewarm():
         try:
             for area in ("naibujimu", "smile"):
                 _get_cached_keyword_engine(area)
-            logger.info("プリウォーム完了: キーワードキャッシュ")
+            logger.debug("プリウォーム完了: キーワードキャッシュ")
         except Exception as e:
             logger.warning(f"キーワードキャッシュプリウォーム失敗: {e}")
 

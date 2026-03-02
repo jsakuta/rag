@@ -32,7 +32,7 @@ class Searcher:
             with cls._tokenizer_lock:
                 if cls._shared_tokenizer is None:  # Double-checked locking
                     cls._shared_tokenizer = Dictionary().create()
-                    logger.info("Sudachi辞書を共有インスタンスとして初期化")
+                    logger.debug("Sudachi辞書を共有インスタンスとして初期化")
         return cls._shared_tokenizer
 
     def __init__(
@@ -66,16 +66,16 @@ class Searcher:
         # パフォーマンス: キーワードキャッシュ（N+1問題解消）
         self._reference_keywords_cache: Dict[int, set] = {}
 
-        logger.info("Searcherを初期化しました（依存性注入対応）")
+        logger.debug("Searcherを初期化しました（依存性注入対応）")
 
         # LLM初期化（条件付き：LLM拡張検索または多段階検索が有効な場合）
         needs_llm = self.config.search_mode in ["llm_enhanced", "multi_stage"]
         if needs_llm:
             self.llm = create_llm(self.config)
-            logger.info(f"LLM initialized for {self.config.search_mode} search mode")
+            logger.debug(f"LLM initialized for {self.config.search_mode} search mode")
         else:
             self.llm = None
-            logger.info("LLM not initialized - using original search mode")
+            logger.debug("LLM not initialized - using original search mode")
 
     def _extract_keywords(self, text: str, top_k: int = 5) -> List[str]:
         """キーワード抽出（KeywordSearchEngineに委譲）
@@ -131,7 +131,7 @@ class Searcher:
         if not summarize_prompt_file.exists():
             raise FileNotFoundError(f"Summarize prompt file not found: {summarize_prompt_file}")
 
-        logger.info(f"Using summarize prompt file: summarize_v1.0.txt")
+        logger.debug(f"Using summarize prompt file: summarize_v1.0.txt")
 
         with open(summarize_prompt_file, 'r', encoding='utf-8') as f:
             self._summarize_prompt_cache = f.read()
@@ -209,7 +209,7 @@ class Searcher:
             self.reference_metadatas.extend([{} for _ in range(missing_count)])
 
         # デバッグ: 空のテキストをチェック
-        logger.info(f"Total reference texts: {len(self.reference_texts)}")
+        logger.debug(f"Total reference texts: {len(self.reference_texts)}")
         empty_texts = []
         for i, text in enumerate(self.reference_texts):
             if not text or not text.strip():
@@ -240,23 +240,23 @@ class Searcher:
             self.reference_answers = filtered_answers
             self.reference_metadatas = filtered_metadatas
 
-            logger.info(f"Filtered to {len(self.reference_texts)} valid texts")
+            logger.debug(f"Filtered to {len(self.reference_texts)} valid texts")
         
         # メタデータ対応ベクトルDBの初期化
         # 動的DB管理システムでは、初期化時にコレクションを指定しない
         # 実際のDB選択は search メソッドで行われる
         self.vector_db = None  # 初期化時はNone、検索時に適切なコレクションを選択
-        logger.info("動的DB管理システム用に初期化（コレクションは検索時に選択）")
+        logger.debug("動的DB管理システム用に初期化（コレクションは検索時に選択）")
 
         # ベクトル化処理は検索時に必要な業務分野のみ実行される
         # （_select_db_for_business内でneeds_updateをチェック）
 
         # パフォーマンス: キーワードを事前計算してキャッシュ（N+1問題解消）
-        logger.info("キーワードキャッシュを構築中...")
+        logger.debug("キーワードキャッシュを構築中...")
         self._reference_keywords_cache = {}
         for i, query in enumerate(self.reference_queries):
             self._reference_keywords_cache[i] = set(self._extract_keywords(query))
-        logger.info(f"キーワードキャッシュ構築完了: {len(self._reference_keywords_cache)}件")
+        logger.debug(f"キーワードキャッシュ構築完了: {len(self._reference_keywords_cache)}件")
 
     def parse_enhanced_combined_text(self, combined_text: str) -> dict:
         """階層構造を含む結合テキストを解析（新形式：ラベル付き）"""
@@ -321,7 +321,7 @@ class Searcher:
                     "VectorDB not initialized. input_file is required for dynamic DB selection, "
                     "or prepare_search() must be called first."
                 )
-            logger.info("  No input_file provided, using existing DB.")
+            logger.debug("  No input_file provided, using existing DB.")
             return
 
         try:
@@ -329,12 +329,12 @@ class Searcher:
 
             # 前回と同じ業務分野ならDB再選択をスキップ
             if business_area == self.current_business_area and self.vector_db is not None:
-                logger.info(f"  Selected DB for business area: {business_area}")
+                logger.debug(f"  Selected DB for business area: {business_area}")
                 return
 
             self._select_db_for_business(business_area)
             self.current_business_area = business_area
-            logger.info(f"  Selected DB for business area: {business_area}")
+            logger.debug(f"  Selected DB for business area: {business_area}")
         except DynamicDBError as e:
             logger.error(f"  DB選択エラー: {e}")
             raise
@@ -365,7 +365,7 @@ class Searcher:
         # 検索対象フィルタを構築
         filter_metadata = self._build_source_filter()
         if filter_metadata:
-            logger.info(f"  Search source filter: {filter_metadata}")
+            logger.debug(f"  Search source filter: {filter_metadata}")
 
         query_vector = self.model.encode([query_for_vector], normalize_embeddings=True)[0]
         search_results = self.vector_db.search(
@@ -373,14 +373,14 @@ class Searcher:
             n_results=self.config.top_k * self.config.VECTOR_SEARCH_MULTIPLIER,
             filter_metadata=filter_metadata
         )
-        logger.info(f"  Vector search returned {len(search_results)} results")
+        logger.debug(f"  Vector search returned {len(search_results)} results")
 
         # 検索結果のソース分布
         source_counts: Dict[str, int] = {}
         for result in search_results:
             source = result['metadata'].get('source', 'unknown')
             source_counts[source] = source_counts.get(source, 0) + 1
-        logger.info(f"  Search results by source: {source_counts}")
+        logger.debug(f"  Search results by source: {source_counts}")
 
         return search_results
 
@@ -510,8 +510,8 @@ class Searcher:
         results = []
         max_similarity = 0.0
 
-        logger.info(f"  === 検索結果処理開始 ===")
-        logger.info(f"  検索結果数: {len(search_results)}")
+        logger.debug(f"  === 検索結果処理開始 ===")
+        logger.debug(f"  検索結果数: {len(search_results)}")
 
         for i, search_result in enumerate(search_results):
             logger.debug(f"  処理中: ループカウンタ i={i}, 総検索結果数={len(search_results)}")
@@ -532,9 +532,9 @@ class Searcher:
 
             results.append(result_data)
 
-        logger.info(f"  === 検索結果処理完了 ===")
-        logger.info(f"  作成された結果数: {len(results)}")
-        logger.info(f"  【第1段階】最大類似度: {max_similarity:.4f}")
+        logger.debug(f"  === 検索結果処理完了 ===")
+        logger.debug(f"  作成された結果数: {len(results)}")
+        logger.debug(f"  【第1段階】最大類似度: {max_similarity:.4f}")
 
         return results
 
@@ -562,9 +562,9 @@ class Searcher:
         results.sort(key=lambda x: x['Similarity'], reverse=True)
 
         # top_k件に制限
-        logger.info(f"  制限前の結果数: {len(results)}")
+        logger.debug(f"  制限前の結果数: {len(results)}")
         results = results[:self.config.top_k]
-        logger.info(f"  制限後の結果数: {len(results)}")
+        logger.debug(f"  制限後の結果数: {len(results)}")
 
         # 1位のみに質問情報を設定
         if results:
@@ -572,10 +572,10 @@ class Searcher:
             results[0]['Original_Query'] = query_text
             results[0]['Original_Answer'] = original_answer
             results[0]['Search_Query'] = search_query
-            logger.info(f"  1位の結果に質問情報を設定: Input_Number={input_number}")
+            logger.debug(f"  1位の結果に質問情報を設定: Input_Number={input_number}")
             logger.debug(f"  Search_Query set to: {search_query[:50]}...")
 
-        logger.info(f"  Final results: {len(results)} items (limited to top_k={self.config.top_k})")
+        logger.debug(f"  Final results: {len(results)} items (limited to top_k={self.config.top_k})")
 
         # 各結果のInput_Numberを確認（デバッグレベル）
         for j, result in enumerate(results):
@@ -603,7 +603,7 @@ class Searcher:
 
             # 指定された業務分野のみ更新
             files = all_business_areas[business_area]
-            logger.info(f"業務分野 '{business_area}' のDB更新チェック中...")
+            logger.debug(f"業務分野 '{business_area}' のDB更新チェック中...")
             self.db_manager.update_business_db(business_area, files)
 
         except DynamicDBError as e:

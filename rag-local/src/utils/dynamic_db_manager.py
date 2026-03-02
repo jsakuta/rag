@@ -89,11 +89,11 @@ class DynamicDBManager:
                         self._chroma_client._server = None
                     # Windowsでのファイルロック問題を軽減するため参照をクリア
                     self._chroma_client = None
-                    logger.info("DynamicDBManager: ChromaDBクライアントをクリーンアップしました")
+                    logger.debug("DynamicDBManager: ChromaDBクライアントをクリーンアップしました")
                 except Exception as e:
                     logger.warning(f"ChromaDBクライアントのクリーンアップに失敗: {e}")
 
-            logger.info("DynamicDBManager: リソースをクリーンアップしました")
+            logger.debug("DynamicDBManager: リソースをクリーンアップしました")
         except Exception as e:
             logger.warning(f"DynamicDBManager close時のエラー: {e}")
         finally:
@@ -144,16 +144,16 @@ class DynamicDBManager:
                                 self._last_scenario_mtime[business_area] = provider_data['scenario']
                     # 旧形式を検出した場合、次回保存時にフラット形式に自動移行
                     if self._last_faq_mtime or self._last_scenario_mtime:
-                        logger.info("旧3階層形式を検出。次回保存時にフラット形式に移行します")
+                        logger.debug("旧3階層形式を検出。次回保存時にフラット形式に移行します")
 
-                logger.info(f"更新日時記録を読み込み: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件 (プロバイダー: {self.embedding_provider})")
+                logger.debug(f"更新日時記録を読み込み: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件 (プロバイダー: {self.embedding_provider})")
 
                 # 旧キー名を現行のDB名に移行
                 self._migrate_timestamp_keys()
             else:
                 self._last_faq_mtime = {}
                 self._last_scenario_mtime = {}
-                logger.info("更新日時記録ファイルが存在しないため、新規作成します")
+                logger.debug("更新日時記録ファイルが存在しないため、新規作成します")
         except json.JSONDecodeError as e:
             logger.warning(f"タイムスタンプファイルのJSON解析エラー: {e}")
             self._last_faq_mtime = {}
@@ -179,7 +179,7 @@ class DynamicDBManager:
                 new_area = self._normalize_timestamp_key(area)
                 if new_area != area:
                     migrated = True
-                    logger.info(f"タイムスタンプキー移行: '{area}' → '{new_area}'")
+                    logger.debug(f"タイムスタンプキー移行: '{area}' → '{new_area}'")
                 # 同一キーが複数の旧名から移行される場合は新しい方を優先
                 if new_area in new_dict:
                     new_dict[new_area] = max(new_dict[new_area], timestamp)
@@ -191,7 +191,7 @@ class DynamicDBManager:
         if migrated:
             # JSONファイルからも旧キーを除去して書き直す
             self._cleanup_stale_timestamp_file()
-            logger.info("タイムスタンプキーの移行が完了しました")
+            logger.debug("タイムスタンプキーの移行が完了しました")
 
     def _normalize_timestamp_key(self, area: str) -> str:
         """タイムスタンプキーを現行のDB名に正規化"""
@@ -255,7 +255,7 @@ class DynamicDBManager:
             with open(self.update_timestamp_file, 'w', encoding='utf-8') as f:
                 json.dump(normalized, f, ensure_ascii=False, indent=2)
 
-            logger.info(f"タイムスタンプファイルをクリーンアップ: {len(raw_timestamps)}件 → {len(normalized)}件")
+            logger.debug(f"タイムスタンプファイルをクリーンアップ: {len(raw_timestamps)}件 → {len(normalized)}件")
 
         except Exception as e:
             logger.warning(f"タイムスタンプファイルのクリーンアップエラー: {e}")
@@ -273,7 +273,7 @@ class DynamicDBManager:
                         existing_timestamps = {}
                     # 旧3階層形式が残っていたらクリア（フラット形式に完全移行）
                     if any(isinstance(v, dict) for v in existing_timestamps.values()):
-                        logger.info("旧3階層形式をフラット形式に移行します")
+                        logger.debug("旧3階層形式をフラット形式に移行します")
                         existing_timestamps = {}
                 except Exception as e:
                     logger.warning(f"既存タイムスタンプの読み込みエラー: {e}")
@@ -290,7 +290,7 @@ class DynamicDBManager:
 
             with open(self.update_timestamp_file, 'w', encoding='utf-8') as f:
                 json.dump(existing_timestamps, f, ensure_ascii=False, indent=2)
-            logger.info(f"更新日時記録を保存: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件 (プロバイダー: {self.embedding_provider})")
+            logger.debug(f"更新日時記録を保存: FAQ={len(self._last_faq_mtime)}件, シナリオ={len(self._last_scenario_mtime)}件 (プロバイダー: {self.embedding_provider})")
         except Exception as e:
             logger.warning(f"更新日時記録の保存エラー: {e}")
 
@@ -319,7 +319,7 @@ class DynamicDBManager:
 
         # タイムスタンプを永続化
         self._save_update_timestamps()
-        logger.info(f"業務分野 '{business_area}' のタイムスタンプを更新しました")
+        logger.debug(f"業務分野 '{business_area}' のタイムスタンプを更新しました")
 
     def _get_collection_name(self, business_area: str) -> str:
         """固定のコレクション名を返す（新構造では常に'default'）
@@ -380,11 +380,11 @@ class DynamicDBManager:
                 try:
                     shutil.copy2(old_provider_timestamp, backup_file)
                     os.remove(old_provider_timestamp)
-                    logger.info(f"旧プロバイダー別タイムスタンプファイルをバックアップ: {backup_file}")
+                    logger.debug(f"旧プロバイダー別タイムスタンプファイルをバックアップ: {backup_file}")
                 except Exception as e:
                     logger.warning(f"旧タイムスタンプファイルのバックアップに失敗: {e}")
 
-        logger.info(f"プロバイダー '{self.embedding_provider}' 用のDB初期化（階層構造）")
+        logger.debug(f"プロバイダー '{self.embedding_provider}' 用のDB初期化（階層構造）")
     
     def _normalize_business_name(self, raw_name: str) -> str:
         """ファイル名から抽出した業務分野名をDB互換名に正規化
@@ -430,7 +430,7 @@ class DynamicDBManager:
                 if business not in business_areas:
                     business_areas[business] = {"faq": [], "scenario": []}
                 business_areas[business]["faq"].append((file, date))
-                logger.info(f"履歴データ検出: {business} - {file}")
+                logger.debug(f"履歴データ検出: {business} - {file}")
             else:
                 logger.warning(f"不正な履歴データファイル名: {file}")
 
@@ -446,7 +446,7 @@ class DynamicDBManager:
                 if business not in business_areas:
                     business_areas[business] = {"faq": [], "scenario": []}
                 business_areas[business]["scenario"].append((file, date))
-                logger.info(f"シナリオデータ検出: {business} - {file}")
+                logger.debug(f"シナリオデータ検出: {business} - {file}")
             else:
                 logger.warning(f"不正なシナリオデータファイル名: {file}")
 
@@ -461,7 +461,7 @@ class DynamicDBManager:
                     if business not in business_areas:
                         business_areas[business] = {"faq": [], "scenario": []}
                     business_areas[business]["scenario"].append((file, date))
-                    logger.info(f"シナリオデータ検出（revisions）: {business} - {file}")
+                    logger.debug(f"シナリオデータ検出（revisions）: {business} - {file}")
                 else:
                     logger.warning(f"不正なシナリオデータファイル名: {file}")
 
@@ -488,7 +488,7 @@ class DynamicDBManager:
         # 日付でソートして最新のファイルを返す
         sorted_files = sorted(files, key=lambda x: x[1], reverse=True)
         latest_file = sorted_files[0][0]
-        logger.info(f"最新ファイル選択: {latest_file}")
+        logger.debug(f"最新ファイル選択: {latest_file}")
         return latest_file
     
     def needs_update(self, db_path: str, latest_faq: Optional[str], latest_scenario: Optional[str], business_area: str) -> bool:
@@ -496,12 +496,12 @@ class DynamicDBManager:
         # 新構造: db_path/chroma.sqlite3 の存在をチェック
         sqlite_path = os.path.join(db_path, "chroma.sqlite3")
         if not os.path.exists(sqlite_path):
-            logger.info(f"DBファイルが存在しないため新規作成: {sqlite_path}")
+            logger.debug(f"DBファイルが存在しないため新規作成: {sqlite_path}")
             return True
 
         # 強制更新フラグのチェック（早期リターン）
         if self.config.force_db_update:
-            logger.info(f"強制更新フラグが有効のため、DB更新を実行: {db_path}")
+            logger.debug(f"強制更新フラグが有効のため、DB更新を実行: {db_path}")
             return True
 
         # 新構造: コレクション名は固定で "default"
@@ -512,7 +512,7 @@ class DynamicDBManager:
         try:
             temp_client = self._create_chromadb_client(db_path)
             collection = temp_client.get_collection(name=collection_name)
-            logger.info(f"コレクション存在確認: {collection_name} in {db_path}")
+            logger.debug(f"コレクション存在確認: {collection_name} in {db_path}")
 
             # コレクション内のドキュメント数をチェック
             db_is_current = self._check_collection_has_documents(collection)
@@ -531,11 +531,11 @@ class DynamicDBManager:
             )
 
             needs_update = faq_needs_update or scenario_needs_update
-            logger.info(f"DB{'更新が必要' if needs_update else 'は最新'}: {db_path}")
+            logger.debug(f"DB{'更新が必要' if needs_update else 'は最新'}: {db_path}")
             return needs_update
 
         except (ValueError, ChromaNotFoundError):
-            logger.info(f"コレクションが存在しません: {collection_name} in {db_path}")
+            logger.debug(f"コレクションが存在しません: {collection_name} in {db_path}")
             return True
         except Exception as e:
             logger.warning(f"コレクション確認エラー: {e}")
@@ -547,9 +547,9 @@ class DynamicDBManager:
         """コレクションにドキュメントが存在するかチェック"""
         try:
             doc_count = collection.count()
-            logger.info(f"コレクション内のドキュメント数: {doc_count}")
+            logger.debug(f"コレクション内のドキュメント数: {doc_count}")
             if doc_count == 0:
-                logger.info("コレクションは存在するが、ドキュメントが存在しないため更新が必要")
+                logger.debug("コレクションは存在するが、ドキュメントが存在しないため更新が必要")
             return doc_count > 0
         except Exception as e:
             logger.warning(f"コレクション情報取得エラー: {e}")
@@ -568,14 +568,14 @@ class DynamicDBManager:
             return False
 
         current_mtime = os.path.getmtime(file_path)
-        logger.info(f"{file_type}ファイル更新確認: {filename} (更新日時: {current_mtime})")
+        logger.debug(f"{file_type}ファイル更新確認: {filename} (更新日時: {current_mtime})")
 
         if current_mtime > last_mtime:
-            logger.info(f"{file_type}ファイルの更新日時が変更されたため、DB更新が必要 (前回: {last_mtime}, 現在: {current_mtime})")
+            logger.debug(f"{file_type}ファイルの更新日時が変更されたため、DB更新が必要 (前回: {last_mtime}, 現在: {current_mtime})")
             return True
 
         if not db_is_current:
-            logger.info(f"{file_type}ファイルが存在するが、DBが最新でないため更新が必要")
+            logger.debug(f"{file_type}ファイルが存在するが、DBが最新でないため更新が必要")
             return True
 
         return False
@@ -750,7 +750,7 @@ class DynamicDBManager:
         
         # 新しいDBの作成（フォルダは空だが、ChromaDBが自動的にUUIDフォルダを作成）
         os.makedirs(db_path, exist_ok=True)
-        logger.info(f"新規DB作成: {db_path}")
+        logger.debug(f"新規DB作成: {db_path}")
         
         # ベクトル化処理（ここでは簡易実装）
         # 実際の実装では、input_handler.pyと連携してベクトル化を実行
@@ -768,10 +768,10 @@ class DynamicDBManager:
             temp_client = self._create_chromadb_client(db_path)
             temp_client.get_collection(name=collection_name)
             temp_client.delete_collection(name=collection_name)
-            logger.info(f"ChromaDBコレクション削除: {collection_name} in {db_path}")
+            logger.debug(f"ChromaDBコレクション削除: {collection_name} in {db_path}")
 
         except ChromaNotFoundError:
-            logger.info(f"ChromaDBコレクションは存在しません: {collection_name} in {db_path}")
+            logger.debug(f"ChromaDBコレクションは存在しません: {collection_name} in {db_path}")
         except Exception as e:
             logger.warning(f"ChromaDBコレクション削除エラー: {e}")
             # エラーが発生しても処理を続行
@@ -797,7 +797,7 @@ class DynamicDBManager:
             # テキストとメタデータの準備
             texts = reference_data['combined_texts']
             metadatas = reference_data.get('metadatas', [])
-            logger.info(f"ベクトル化開始: {len(texts)}件のテキスト")
+            logger.debug(f"ベクトル化開始: {len(texts)}件のテキスト")
 
             # パフォーマンス: VectorDBを先に初期化（階層構造対応: db_pathを直接指定）
             from src.utils.vector_db import MetadataVectorDB
@@ -811,7 +811,7 @@ class DynamicDBManager:
                 end_idx = min(i + batch_size, len(texts))
                 batch_texts = texts[i:end_idx]
                 batch_metadatas = metadatas[i:end_idx] if metadatas else []
-                logger.info(f"バッチ処理中: {i+1}-{end_idx}/{len(texts)}")
+                logger.debug(f"バッチ処理中: {i+1}-{end_idx}/{len(texts)}")
 
                 # バッチの埋め込みを生成
                 batch_embeddings = embedding_model.encode(batch_texts, normalize_embeddings=True)
@@ -874,7 +874,7 @@ class DynamicDBManager:
         if not business_area:
             raise DynamicDBError(f"サニタイズ後の業務分野が空です: {filename}")
 
-        logger.info(f"入力ファイルから業務分野抽出: {business_area}")
+        logger.debug(f"入力ファイルから業務分野抽出: {business_area}")
         return business_area
     
     def _translate_business_area(self, business_area: str) -> str:
@@ -960,14 +960,14 @@ class DynamicDBManager:
         Returns:
             dict: 参照データ（combined_texts, metadatas）
         """
-        logger.info(f"参照データ準備開始 (シナリオ: {latest_scenario}, FAQ: {latest_faq})")
+        logger.debug(f"参照データ準備開始 (シナリオ: {latest_scenario}, FAQ: {latest_faq})")
 
         # どちらも指定されていない場合は従来の動作
         if not latest_scenario and not latest_faq:
             from src.handlers.input_handler import MultiFolderInputHandler
             input_handler = MultiFolderInputHandler(self.config)
             reference_data = input_handler.load_reference_data()
-            logger.info(f"参照データ準備完了（全データ）: {len(reference_data['combined_texts'])}件")
+            logger.debug(f"参照データ準備完了（全データ）: {len(reference_data['combined_texts'])}件")
             return reference_data
 
         all_queries = []
@@ -985,7 +985,7 @@ class DynamicDBManager:
                 all_queries.extend(scenario_data['queries'])
                 all_answers.extend(scenario_data['answers'])
                 all_metadatas.extend(scenario_data['metadatas'])
-                logger.info(f"シナリオデータ読み込み完了: {len(scenario_data['queries'])}件")
+                logger.debug(f"シナリオデータ読み込み完了: {len(scenario_data['queries'])}件")
             else:
                 logger.warning(f"シナリオファイルが見つかりません: {scenario_path}")
 
@@ -997,7 +997,7 @@ class DynamicDBManager:
                 all_queries.extend(faq_data['queries'])
                 all_answers.extend(faq_data['answers'])
                 all_metadatas.extend(faq_data['metadatas'])
-                logger.info(f"FAQデータ読み込み完了: {len(faq_data['queries'])}件")
+                logger.debug(f"FAQデータ読み込み完了: {len(faq_data['queries'])}件")
             else:
                 logger.warning(f"FAQファイルが見つかりません: {faq_path}")
 
@@ -1015,7 +1015,7 @@ class DynamicDBManager:
             combined_text = " | ".join(text_parts) if text_parts else ""
             all_combined_texts.append(combined_text)
 
-        logger.info(f"参照データ準備完了: {len(all_combined_texts)}件")
+        logger.debug(f"参照データ準備完了: {len(all_combined_texts)}件")
 
         return {
             'queries': all_queries,
@@ -1033,7 +1033,7 @@ class DynamicDBManager:
         Returns:
             dict: FAQデータ（queries, answers, combined_texts, metadatas）
         """
-        logger.info(f"FAQファイル読み込み: {faq_path}")
+        logger.debug(f"FAQファイル読み込み: {faq_path}")
         reference_df = pd.read_excel(faq_path)
 
         # 列名の検索ロジック
@@ -1048,7 +1048,7 @@ class DynamicDBManager:
         if query_col is None or answer_col is None:
             raise DynamicDBError(f"FAQファイルに必須列が見つかりません: {list(reference_df.columns)}")
 
-        logger.info(f"FAQ列検出: Query='{query_col}', Answer='{answer_col}', Supplement='{supplement_col}'")
+        logger.debug(f"FAQ列検出: Query='{query_col}', Answer='{answer_col}', Supplement='{supplement_col}'")
 
         queries = []
         answers = []
@@ -1083,7 +1083,7 @@ class DynamicDBManager:
                 'row_index': idx
             })
 
-        logger.info(f"FAQファイル読み込み完了: {len(queries)}件")
+        logger.debug(f"FAQファイル読み込み完了: {len(queries)}件")
 
         return {
             'queries': queries,
