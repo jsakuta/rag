@@ -1,10 +1,9 @@
 # --- utils/auth.py ---
 """Google Cloud認証処理の共通モジュール + 埋め込みモデルファクトリー"""
+import json
 import os
-from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, Type
+from typing import TYPE_CHECKING, Optional
 
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
 from src.utils.logger import setup_logger
 
 # 遅延インポート: Vertex AI関連（インストールされていない場合もエラーにしない）
@@ -17,12 +16,6 @@ if TYPE_CHECKING:
     from src.utils.base_embedding import BaseEmbeddingModel
 
 logger = setup_logger(__name__)
-
-# LLMプロバイダー設定マッピング
-LLM_PROVIDER_CONFIG: Dict[str, Tuple[str, Type, str]] = {
-    "anthropic": ("ANTHROPIC_API_KEY", ChatAnthropic, "anthropic_api_key"),
-    "openai": ("OPENAI_API_KEY", ChatOpenAI, "api_key"),
-}
 
 
 def _load_vertex_ai_modules():
@@ -37,8 +30,8 @@ def _load_vertex_ai_modules():
         ChatGoogleGenerativeAI = _ChatGoogleGenerativeAI
 
 
-def get_google_credentials(config: 'SearchConfig'):
-    """Google Cloud認証情報を取得
+def _get_credentials_local(config: 'SearchConfig'):
+    """ローカルのサービスアカウント JSON ファイルから認証情報を取得
 
     Args:
         config: SearchConfig インスタンス
@@ -51,14 +44,73 @@ def get_google_credentials(config: 'SearchConfig'):
     """
     _load_vertex_ai_modules()
     credentials_path = os.path.join(config.base_dir, config.gemini_credentials_path)
-
     if not os.path.exists(credentials_path):
         raise FileNotFoundError(f'認証ファイルが見つかりません: {credentials_path}')
 
+    logger.info(f"Using local credentials file: {config.gemini_credentials_path}")
     return service_account.Credentials.from_service_account_file(
         credentials_path,
         scopes=['https://www.googleapis.com/auth/cloud-platform']
     )
+
+
+def _get_credentials_key_vault(config: 'SearchConfig'):
+    """Azure Key Vault からサービスアカウント認証情報を取得
+
+    Key Vault に格納された Google サービスアカウント JSON をシークレットとして取得し、
+    認証情報オブジェクトを生成する。
+
+    Args:
+        config: SearchConfig インスタンス
+
+    Returns:
+        service_account.Credentials: 認証情報
+
+    Raises:
+        ValueError: Key Vault の設定が不完全な場合
+    """
+    _load_vertex_ai_modules()
+    from azure.identity import DefaultAzureCredential
+    from azure.keyvault.secrets import SecretClient
+
+    credential = DefaultAzureCredential()
+    client = SecretClient(vault_url=config.azure_key_vault_url, credential=credential)
+
+    secret = client.get_secret(config.azure_key_vault_secret_name)
+    service_account_info = json.loads(secret.value)
+
+    scopes = [config.azure_key_vault_scopes]
+    logger.info("Google credentials retrieved from Azure Key Vault")
+    return service_account.Credentials.from_service_account_info(
+        service_account_info, scopes=scopes
+    )
+
+
+# credential_source → 取得関数のマッピング
+_CREDENTIAL_HANDLERS = {
+    "local": _get_credentials_local,
+    "key_vault": _get_credentials_key_vault,
+}
+
+
+def get_google_credentials(config: 'SearchConfig'):
+    """Google Cloud認証情報を取得
+
+    config.credential_source の設定に応じて認証方式を切り替える:
+    - "local"（デフォルト）: ローカルのサービスアカウント JSON ファイル
+    - "key_vault": Azure Key Vault に格納されたサービスアカウント JSON
+
+    Args:
+        config: SearchConfig インスタンス
+
+    Returns:
+        service_account.Credentials: 認証情報
+    """
+    handler = _CREDENTIAL_HANDLERS.get(config.credential_source)
+    if handler is None:
+        raise ValueError(f"Unknown credential_source: {config.credential_source}")
+
+    return handler(config)
 
 
 def initialize_vertex_ai(
@@ -87,43 +139,35 @@ def initialize_vertex_ai(
 
 
 def create_llm(config: 'SearchConfig'):
-    """LLMプロバイダーに応じたLLMインスタンスを生成
+    """Gemini LLMインスタンスを生成
 
     Args:
         config: SearchConfig インスタンス
 
     Returns:
-        LLMインスタンス（ChatAnthropic, ChatOpenAI, または ChatGoogleGenerativeAI）
+        ChatGoogleGenerativeAI インスタンス
 
     Raises:
-        ValueError: サポートされていないプロバイダーまたはAPI キーが未設定の場合
+        ValueError: プロバイダーが gemini でない、または設定が不足している場合
     """
-    provider = config.llm_provider
-
-    # Vertex AI (Gemini) の場合は専用の認証を使用
-    if provider == "gemini":
-        _load_vertex_ai_modules()
-        if not config.gemini_project_id:
-            raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
-        credentials = get_google_credentials(config)
-        return ChatGoogleGenerativeAI(
-            model=config.llm_model,
-            temperature=0,
-            project=config.gemini_project_id,
-            location=config.gemini_location,
-            credentials=credentials,
+    if config.llm_provider != "gemini":
+        raise ValueError(
+            f"Unsupported LLM provider: {config.llm_provider}. "
+            f"Currently only 'gemini' is supported"
         )
 
-    # その他のプロバイダー
-    if provider not in LLM_PROVIDER_CONFIG:
-        raise ValueError(f"Unsupported LLM provider: {provider}")
+    _load_vertex_ai_modules()
+    if not config.gemini_project_id:
+        raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
 
-    env_key, llm_class, api_param = LLM_PROVIDER_CONFIG[provider]
-    api_key = os.getenv(env_key)
-    if not api_key:
-        raise ValueError(f"{env_key} environment variable is not set")
-
-    return llm_class(**{api_param: api_key, "model": config.llm_model, "temperature": 0})
+    credentials = get_google_credentials(config)
+    return ChatGoogleGenerativeAI(
+        model=config.llm_model,
+        temperature=0,
+        project=config.gemini_project_id,
+        location=config.gemini_location,
+        credentials=credentials,
+    )
 
 
 def create_embedding_model(config: 'SearchConfig', use_singleton: bool = True) -> 'BaseEmbeddingModel':

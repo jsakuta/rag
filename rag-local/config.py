@@ -100,6 +100,9 @@ class SearchConfig:
     # 検索モードの有効な値（__post_init__で参照されるためクラス定数として先頭付近に配置）
     VALID_SEARCH_MODES: Tuple[str, ...] = ("original", "llm_enhanced", "multi_stage")
     
+    # GCP認証方式: "local"（サービスアカウントJSON）/ "key_vault"（Azure Key Vault）
+    VALID_CREDENTIAL_SOURCES: Tuple[str, ...] = ("local", "key_vault")
+
     # 動的DB管理設定
     DEFAULT_FORCE_DB_UPDATE: bool = False  # 強制DB更新フラグ
 
@@ -165,11 +168,16 @@ class SearchConfig:
     reference_type: str = "multi_folder"  # "excel", "hierarchical_excel", "multi_folder"
     include_hierarchy_in_vector: bool = True  # 階層情報をベクトル化に含めるかどうか
     
-    # Vertex AI設定（セキュリティ向上: ハードコードされたプロジェクトIDを削除）
+    # GCP認証方式
+    credential_source: str = field(default_factory=lambda: os.getenv("CREDENTIAL_SOURCE", "local"))
+
+    # Vertex AI設定
     gemini_credentials_path: str = field(default_factory=lambda: os.getenv("GEMINI_CREDENTIALS_PATH", "gemini_credentials.json"))
     gemini_project_id: str = field(default_factory=lambda: os.getenv("GEMINI_PROJECT_ID", ""))
     gemini_location: str = field(default_factory=lambda: os.getenv("GEMINI_LOCATION", "us-central1"))
     azure_key_vault_url: str = field(default_factory=lambda: os.getenv("AZURE_KEY_VAULT_URL", ""))
+    azure_key_vault_secret_name: str = field(default_factory=lambda: os.getenv("AZURE_KEY_VAULT_SECRET_NAME", ""))
+    # GCPサービスアカウントのOAuthスコープ（Key Vault自体のスコープではない）
     azure_key_vault_scopes: str = field(default_factory=lambda: os.getenv("AZURE_KEY_VAULT_SCOPES", "https://www.googleapis.com/auth/cloud-platform"))
 
     # Azure OpenAI Embedding 設定
@@ -240,9 +248,23 @@ class SearchConfig:
         if self.embedding_provider not in self.VALID_EMBEDDING_PROVIDERS:
             raise ValueError(f"embedding_provider must be one of {self.VALID_EMBEDDING_PROVIDERS}")
 
+        # GCP認証方式の検証
+        if self.credential_source not in self.VALID_CREDENTIAL_SOURCES:
+            raise ValueError(
+                f"CREDENTIAL_SOURCE must be one of {self.VALID_CREDENTIAL_SOURCES}, "
+                f"got: {self.credential_source}"
+            )
+        if self.credential_source == "key_vault":
+            if not self.azure_key_vault_url:
+                raise ValueError("CREDENTIAL_SOURCE=key_vault には AZURE_KEY_VAULT_URL が必要です")
+            if not self.azure_key_vault_secret_name:
+                raise ValueError("CREDENTIAL_SOURCE=key_vault には AZURE_KEY_VAULT_SECRET_NAME が必要です")
+
         # LLM設定の必須チェック（環境変数未設定時はエラー）
         if not self.llm_provider:
-            raise ValueError("DEFAULT_LLM_PROVIDER環境変数が設定されていません（gemini / anthropic / openai）")
+            raise ValueError("DEFAULT_LLM_PROVIDER環境変数が設定されていません（gemini）")
+        if self.llm_provider != "gemini":
+            raise ValueError(f"LLMプロバイダーは 'gemini' のみサポートしています（指定値: {self.llm_provider}）")
         if not self.llm_model:
             raise ValueError("DEFAULT_LLM_MODEL環境変数が設定されていません")
 
@@ -251,11 +273,14 @@ class SearchConfig:
     def _validate_embedding_config(self):
         """埋め込みモデル設定の検証（Vertex AI / Azure OpenAI）"""
         if self.embedding_provider == "vertex_ai":
-            # Vertex AI: 認証情報ファイルの存在確認
-            credentials_path = os.path.join(self.base_dir, self.gemini_credentials_path)
-            if not os.path.exists(credentials_path):
-                logger.warning(f"Vertex AI credentials file not found: {credentials_path}")
-                logger.info("Please ensure GEMINI_CREDENTIALS_PATH is set correctly in .env file")
+            if self.credential_source == "local":
+                # Vertex AI + ローカル認証: 認証情報ファイルの存在確認
+                credentials_path = os.path.join(self.base_dir, self.gemini_credentials_path)
+                if not os.path.exists(credentials_path):
+                    logger.warning(f"Vertex AI credentials file not found: {credentials_path}")
+                    logger.info("Please ensure GEMINI_CREDENTIALS_PATH is set correctly in .env file")
+            if not self.gemini_project_id:
+                logger.warning("GEMINI_PROJECT_ID is not set (required for Vertex AI embedding)")
 
         elif self.embedding_provider == "azure_openai":
             # Azure OpenAI: 必須環境変数の確認

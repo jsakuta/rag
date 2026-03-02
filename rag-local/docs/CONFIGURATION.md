@@ -46,25 +46,21 @@
 | `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | 埋め込みデプロイメント名 | `text-embedding-3-large` | `your-deployment-name` |
 | `AZURE_OPENAI_API_VERSION` | APIバージョン | `2024-12-01-preview` | `2024-12-01-preview` |
 
-### Anthropic (Claude) 設定（オプション）
+### GCP認証方式
+
+`CREDENTIAL_SOURCE` でサービスアカウント認証情報の取得元を選択します。
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
-| `ANTHROPIC_API_KEY` | API キー | - | `sk-ant-...` |
+| `CREDENTIAL_SOURCE` | 認証方式（`local` / `key_vault`） | `local` | `key_vault` |
+| `GEMINI_CREDENTIALS_PATH` | ローカル認証ファイルパス | `gemini_credentials.json` | `creds/sa.json` |
+| `AZURE_KEY_VAULT_URL` | Key Vault URL（`key_vault` 時必須） | - | `https://your-vault.vault.azure.net/` |
+| `AZURE_KEY_VAULT_SECRET_NAME` | シークレット名（`key_vault` 時必須） | - | `gcp-sa-credentials` |
+| `AZURE_KEY_VAULT_SCOPES` | GCPスコープ | `https://www.googleapis.com/auth/cloud-platform` | - |
 
-### OpenAI (ChatGPT) 設定（オプション）
+**`local`（デフォルト）**: サービスアカウント JSON ファイルをローカルに配置して使用。
 
-| 変数名 | 説明 | デフォルト値 | 例 |
-|--------|------|------------|-----|
-| `OPENAI_API_KEY` | API キー | - | `sk-...` |
-
-### Azure Key Vault 設定（オプション）
-
-| 変数名 | 説明 | デフォルト値 | 例 |
-|--------|------|------------|-----|
-| `AZURE_KEY_VAULT_URL` | Key Vault URL | - | `https://your-vault.vault.azure.net/` |
-| `AZURE_KEY_VAULT_SECRET_NAME` | シークレット名 | - | `your-secret-name` |
-| `AZURE_KEY_VAULT_SCOPES` | スコープ | `https://www.googleapis.com/auth/cloud-platform` | `https://www.googleapis.com/auth/cloud-platform` |
+**`key_vault`**: Azure Key Vault にサービスアカウント JSON をシークレットとして格納し、`DefaultAzureCredential` で取得。ローカルにファイルを配置できない環境向け。
 
 ### その他
 
@@ -98,45 +94,6 @@ GEMINI_LOCATION=us-central1
 - `gemini-2.5-flash-lite` - 最速、低コスト（推奨）
 - `gemini-2.5-flash` - バランス型
 - `gemini-2.5-pro` - 高精度
-
-#### Anthropic Claude
-
-```env
-DEFAULT_LLM_PROVIDER=anthropic
-DEFAULT_LLM_MODEL=claude-3-5-sonnet-20241022
-
-# 必須: Anthropic API キー
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-**特徴:**
-- 高精度分析
-- 長文対応
-- 高コスト
-
-**利用可能なモデル:**
-- `claude-sonnet-4-6` - バランス型（推奨）
-- `claude-haiku-4-5` - 高速・低コスト
-- `claude-opus-4-6` - 最高精度
-
-#### OpenAI ChatGPT
-
-```env
-DEFAULT_LLM_PROVIDER=openai
-DEFAULT_LLM_MODEL=gpt-4o
-
-# 必須: OpenAI API キー
-OPENAI_API_KEY=sk-...
-```
-
-**特徴:**
-- 汎用性が高い
-- 広範な用途
-
-**利用可能なモデル:**
-- `gpt-4o` - 最新（推奨）
-- `gpt-4-turbo` - 高速
-- `gpt-3.5-turbo` - 低コスト
 
 ---
 
@@ -395,37 +352,47 @@ logs/
 
 ## 設定ファイル例
 
-### .env.example（開発環境）
+### ローカル認証
 
 ```env
-# === プロバイダー固有設定 ===
+# ===== GCP認証 =====
+CREDENTIAL_SOURCE=local
+# GEMINI_CREDENTIALS_PATH=gemini_credentials.json  # デフォルト
 
-# Azure Key Vault設定（Key Vaultから認証情報を取得する場合）
-AZURE_KEY_VAULT_URL=https://your-keyvault.vault.azure.net/
-AZURE_KEY_VAULT_SECRET_NAME=your-secret-name
-AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
-
-# Azure OpenAI設定（埋め込みプロバイダーがazure_openaiの場合必須）
-AZURE_OPENAI_API_KEY=your-api-key-here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-
-# Vertex AI設定（LLMまたは埋め込みでgeminiを使う場合必須）
+# ===== Vertex AI =====
 GEMINI_PROJECT_ID=your-project-id
 GEMINI_LOCATION=us-central1
-VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 
-# === デフォルト選択（ここを変えればプロバイダー切替） ===
+# ===== Azure OpenAI（埋め込み） =====
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 
-# LLM設定
+# ===== デフォルト選択 =====
 DEFAULT_LLM_PROVIDER=gemini
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
+DEFAULT_EMBEDDING_PROVIDER=azure_openai
+```
 
-# 埋め込みモデル設定
-# モデルはプロバイダーに応じて自動解決:
-#   azure_openai → AZURE_OPENAI_EMBEDDING_DEPLOYMENT
-#   vertex_ai    → VERTEX_AI_EMBEDDING_MODEL
+### Key Vault 認証
+
+```env
+# ===== GCP認証（Key Vault経由） =====
+CREDENTIAL_SOURCE=key_vault
+AZURE_KEY_VAULT_URL=https://prod-vault.vault.azure.net/
+AZURE_KEY_VAULT_SECRET_NAME=gcp-sa-credentials
+AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
+
+# ===== Vertex AI =====
+GEMINI_PROJECT_ID=your-project-id
+GEMINI_LOCATION=us-central1
+
+# ===== Azure OpenAI（埋め込み） =====
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+
+# ===== デフォルト選択 =====
+DEFAULT_LLM_PROVIDER=gemini
+DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 DEFAULT_EMBEDDING_PROVIDER=azure_openai
 ```
 

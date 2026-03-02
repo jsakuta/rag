@@ -6,8 +6,6 @@ xlsxwriter>=3.1.0
 
 # LangChain（LLM拡張検索機能用）
 langchain>=0.1.0
-langchain-anthropic>=0.0.1
-langchain-openai>=0.0.1
 langchain-google-genai>=4.0.0
 
 # Google Cloud / Vertex AI（LLM + 埋め込みモデル）
@@ -15,10 +13,10 @@ langchain-google-vertexai>=3.2.0
 google-cloud-aiplatform[vertexai]>=1.35.0
 google-auth>=2.17.0
 
-# Azure（埋め込みモデル + Key Vault）
-openai>=1.0.0
+# Azure（埋め込みモデル + Key Vault認証）
+openai>=1.0.0                          # Azure OpenAI Embedding API用（LLM用ではない）
 azure-identity>=1.15.0
-azure-keyvault-secrets>=4.7.0
+azure-keyvault-secrets>=4.7.0  # Key Vault経由のGCP認証（オプション）
 
 # ベクトルDB
 chromadb>=1.0.15

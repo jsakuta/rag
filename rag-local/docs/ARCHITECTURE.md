@@ -78,10 +78,10 @@
                             ▼
 ┌────────────────────────────────────────────────────────────┐
 │                  External Services                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
-│  │ Vertex   │  │  Azure   │  │Anthropic │  │  OpenAI  │ │
-│  │   AI     │  │  OpenAI  │  │  Claude  │  │   GPT    │ │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘ │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐               │
+│  │ Vertex   │  │  Azure   │  │  Azure   │               │
+│  │   AI     │  │  OpenAI  │  │Key Vault │               │
+│  └──────────┘  └──────────┘  └──────────┘               │
 └────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -388,11 +388,11 @@ main.py
 | **Google Cloud** | google-cloud-aiplatform | Vertex AI 統合 |
 | | google-auth | Google Cloud 認証 |
 | | google-generativeai | Gemini API |
-| **Azure** | openai | Azure OpenAI API |
+| **Azure** | openai | Azure OpenAI Embedding API |
+| | azure-identity | Azure 認証 |
+| | azure-keyvault-secrets | Key Vault 認証（オプション） |
 | **ベクトルDB** | chromadb | ベクトルストレージ |
-| **LangChain** | langchain-anthropic | Claude API |
-| | langchain-openai | OpenAI API |
-| | langchain-google-genai | Gemini API |
+| **LangChain** | langchain-google-genai | Gemini LLM API |
 | **NLP** | sudachipy | 日本語形態素解析 |
 | **データ処理** | pandas | データフレーム操作 |
 | | openpyxl | Excel読み書き |
@@ -467,19 +467,21 @@ orchestrator = MultiStageOrchestrator(
 )
 ```
 
-### 新しいLLMプロバイダーの追加
+### 認証方式
 
-1. `src/utils/auth.py` の `LLM_PROVIDER_CONFIG` 辞書に追加
-2. `src/utils/auth.py` の `create_llm()` 関数を拡張
+LLM は Gemini（Vertex AI）のみをサポート。認証は `CREDENTIAL_SOURCE` 環境変数で切替:
+
+| 値 | 認証方式 | 用途 |
+|----|---------|------|
+| `local`（デフォルト） | ローカルのサービスアカウント JSON ファイル | 開発環境 |
+| `key_vault` | Azure Key Vault からサービスアカウント JSON を取得 | 本番環境 |
 
 ```python
-# src/utils/auth.py
-LLM_PROVIDER_CONFIG: Dict[str, Tuple[str, Type, str]] = {
-    "anthropic": ("ANTHROPIC_API_KEY", ChatAnthropic, "anthropic_api_key"),
-    "openai": ("OPENAI_API_KEY", ChatOpenAI, "api_key"),
-    "custom": ("CUSTOM_API_KEY", CustomLLM, "api_key"),  # 追加
+# src/utils/auth.py - get_google_credentials() の認証ディスパッチ
+_CREDENTIAL_HANDLERS = {
+    "local": _get_credentials_local,        # from_service_account_file()
+    "key_vault": _get_credentials_key_vault, # SecretClient → from_service_account_info()
 }
-# Note: gemini は create_llm() 内で専用の認証フローを持つため辞書外で処理
 ```
 
 ---
@@ -631,7 +633,8 @@ class SearchConfig:
 
 | パラメータ | 型 | デフォルト | 説明 |
 |-----------|-----|-----------|------|
-| `llm_provider` | str | 環境変数 | LLMプロバイダー（gemini/anthropic/openai） |
+| `credential_source` | str | `local` | GCP認証方式（local/key_vault） |
+| `llm_provider` | str | 環境変数 | LLMプロバイダー（gemini のみ） |
 | `llm_model` | str | 環境変数 | LLMモデル名 |
 | `embedding_provider` | str | 環境変数 | 埋め込みプロバイダー（vertex_ai/azure_openai） |
 | `embedding_model` | str | 環境変数 | 埋め込みモデル名 |

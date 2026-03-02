@@ -484,10 +484,10 @@ data/vector_db/rev01_smile/
 
 ### Q: LLM プロバイダーを変更するには?
 
-`.env` ファイルを編集:
+現在は Gemini のみサポートしています。`.env` でモデルを変更できます:
 ```env
-DEFAULT_LLM_PROVIDER=anthropic  # gemini, anthropic, openai
-DEFAULT_LLM_MODEL=claude-3-5-sonnet-20241022
+DEFAULT_LLM_PROVIDER=gemini
+DEFAULT_LLM_MODEL=gemini-2.5-flash-lite  # gemini-2.5-flash, gemini-2.5-pro も利用可能
 ```
 
 ---

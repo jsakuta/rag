@@ -292,7 +292,10 @@ rag-local/
 
 ### 必須環境変数
 ```env
-# LLM設定
+# GCP認証方式（local: ローカルJSONファイル / key_vault: Azure Key Vault）
+CREDENTIAL_SOURCE=local
+
+# LLM設定（Geminiのみサポート）
 DEFAULT_LLM_PROVIDER=gemini
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 
