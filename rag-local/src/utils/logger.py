@@ -18,6 +18,7 @@ try:
     from rich.console import Console, Group
     from rich.theme import Theme
     from rich.panel import Panel
+    from rich.rule import Rule
     from rich.table import Table
     from rich.text import Text
     from rich.box import ROUNDED
@@ -347,3 +348,76 @@ def suppress_noise():
 
     # ScriptRunContext 警告を完全に抑制
     logging.getLogger("streamlit.runtime.scriptrunner_utils").setLevel(logging.ERROR)
+
+
+def print_startup_summary(app_name: str, checks: list):
+    """起動サマリをダッシュボード形式で表示
+
+    Args:
+        app_name: アプリ名（例: "回答支援AI v1.0"）
+        checks: [(label, ok, detail), ...] のリスト
+    """
+    console = get_console()
+    if console and RICH_AVAILABLE:
+        console.print()
+        console.print(Rule(f" {app_name} ", style="bold cyan"))
+        console.print()
+        for label, ok, detail in checks:
+            icon = "[green]\u2714[/green]" if ok else "[red]\u2717[/red]"
+            console.print(f"  {icon} {label} {detail}")
+        console.print()
+        console.print(Rule(style="dim"))
+    else:
+        print(f"\n{'=' * 40}")
+        print(f"  {app_name}")
+        print(f"{'=' * 40}")
+        for label, ok, detail in checks:
+            icon = "OK" if ok else "NG"
+            print(f"  [{icon}] {label} {detail}")
+        print(f"{'─' * 40}")
+
+
+def print_query_panel(
+    query_number: int,
+    query_text: str,
+    metadata: dict,
+    results: dict,
+    elapsed: float,
+):
+    """検索リクエストを構造化パネルで表示
+
+    Args:
+        query_number: クエリ番号
+        query_text: 検索テキスト（80文字で切り詰め）
+        metadata: キー=値ペアの辞書（改定番号、検索タイプ等）
+        results: プロバイダー名=件数の辞書
+        elapsed: 所要時間（秒）
+    """
+    console = get_console()
+    truncated = query_text[:80] + "..." if len(query_text) > 80 else query_text
+    meta_str = "  ".join(f"{k}: {v}" for k, v in metadata.items())
+    result_str = "  ".join(f"{k}: {v}件" for k, v in results.items())
+
+    if console and RICH_AVAILABLE:
+        title = f"検索 #{query_number}"
+        if metadata:
+            title += f"  {meta_str}"
+        lines = [f"  Q: {truncated}"]
+        if results:
+            lines.append(f"  {result_str}")
+        lines.append(f"  所要: {elapsed:.1f}s")
+        content = "\n".join(lines)
+        console.print(Panel(
+            content,
+            title=title,
+            title_align="left",
+            border_style="cyan",
+            padding=(0, 1),
+        ))
+    else:
+        print(f"\n--- 検索 #{query_number} {meta_str} ---")
+        print(f"  Q: {truncated}")
+        if results:
+            print(f"  {result_str}")
+        print(f"  所要: {elapsed:.1f}s")
+        print(f"{'─' * 35}")
