@@ -4,8 +4,8 @@
 多段階ハイブリッド検索を使用して、Azure/VertexAI両方で検索を実行。
 結果を横並びで比較できるExcelファイルに出力。
 
-入力: input/multi_stage_input.xlsx
-出力: output/revision_evaluation_{timestamp}.xlsx
+入力: data/input/multi_stage_input.xlsx
+出力: data/output/latest/rev/rev_eval_batch_{timestamp}.xlsx
 
 前提条件:
 - scripts/build_db.py --revisions-only を実行済みで、
@@ -99,7 +99,7 @@ for rev, config in _raw_revision_areas.items():
 
 # パス定数
 INPUT_FILE = PROJECT_ROOT / "data" / "input" / "multi_stage_input.xlsx"
-OUTPUT_DIR = PROJECT_ROOT / "data" / "output" / "latest"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "output" / "latest" / "rev"
 VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
 
 
@@ -804,7 +804,7 @@ class RevisionEvaluator:
     def save_results(self, results: Dict[str, Dict[str, Any]]) -> Path:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = OUTPUT_DIR / f"revision_evaluation_{timestamp}.xlsx"
+        output_file = OUTPUT_DIR / f"rev_eval_batch_{timestamp}.xlsx"
 
         with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
             workbook = writer.book
