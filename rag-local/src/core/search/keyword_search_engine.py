@@ -4,9 +4,12 @@
 Sudachiトークナイザーを使用したキーワード抽出とJaccard類似度計算。
 """
 
+import hashlib
+import json
 import threading
 from collections import Counter
-from typing import List, Set, Dict, Tuple
+from pathlib import Path
+from typing import List, Optional, Set, Dict, Tuple
 
 from sudachipy import Dictionary, tokenizer
 
@@ -73,7 +76,8 @@ class KeywordSearchEngine:
         Returns:
             List[str]: 重要度順のキーワードリスト
         """
-        morphemes = self.tokenizer.tokenize(text, self.mode)
+        with self._tokenizer_lock:
+            morphemes = self.tokenizer.tokenize(text, self.mode)
         keywords = []
 
         for m in morphemes:
@@ -118,8 +122,9 @@ class KeywordSearchEngine:
             return 0.0
 
         # 交差したキーワードにのみ位置の重みを適用
+        half_len = len(reference_text) // 2
         weighted_score = sum(
-            self.position_weight if reference_text.find(kw) < len(reference_text) // 2 else 1.0
+            self.position_weight if 0 <= reference_text.find(kw) < half_len else 1.0
             for kw in intersection
         )
         # 分母は素のunionサイズ（Jaccard-like正規化）
@@ -151,12 +156,20 @@ class KeywordSearchEngine:
 
         return len(intersection) / len(union)
 
-    def build_cache(self, queries: List[str]) -> None:
-        """参照クエリのキーワードキャッシュを構築
+    def build_cache(self, queries: List[str], cache_path: Optional[Path] = None) -> None:
+        """参照クエリのキーワードキャッシュを構築（ディスクキャッシュ対応）
+
+        cache_path が指定され、ファイルが存在し、件数が一致する場合はディスクから読み込む。
+        なければ構築してディスクに保存する。
 
         Args:
             queries: キャッシュ対象のクエリリスト
+            cache_path: キャッシュファイルパス（省略時はディスクキャッシュなし）
         """
+        content_hash = self._compute_content_hash(queries)
+        if cache_path and self._try_load_cache(cache_path, len(queries), content_hash):
+            return
+
         logger.info("キーワードキャッシュを構築中...")
         self._keyword_cache = {}
 
@@ -169,6 +182,52 @@ class KeywordSearchEngine:
                 self._keyword_cache[i] = set()
 
         logger.info(f"キーワードキャッシュ構築完了: {active_count}/{len(queries)}件")
+
+        if cache_path:
+            self._save_cache(cache_path, len(queries), content_hash)
+
+    @staticmethod
+    def _compute_content_hash(queries: List[str]) -> str:
+        """クエリリストのコンテンツハッシュを計算（キャッシュ無効化用）"""
+        hasher = hashlib.md5()
+        for q in queries:
+            hasher.update((q or "").encode("utf-8"))
+        return hasher.hexdigest()
+
+    def _try_load_cache(self, cache_path: Path, expected_count: int, content_hash: str) -> bool:
+        """ディスクキャッシュを読み込み。件数またはハッシュ不一致なら False を返す。"""
+        try:
+            if not cache_path.exists():
+                return False
+            with open(cache_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if raw.get("count") != expected_count:
+                logger.info(f"キャッシュ件数不一致 ({raw.get('count')} != {expected_count}), 再構築")
+                return False
+            if raw.get("hash") != content_hash:
+                logger.info("キャッシュコンテンツハッシュ不一致, 再構築")
+                return False
+            self._keyword_cache = {int(k): set(v) for k, v in raw["data"].items()}
+            logger.info(f"キーワードキャッシュをディスクから読み込み: {len(self._keyword_cache)}件")
+            return True
+        except Exception as e:
+            logger.warning(f"キャッシュ読み込み失敗: {e}")
+            return False
+
+    def _save_cache(self, cache_path: Path, count: int, content_hash: str) -> None:
+        """キーワードキャッシュをディスクに保存"""
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            raw = {
+                "count": count,
+                "hash": content_hash,
+                "data": {str(k): sorted(v) for k, v in self._keyword_cache.items()},
+            }
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(raw, f, ensure_ascii=False)
+            logger.info(f"キーワードキャッシュをディスクに保存: {cache_path}")
+        except Exception as e:
+            logger.warning(f"キャッシュ保存失敗: {e}")
 
     def get_cached_keywords(self, index: int) -> Set[str]:
         """キャッシュからキーワードセットを取得

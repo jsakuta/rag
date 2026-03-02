@@ -137,9 +137,9 @@ def check_if_correct(result: Dict, correct_ids: List[str], area: Optional[str] =
     return scenario_id, is_correct
 
 
-@st.cache_resource(ttl=3600)
+@st.cache_resource
 def _get_cached_keyword_searcher():
-    """ChromaDBKeywordSearcher をキャッシュ（TTL=1時間）"""
+    """ChromaDBKeywordSearcher をキャッシュ（Streamlit再起動まで永続）"""
     from src.core.search.keyword_search_engine import KeywordSearchEngine
     from src.core.search.chromadb_keyword_search import ChromaDBKeywordSearcher
 
@@ -156,48 +156,46 @@ def _get_cached_keyword_searcher():
     )
 
 
-@st.cache_resource(ttl=3600)
+@st.cache_resource
 def _get_cached_llm():
-    """LLMインスタンスをキャッシュ（TTL=1時間）"""
+    """LLMインスタンスをキャッシュ（Streamlit再起動まで永続）"""
     from src.utils.auth import create_llm
     config = SearchConfig(base_dir=str(PROJECT_ROOT))
     return create_llm(config)
 
 
-@st.cache_resource(ttl=3600)
-def _get_cached_search_components(area: str, provider: str, source_filter: str = ""):
-    """検索コンポーネントをキャッシュ（keyword cache構築済み、TTL=1時間）
+VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
+KEYWORD_CACHE_DIR = PROJECT_ROOT / "data" / ".keyword_cache"
+
+
+@st.cache_resource
+def _get_cached_keyword_engine(area: str, source_filter: str = ""):
+    """キーワードエンジンをキャッシュ（プロバイダー非依存）
+
+    キーワード検索はエンベディングに依存しないため (area, source_filter) でのみキー化。
+    ディスクキャッシュ対応: Streamlit再起動後も即座にロード。
 
     Returns:
-        (vector_engine, keyword_engine, text_combiner) or None
+        (keyword_engine, reference_queries, text_combiner) or None
     """
-    from src.core.search.vector_search_engine import VectorSearchEngine
     from src.core.search.keyword_search_engine import KeywordSearchEngine
     from src.core.search.text_combiner import get_text_combiner
-    from src.utils.auth import create_embedding_model
     from src.utils.vector_db import MetadataVectorDB
 
-    VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
-    db_path = VECTOR_DB_BASE / area / provider
-    if not db_path.exists():
-        logger.warning(f"DBが存在しません: {db_path}")
+    # どちらかのプロバイダーのDBからドキュメントを取得（テキストは同一）
+    # NOTE: build_db.py は両プロバイダーに同一ソースデータを同一順序で投入するため、
+    # ドキュメントインデックスはプロバイダー間で一致する前提。
+    db_path = None
+    for provider in ("azure_openai", "vertex_ai"):
+        candidate = VECTOR_DB_BASE / area / provider
+        if candidate.exists():
+            db_path = candidate
+            break
+    if db_path is None:
+        logger.warning(f"DBが存在しません: {VECTOR_DB_BASE / area}")
         return None
 
-    config = SearchConfig(base_dir=str(PROJECT_ROOT))
-    provider_config = copy.copy(config)
-    provider_config.embedding_provider = provider
-    if provider == "azure_openai":
-        provider_config.embedding_model = os.getenv(
-            "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"
-        )
-    else:
-        provider_config.embedding_model = os.getenv(
-            "VERTEX_AI_EMBEDDING_MODEL", "gemini-embedding-001"
-        )
-    embedding_model = create_embedding_model(provider_config)
-
     vector_db = MetadataVectorDB(db_path=str(db_path), collection_name="default")
-
     text_combiner = get_text_combiner()
     get_kwargs = {"include": ["documents"]}
     if source_filter:
@@ -215,15 +213,59 @@ def _get_cached_search_components(area: str, provider: str, source_filter: str =
     if not any(reference_queries):
         return None
 
-    vector_engine = VectorSearchEngine(
-        embedding_model=embedding_model, vector_db=vector_db
-    )
+    config = SearchConfig(base_dir=str(PROJECT_ROOT))
     keyword_engine = KeywordSearchEngine(
         stop_words=config.STOP_WORDS,
         position_weight=config.POSITION_WEIGHT,
     )
-    keyword_engine.build_cache(reference_queries)
+    cache_key = f"{area}__{source_filter}" if source_filter else area
+    cache_path = KEYWORD_CACHE_DIR / f"{cache_key}.json"
+    keyword_engine.build_cache(reference_queries, cache_path=cache_path)
 
+    return keyword_engine, reference_queries, text_combiner
+
+
+@st.cache_resource
+def _get_cached_search_components(area: str, provider: str, source_filter: str = ""):
+    """検索コンポーネントをキャッシュ（Streamlit再起動まで永続）
+
+    keyword_engine はプロバイダー非依存の共有キャッシュから取得。
+    vector_engine のみプロバイダー固有で作成。
+
+    Returns:
+        (vector_engine, keyword_engine, text_combiner) or None
+    """
+    from src.core.search.vector_search_engine import VectorSearchEngine
+    from src.utils.auth import create_embedding_model
+    from src.utils.vector_db import MetadataVectorDB
+
+    cached = _get_cached_keyword_engine(area, source_filter)
+    if cached is None:
+        return None
+    keyword_engine, _reference_queries, text_combiner = cached
+
+    db_path = VECTOR_DB_BASE / area / provider
+    if not db_path.exists():
+        logger.warning(f"DBが存在しません: {db_path}")
+        return None
+
+    config = SearchConfig(base_dir=str(PROJECT_ROOT))
+    provider_config = copy.copy(config)
+    provider_config.embedding_provider = provider
+    if provider == "azure_openai":
+        provider_config.embedding_model = os.getenv(
+            "AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large"
+        )
+    else:
+        provider_config.embedding_model = os.getenv(
+            "VERTEX_AI_EMBEDDING_MODEL", "gemini-embedding-001"
+        )
+    embedding_model = create_embedding_model(provider_config)
+    vector_db = MetadataVectorDB(db_path=str(db_path), collection_name="default")
+
+    vector_engine = VectorSearchEngine(
+        embedding_model=embedding_model, vector_db=vector_db
+    )
     return vector_engine, keyword_engine, text_combiner
 
 
@@ -246,6 +288,34 @@ def initialize_session_state():
         st.session_state.impact_source_filter = "scenario"
     if "selected_providers" not in st.session_state:
         st.session_state.selected_providers = "both"
+
+    # プリウォーム: LLM・Sudachi辞書・主要キーワードキャッシュを起動時に初期化
+    if "warmup_done" not in st.session_state:
+        _prewarm()
+        st.session_state.warmup_done = True
+
+
+def _prewarm():
+    """LLM・Sudachi辞書・主要エリアのキーワードキャッシュを初期化（ブロッキング）"""
+
+    def _warm_llm():
+        try:
+            _get_cached_llm()
+            logger.info("プリウォーム完了: LLM")
+        except Exception as e:
+            logger.warning(f"LLMプリウォーム失敗: {e}")
+
+    def _warm_keyword_caches():
+        try:
+            for area in ("naibujimu", "smile"):
+                _get_cached_keyword_engine(area)
+            logger.info("プリウォーム完了: キーワードキャッシュ")
+        except Exception as e:
+            logger.warning(f"キーワードキャッシュプリウォーム失敗: {e}")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_warm_llm)
+        executor.submit(_warm_keyword_caches)
 
 
 def _pre_enhance_query(query: str) -> Optional[str]:
@@ -556,9 +626,7 @@ def _render_provider_results(results: List[Dict], correct_ids: List[str], is_ver
         if is_vertex:
             app_mode = st.session_state.get("app_mode", "evaluation")
             search_type = getattr(st.session_state.config, "search_type", "hybrid")
-            if app_mode == "impact_analysis" and search_type == "keyword_filter":
-                st.info("キーワード検索のためスキップ（Azureタブの結果をご確認ください）")
-            elif app_mode == "evaluation" and search_type == "keyword_filter":
+            if search_type == "keyword_filter":
                 st.info("キーワード検索のためスキップ（Azureタブの結果をご確認ください）")
             else:
                 st.info("該当する結果がありません")

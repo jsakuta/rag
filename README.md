@@ -1,6 +1,6 @@
 # RAG プロジェクト — 引き継ぎ資料
 
-> 最終更新: 2026-02-17
+> 最終更新: 2026-03-02
 > リポジトリ: `C:\VSCode\rag\`
 
 ---
@@ -11,10 +11,8 @@
 - [進化の系譜](#進化の系譜)
 - [rag-maintenance（Phase2 PoC 本番）](#rag-maintenancephase2-poc-本番)
 - [rag-local（Phase1 ローカル検証・評価基盤）](#rag-localphase1-ローカル検証評価基盤)
-- [アーカイブ対象](#アーカイブ対象)
 - [技術的注意事項](#技術的注意事項)
 - [環境構築リンク集](#環境構築リンク集)
-- [アーカイブ実施手順](#アーカイブ実施手順)
 
 ---
 
@@ -23,21 +21,22 @@
 ```
 rag/
 ├── rag-maintenance/     [現行] Phase2 PoC 本番 — Teams Bot (TypeScript)
-├── rag-local/          [現行] Phase1 ローカル検証・評価基盤 (Python)
-├── archive/             [非推奨] 旧版プロジェクト群
-│   ├── rag-batch/       第2世代: Excel一括バッチ処理
-│   ├── rag-streamlit/   第2世代: Streamlit対話型UI
-│   └── rag-reranker/    第1世代: Cross-Encoder Reranking PoC
-└── docs/                共通ドキュメント
+├── rag-local/           [現行] Phase1 ローカル検証・評価基盤 (Python)
+│   ├── apps/
+│   │   ├── answer-support/   回答支援AI（バッチ + Streamlit UI）
+│   │   └── revision-eval/    事務改定評価AI（バッチ + 評価UI）
+│   ├── src/              共有コア（検索エンジン、DB管理等）
+│   ├── config/           設定ファイル
+│   ├── scripts/          ユーティリティスクリプト
+│   └── docs/             ドキュメント
+├── archive/              [Git管理外] 旧版プロジェクト群（ローカル参照用）
+└── docs/                 共通ドキュメント（SECURITY.md, TROUBLESHOOTING.md）
 ```
 
 | ディレクトリ | 状態 | 目的 | 技術 |
 |---|---|---|---|
 | **rag-maintenance** | 現行（引き継ぎ対象） | Teams Bot: 事務改定影響候補検出 | TypeScript, M365 Agents SDK, Azure AI Search, Cosmos DB |
-| **rag-local** | 現行（引き継ぎ対象） | ローカル検証: バッチ処理 + Streamlit UI + 事務改定評価 | Python, ChromaDB, Gemini/Azure OpenAI |
-| archive/rag-batch | 非推奨 | Excel一括バッチ処理 → rag-localに吸収済み | Python, multilingual-e5 |
-| archive/rag-streamlit | 非推奨 | Streamlit対話型UI → rag-localに吸収済み | Python, Streamlit |
-| archive/rag-reranker | 非推奨 | Cross-Encoder Reranking PoC → DEPRECATED明記 | Python, SentenceTransformer |
+| **rag-local** | 現行（引き継ぎ対象） | ローカル検証: 回答支援AI + 事務改定評価AI | Python, ChromaDB, Gemini/Azure OpenAI |
 
 ---
 
@@ -134,12 +133,10 @@ rag-reranker (第1世代)
 
 認証: 全て`DefaultAzureCredential`使用（Managed Identity / 開発者CLI）
 
-### 未完了タスク
+### 残存タスク
 
-1. **F5デバッグ動作確認**（最優先）: UTF-8サイズ計測修正後の検索結果表示確認
-2. **Excel出力E2Eテスト**: 検索→要修正保存→Excel出力→SPOリンク→Excelファイル確認
-3. **Toolkit再Deploy**: `manifest.json`の`validDomains`変更反映が必要
-4. **手順書完成**: スクリーンショット追加、最終Word化
+1. **Toolkit再Deploy**: コミット済み修正のデプロイ実施が必要
+2. **手順書完成**: スクリーンショット追加、最終Word化
 
 ### ドキュメント
 
@@ -165,42 +162,36 @@ rag-reranker (第1世代)
 | UI | Streamlit |
 | データ規模 | scenarios 2,318件 + faqs 18,744件 = 計21,047件 |
 
-### 3つの機能（論理的分離）
+### 2つのAIアプリケーション
 
-#### 機能A: バッチ処理（`main.py batch`）
+#### 回答支援AI（`apps/answer-support/`）
 
-入力Excelの質問に対してRAG検索し、結果をExcel出力する。
+FAQ/シナリオを対象にハイブリッド検索（ベクトル+キーワード）を実行。
 
-- エントリポイント: `main.py` → `Processor` → `Searcher` → `SearchStrategy`
-- 固有モジュール: `src/handlers/input_handler.py`(610行), `src/handlers/output_handler.py`(431行)
+| モード | コマンド |
+|--------|---------|
+| バッチ（Excel入出力） | `python apps/answer-support/main.py` |
+| Streamlit UI | `python apps/answer-support/main.py interactive` |
 
-#### 機能B: Streamlit回答支援UI（`main.py interactive`）
+#### 事務改定評価AI（`apps/revision-eval/`）
 
-対話的にRAG検索結果を閲覧。通常検索 + 事務改定評価の2モード搭載。
+改定内容→変更対象シナリオを Azure/VertexAI 両方で検索し、正解IDとのマッチ率を評価。
 
-- エントリポイント: `ui/chat.py`
-- 固有依存: `streamlit`, `streamlit_elements`
+| モード | コマンド |
+|--------|---------|
+| バッチ（Excel出力） | `python apps/revision-eval/evaluate_revisions.py` |
+| 評価UI（Streamlit） | `streamlit run apps/revision-eval/ui/eval_ui.py` |
 
-#### 機能C: 事務改定評価スクリプト（`scripts/evaluate_revisions.py`）
+#### 共有コア（`src/`）
 
-事務改定の正解ID発見率を定量評価。Azure/VertexAI両プロバイダーで比較し、評価Excelを出力。
-
-- エントリポイント: `scripts/evaluate_revisions.py`(1,217行)
-- 固有モジュール: `src/core/judgment_support.py`(121行)
-- 固有依存: `rich`
-
-#### 共通コード（3機能間で共有、計3,000行以上）
-
-| モジュール | 行数 | 役割 |
-|-----------|------|------|
-| `config.py` | 289 | SearchConfig + YAML設定読込 |
-| `src/utils/auth.py` | 176 | LLM/埋め込みモデルファクトリー |
-| `src/utils/vector_db.py` | 277 | ChromaDBラッパー |
-| `src/utils/dynamic_db_manager.py` | 1,044 | 業務分野別DB管理 |
-| `src/core/search/` | - | 検索エンジン群（keyword, vector, query_enhancer, text_combiner, multi_stage_orchestrator） |
-| `config/settings.yaml` | 243 | common/ui/batch/evaluation 4セクション |
-
-> 共通コード量が多いため物理的分割はせず、論理的境界を文書化。将来分離する場合は`rag-common`パッケージ化（pip editable install）を推奨。
+| モジュール | 役割 |
+|-----------|------|
+| `config.py` | SearchConfig + YAML設定読込 |
+| `src/utils/auth.py` | LLM/埋め込みモデルファクトリー |
+| `src/utils/vector_db.py` | ChromaDBラッパー |
+| `src/utils/dynamic_db_manager.py` | 業務分野別DB管理 |
+| `src/core/search/` | 検索エンジン群（keyword, vector, query_enhancer, text_combiner） |
+| `config/settings.yaml` | common/ui/batch/evaluation 4セクション |
 
 ### Phase1 → Phase2 の技術移行
 
@@ -212,36 +203,6 @@ rag-reranker (第1世代)
 | 実行形式 | Pythonバッチ（Excel入出力） | Teams Bot（リアルタイム） |
 | Embedding更新 | スクリプト手動実行 | Indexer自動（1時間毎） |
 | LLMクエリ拡張 | 3戦略あり | なし（精度向上未確認のため省略） |
-
----
-
-## アーカイブ対象
-
-### rag-reranker（第1世代）
-
-| 項目 | 内容 |
-|------|------|
-| 状態 | READMEにDEPRECATED明記 |
-| サイズ | 85MB (.venv除く) |
-| テスト | なし（tests/は空） |
-| 固有価値 | Cross-Encoder: `hotchpotch/japanese-reranker-cross-encoder-large-v1`、Azure Document Intelligence PDF処理 |
-
-### rag-batch（第2世代A）
-
-| 項目 | 内容 |
-|------|------|
-| 状態 | rag-localに全機能吸収済み |
-| サイズ | 521MB (.venv除く) — old/のExcel・キャッシュが大半 |
-| テスト | なし（tests/は空） |
-| 固有価値 | `old/OrganizeFAQ*.py`: Claude3を使ったFAQ整理の初期実験（歴史的参考のみ） |
-
-### rag-streamlit（第2世代B）
-
-| 項目 | 内容 |
-|------|------|
-| 状態 | rag-localに全機能吸収済み、固有価値なし |
-| サイズ | 172MB (.venv除く) |
-| テスト | なし（tests/は空） |
 
 ---
 
@@ -294,57 +255,3 @@ rag-reranker (第1世代)
 | rag-local 設定 | `rag-local/config/settings.yaml` | 4セクション設定リファレンス |
 | Google Cloud認証 | `rag-local/docs/GOOGLE_CLOUD_AUTH.md` | Vertex AI認証設定 |
 
----
-
-## アーカイブ実施手順
-
-### Step 1: 機密ファイル削除
-
-```bash
-# 各プロジェクトの.env削除
-rm rag-reranker/.env rag-batch/.env rag-streamlit/.env
-
-# rag-reranker: 業務データExcel・Azurite設定
-rm rag-reranker/__azurite_db_table__.json
-# rm rag-reranker/問い合わせ履歴データ*.xlsx 等
-
-# rag-batch: old/内のExcel・ベクトルキャッシュ
-# rm -rf rag-batch/old/
-
-# rag-streamlit: ログ
-rm rag-streamlit/app.log
-```
-
-### Step 2: venv削除（サイズ削減）
-
-```bash
-rm -rf rag-reranker/.venv rag-batch/.venv rag-streamlit/.venv
-```
-
-### Step 3: ディレクトリ移動
-
-```bash
-mkdir archive
-git mv rag-reranker archive/rag-reranker
-git mv rag-batch archive/rag-batch
-git mv rag-streamlit archive/rag-streamlit
-```
-
-### Step 4: 整理後の確認（実施済み）
-
-```
-rag/
-├── rag-maintenance/     [現行] Phase2 PoC Teams Bot
-├── rag-local/           [現行] Phase1 ローカル検証・評価（旧rag-gemini）
-│   ├── apps/answer-support/   回答支援AI
-│   └── apps/revision-eval/    事務改定評価AI
-├── archive/
-│   ├── rag-batch/
-│   ├── rag-streamlit/
-│   └── rag-reranker/
-├── docs/
-│   ├── DOCKER.md
-│   ├── SECURITY.md
-│   └── TROUBLESHOOTING.md
-└── README.md            ← 本ファイル（引き継ぎ資料）
-```

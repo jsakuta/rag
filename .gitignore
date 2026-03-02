@@ -47,6 +47,7 @@ logs/
 # キャッシュディレクトリ
 **/vector_cache/
 **/vector_db/
+**/.keyword_cache/
 *.cache
 .cache/
 
@@ -102,3 +103,13 @@ gemini_credentials.json
 
 # Git worktrees
 .worktrees/
+
+# 旧プロジェクトアーカイブ（引き継ぎ対象外）
+archive/
+
+# 開発メタデータ
+.codex/
+.review/
+
+# ベンチマーク
+.benchmarks/

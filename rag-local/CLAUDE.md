@@ -190,7 +190,6 @@ rag-local/
 ├── config.py                     # 設定管理
 ├── requirements.txt              # 依存パッケージ
 ├── .env.example                  # 環境変数テンプレート
-├── Dockerfile                    # Docker設定
 │
 ├── docs/                         # ドキュメント
 │   ├── GOOGLE_CLOUD_AUTH.md      # 認証設定

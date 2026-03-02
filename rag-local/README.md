@@ -1,7 +1,5 @@
 # RAG-Local（ローカル検証・評価基盤）
 
-> 旧名: rag-gemini
-
 ## 概要
 
 2つのAIアプリケーション + 共有コアで構成するローカル RAG 検索システム。
@@ -17,9 +15,9 @@
 
 ```bash
 cd rag-local
-python -m venv venv
-venv\Scripts\activate      # Windows
-# source venv/bin/activate  # Linux/macOS
+python -m venv .venv
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
 ```
 
@@ -156,8 +154,11 @@ python scripts/check_db_content.py
 | ドキュメント | 内容 |
 |-------------|------|
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | システムアーキテクチャ |
+| [docs/API_REFERENCE.md](./docs/API_REFERENCE.md) | API仕様 |
 | [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) | 環境変数・設定オプション |
+| [docs/DB_BUILD_GUIDE.md](./docs/DB_BUILD_GUIDE.md) | DB構築ガイド |
 | [docs/GOOGLE_CLOUD_AUTH.md](./docs/GOOGLE_CLOUD_AUTH.md) | Google Cloud 認証設定 |
+| [docs/PROMPTS.md](./docs/PROMPTS.md) | プロンプト詳細 |
 | [docs/REVISION_EVALUATION.md](./docs/REVISION_EVALUATION.md) | 事務改定評価システム |
-| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) | トラブルシューティング |
 | [docs/SECURITY.md](./docs/SECURITY.md) | セキュリティガイド |
+| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) | トラブルシューティング |
