@@ -88,12 +88,10 @@ class KeywordSearchEngine:
                 if len(word) > 1:
                     keywords.extend([word] * weight)
 
-        filtered_words = {
-            word: count
-            for word, count in Counter(keywords).items()
-            if word not in self.stop_words
-        }
-        return [word for word, _ in Counter(filtered_words).most_common(top_k)]
+        counter = Counter(keywords)
+        for stop_word in self.stop_words:
+            del counter[stop_word]
+        return [word for word, _ in counter.most_common(top_k)]
 
     def calculate_similarity(
         self,

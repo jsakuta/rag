@@ -19,10 +19,10 @@ def _make_searcher_with_cache(reference_count: int, cache_indices: dict = None):
     searcher._reference_keywords_cache = cache_indices or {
         i: {f"kw{i}"} for i in range(reference_count)
     }
-    # _extract_keywords のモック（ドキュメントテキストからキーワード抽出用）
-    searcher._extract_keywords = MagicMock(return_value=["個人事業主", "カード"])
-    # _calculate_keyword_similarity のモック
-    searcher._calculate_keyword_similarity = MagicMock(return_value=0.5)
+    # _keyword_engine のモック
+    searcher._keyword_engine = MagicMock()
+    searcher._keyword_engine.extract_keywords = MagicMock(return_value=["個人事業主", "カード"])
+    searcher._keyword_engine.calculate_similarity = MagicMock(return_value=0.5)
     return searcher
 
 
@@ -102,7 +102,7 @@ class TestCalculateKeywordSimilaritiesOutOfSync:
 
         searcher = _make_searcher_with_cache(reference_count=10)
         # ドキュメントテキストからの抽出を模擬
-        searcher._extract_keywords = MagicMock(return_value=["個人事業主", "カード"])
+        searcher._keyword_engine.extract_keywords = MagicMock(return_value=["個人事業主", "カード"])
 
         search_results = [
             {
@@ -117,7 +117,7 @@ class TestCalculateKeywordSimilaritiesOutOfSync:
         result = Searcher._calculate_keyword_similarities(searcher, search_results, keywords)
 
         # _extract_keywords がドキュメントテキストで呼ばれたことを確認
-        searcher._extract_keywords.assert_called()
+        searcher._keyword_engine.extract_keywords.assert_called()
         assert len(result) == 1
         assert result[0] > 0.0  # キーワードが一致するので0より大きい
 
@@ -144,5 +144,5 @@ class TestCalculateKeywordSimilaritiesOutOfSync:
         result = Searcher._calculate_keyword_similarities(searcher, search_results, keywords)
 
         # reference_queries[5]を使って_calculate_keyword_similarityが呼ばれる
-        searcher._calculate_keyword_similarity.assert_called_once_with(["振込"], "質問5")
+        searcher._keyword_engine.calculate_similarity.assert_called_once_with(["振込"], "質問5")
         assert len(result) == 1

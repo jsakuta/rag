@@ -1,11 +1,11 @@
 # --- searcher.py ---
 import os
 from typing import List, Dict, Any, Optional
-from sudachipy import Dictionary, tokenizer
 from langchain_core.messages import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import SearchConfig
+from src.core.search.keyword_search_engine import KeywordSearchEngine
 from src.core.search.text_combiner import get_text_combiner
 from src.utils.logger import setup_logger
 from src.utils.auth import create_llm, create_embedding_model
@@ -19,22 +19,6 @@ class Searcher:
 
     依存性注入により、テスト時にモックを注入可能。
     """
-
-    # パフォーマンス: Sudachi辞書をクラス変数として共有（メモリ節約）
-    # スレッドセーフ: ロックをクラス定義時に初期化（Race Condition防止）
-    import threading as _threading
-    _shared_tokenizer = None
-    _tokenizer_lock = _threading.Lock()
-
-    @classmethod
-    def _get_shared_tokenizer(cls):
-        """スレッドセーフな共有トークナイザーを取得"""
-        if cls._shared_tokenizer is None:
-            with cls._tokenizer_lock:
-                if cls._shared_tokenizer is None:  # Double-checked locking
-                    cls._shared_tokenizer = Dictionary().create()
-                    logger.debug("Sudachi辞書を共有インスタンスとして初期化")
-        return cls._shared_tokenizer
 
     def __init__(
         self,
@@ -50,13 +34,16 @@ class Searcher:
             embedding_model: 埋め込みモデル（省略時は設定に応じて自動生成）
         """
         self.config = config
-        # パフォーマンス: 共有トークナイザーを使用
-        self.tokenizer = self._get_shared_tokenizer()
-        self.mode = tokenizer.Tokenizer.SplitMode.C
 
         # 依存性注入: 外部から渡されなければ設定に応じて自動生成
         self.model = embedding_model or create_embedding_model(config)
         self.db_manager = db_manager or DynamicDBManager(config)
+
+        # キーワード検索エンジン（明示初期化）
+        self._keyword_engine = KeywordSearchEngine(
+            stop_words=self.config.STOP_WORDS,
+            position_weight=self.config.POSITION_WEIGHT
+        )
 
         self.current_db_path = None
         self.current_business_area = None
@@ -77,40 +64,6 @@ class Searcher:
         else:
             self.llm = None
             logger.debug("LLM not initialized - using original search mode")
-
-    def _extract_keywords(self, text: str, top_k: int = 5) -> List[str]:
-        """キーワード抽出（KeywordSearchEngineに委譲）
-
-        Deprecated: 新規コードはKeywordSearchEngineを直接使用してください。
-        後方互換性のため残していますが、内部でKeywordSearchEngineを使用します。
-        """
-        if not hasattr(self, '_keyword_engine'):
-            from src.core.search.keyword_search_engine import KeywordSearchEngine
-            self._keyword_engine = KeywordSearchEngine(
-                stop_words=self.config.STOP_WORDS,
-                position_weight=self.config.POSITION_WEIGHT
-            )
-        return self._keyword_engine.extract_keywords(text, top_k)
-
-    def _calculate_keyword_similarity(self, query_keywords: List[str], reference_text: str) -> float:
-        """キーワード類似度を計算（KeywordSearchEngineに委譲）
-
-        Deprecated: 新規コードはKeywordSearchEngineを直接使用してください。
-
-        Args:
-            query_keywords: クエリから抽出されたキーワードリスト
-            reference_text: 参照テキスト
-
-        Returns:
-            float: 0.0〜1.0の類似度スコア
-        """
-        if not hasattr(self, '_keyword_engine'):
-            from src.core.search.keyword_search_engine import KeywordSearchEngine
-            self._keyword_engine = KeywordSearchEngine(
-                stop_words=self.config.STOP_WORDS,
-                position_weight=self.config.POSITION_WEIGHT
-            )
-        return self._keyword_engine.calculate_similarity(query_keywords, reference_text)
 
     def _load_summarize_prompt(self) -> str:
         """検索クエリ生成用のプロンプトファイルを読み込む（キャッシュ対応・パストラバーサル防止）"""
@@ -256,7 +209,7 @@ class Searcher:
         logger.debug("キーワードキャッシュを構築中...")
         self._reference_keywords_cache = {}
         for i, query in enumerate(self.reference_queries):
-            self._reference_keywords_cache[i] = set(self._extract_keywords(query))
+            self._reference_keywords_cache[i] = set(self._keyword_engine.extract_keywords(query))
         logger.debug(f"キーワードキャッシュ構築完了: {len(self._reference_keywords_cache)}件")
 
     # _build_filter_metadataメソッドを削除（タグレス対応）
@@ -397,7 +350,7 @@ class Searcher:
                 logger.warning(f"Keyword cache miss for index {original_idx}")
                 if original_idx < len(self.reference_queries):
                     ref_query = self.reference_queries[original_idx]
-                    keyword_sim = self._calculate_keyword_similarity(keywords, ref_query)
+                    keyword_sim = self._keyword_engine.calculate_similarity(keywords, ref_query)
                 else:
                     # DB/参照データ不整合: ドキュメントテキストから直接キーワード抽出して類似度計算
                     logger.warning(
@@ -407,7 +360,7 @@ class Searcher:
                     )
                     doc_text = search_result.get('document', '')
                     if doc_text and query_keywords_set:
-                        doc_keywords = set(self._extract_keywords(doc_text))
+                        doc_keywords = set(self._keyword_engine.extract_keywords(doc_text))
                         intersection = doc_keywords.intersection(query_keywords_set)
                         union = doc_keywords.union(query_keywords_set)
                         keyword_sim = len(intersection) / len(union) if union else 0.0

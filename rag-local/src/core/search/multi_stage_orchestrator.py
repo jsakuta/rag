@@ -276,12 +276,12 @@ class MultiStageOrchestrator:
         Returns:
             List[MultiStageSearchResultDict]: マージされた結果
         """
-        original_ids = {r['_doc_id'] for r in original_results}
-        llm_ids = {r['_doc_id'] for r in llm_results}
+        orig_dict = {r['_doc_id']: r for r in original_results}
+        llm_dict = {r['_doc_id']: r for r in llm_results}
 
-        both_ids = original_ids & llm_ids
-        original_only_ids = original_ids - llm_ids
-        llm_only_ids = llm_ids - original_ids
+        both_ids = set(orig_dict) & set(llm_dict)
+        original_only_ids = set(orig_dict) - set(llm_dict)
+        llm_only_ids = set(llm_dict) - set(orig_dict)
 
         logger.debug(f"    Both: {len(both_ids)}, Original_Only: {len(original_only_ids)}, LLM_Only: {len(llm_only_ids)}")
 
@@ -290,8 +290,8 @@ class MultiStageOrchestrator:
 
         # 'Both'カテゴリ: 両方に存在する結果は高スコアを優先
         for doc_id in both_ids:
-            orig_result = next((r for r in original_results if r.get('_doc_id') == doc_id), None)
-            llm_result = next((r for r in llm_results if r.get('_doc_id') == doc_id), None)
+            orig_result = orig_dict.get(doc_id)
+            llm_result = llm_dict.get(doc_id)
 
             if orig_result and llm_result:
                 orig_score = orig_result.get(SearchResultKeys.SIMILARITY, 0)

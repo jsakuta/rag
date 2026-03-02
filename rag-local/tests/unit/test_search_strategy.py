@@ -64,7 +64,7 @@ class TestOriginalSearchStrategy:
         searcher.config = MagicMock()
         searcher.config.search_mode = "original"
         searcher.config.search_type = "hybrid"
-        searcher._extract_keywords.return_value = ["口座", "開設"]
+        searcher._keyword_engine.extract_keywords.return_value = ["口座", "開設"]
         searcher._execute_vector_search.return_value = []
         searcher._calculate_and_merge_scores.return_value = []
         searcher._format_final_results.return_value = [{"Similarity": 0.9}]
@@ -72,7 +72,7 @@ class TestOriginalSearchStrategy:
         strategy = OriginalSearchStrategy(searcher)
         result = strategy.execute("1", "口座開設の方法", "窓口で申込")
 
-        searcher._extract_keywords.assert_called_once_with("口座開設の方法")
+        searcher._keyword_engine.extract_keywords.assert_called_once_with("口座開設の方法")
         searcher._execute_vector_search.assert_called_once_with("口座開設の方法")
         searcher._calculate_and_merge_scores.assert_called_once()
         searcher._format_final_results.assert_called_once()
@@ -89,7 +89,7 @@ class TestLLMEnhancedSearchStrategy:
         searcher.config.search_mode = "llm_enhanced"
         searcher.config.search_type = "hybrid"
         searcher.summarize_text.return_value = "口座開設手続き"
-        searcher._extract_keywords.return_value = ["口座", "開設"]
+        searcher._keyword_engine.extract_keywords.return_value = ["口座", "開設"]
         searcher._execute_vector_search.return_value = []
         searcher._calculate_and_merge_scores.return_value = []
         searcher._format_final_results.return_value = []
@@ -109,7 +109,7 @@ class TestKeywordFilterSearchStrategy:
         searcher = MagicMock()
         searcher.config = MagicMock()
         searcher.config.search_type = "keyword_filter"
-        searcher._extract_keywords.return_value = []
+        searcher._keyword_engine.extract_keywords.return_value = []
 
         strategy = KeywordFilterSearchStrategy(searcher)
         result = strategy.execute("1", "", "")
@@ -121,7 +121,7 @@ class TestKeywordFilterSearchStrategy:
         searcher = MagicMock()
         searcher.config = MagicMock()
         searcher.config.search_type = "keyword_filter"
-        searcher._extract_keywords.return_value = ["振込"]
+        searcher._keyword_engine.extract_keywords.return_value = ["振込"]
         searcher._reference_keywords_cache = {
             0: {"口座", "開設"},
             1: {"残高", "照会"},

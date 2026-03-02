@@ -54,7 +54,7 @@ class OriginalSearchStrategy(SearchStrategy):
         if original_answer:
             logger.info(f"  Original answer: {original_answer[:100]}...")
 
-        keywords = self.searcher._extract_keywords(query_text)
+        keywords = self.searcher._keyword_engine.extract_keywords(query_text)
         logger.info(f"  Extracted keywords: {keywords}")
 
         search_results = self.searcher._execute_vector_search(query_text)
@@ -80,7 +80,7 @@ class LLMEnhancedSearchStrategy(SearchStrategy):
         search_query = self.searcher.summarize_text(query_text)
         logger.info(f"  Generated search query: {search_query}")
 
-        keywords = self.searcher._extract_keywords(query_text)
+        keywords = self.searcher._keyword_engine.extract_keywords(query_text)
         logger.info(f"  Extracted keywords: {keywords}")
 
         search_results = self.searcher._execute_vector_search(search_query)
@@ -100,7 +100,7 @@ class MultiStageSearchStrategy(SearchStrategy):
         logger.info(f"=== 多段階OR検索開始 (No.{input_number}) ===")
         logger.info(f"  Threshold: {self.config.multi_stage_threshold}, Max: {self.config.multi_stage_max_results}")
 
-        keywords = self.searcher._extract_keywords(query_text)
+        keywords = self.searcher._keyword_engine.extract_keywords(query_text)
         logger.info(f"  Keywords: {keywords}")
 
         # Stage 1: 原文検索
@@ -175,12 +175,12 @@ class MultiStageSearchStrategy(SearchStrategy):
         input_number, query_text, original_answer, llm_query
     ) -> List[Dict[str, Any]]:
         """OR結合して3分類（Both / Original_Only / LLM_Enhanced_Only）"""
-        original_ids = {r['_doc_id'] for r in original_results}
-        llm_ids = {r['_doc_id'] for r in llm_results}
+        orig_dict = {r['_doc_id']: r for r in original_results}
+        llm_dict = {r['_doc_id']: r for r in llm_results}
 
-        both_ids = original_ids & llm_ids
-        original_only = original_ids - llm_ids
-        llm_only = llm_ids - original_ids
+        both_ids = set(orig_dict) & set(llm_dict)
+        original_only = set(orig_dict) - set(llm_dict)
+        llm_only = set(llm_dict) - set(orig_dict)
 
         logger.info(f"    Both: {len(both_ids)}, Original_Only: {len(original_only)}, LLM_Only: {len(llm_only)}")
 
@@ -189,8 +189,8 @@ class MultiStageSearchStrategy(SearchStrategy):
 
         # 'Both': 高スコアを優先
         for doc_id in both_ids:
-            orig = next((r for r in original_results if r.get('_doc_id') == doc_id), None)
-            llm = next((r for r in llm_results if r.get('_doc_id') == doc_id), None)
+            orig = orig_dict.get(doc_id)
+            llm = llm_dict.get(doc_id)
             if orig and llm:
                 best = orig if orig.get('Similarity', 0) >= llm.get('Similarity', 0) else llm
                 merged.append(self._categorize(
@@ -241,7 +241,7 @@ class KeywordFilterSearchStrategy(SearchStrategy):
         logger.info(f"  Search type: keyword_filter")
         logger.info(f"  Original query: {query_text[:100]}...")
 
-        keywords = self.searcher._extract_keywords(query_text)
+        keywords = self.searcher._keyword_engine.extract_keywords(query_text)
         if not keywords:
             logger.warning("  キーワードが抽出できませんでした")
             return []
