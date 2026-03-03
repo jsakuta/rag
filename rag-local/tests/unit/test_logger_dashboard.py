@@ -40,6 +40,19 @@ def test_print_startup_summary_with_failure(monkeypatch, capsys):
     assert "接続失敗" in captured.out
 
 
+def test_print_startup_summary_with_skip(monkeypatch, capsys):
+    """ok=Noneの場合、スキップ表示(--アイコン)になること"""
+    _force_plain(monkeypatch)
+    checks = [
+        ("DB接続", True, "OK"),
+        ("LLM判定", None, "無効 (スキップ) (gemini-2.5-flash-lite)"),
+    ]
+    print_startup_summary("テストAI v1.0", checks)
+    captured = capsys.readouterr()
+    assert "[--]" in captured.out
+    assert "無効 (スキップ)" in captured.out
+
+
 def test_print_query_panel_basic(monkeypatch, capsys):
     """検索パネルにクエリとメタデータが表示されること"""
     _force_plain(monkeypatch)

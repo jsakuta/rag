@@ -242,16 +242,13 @@ def print_revision_header(
     if RICH_AVAILABLE:
         console = get_console()
 
-        # プログレスバー風の表示
-        progress_text = f"[#757575]{current}/{total}[/#757575]"
-
         # 改定内容パネル
         content_preview = content[:100] + "..." if len(content) > 100 else content
 
         header_text = Text()
         header_text.append(f"  {revision} ", style="bold #FF9800")
         header_text.append(f"  正解ID: {correct_count}件", style="#81C784")
-        header_text.append(f"  {progress_text}", style="#757575")
+        header_text.append(f"  {current}/{total}", style="#757575")
 
         console.print()
         console.print(Panel(
@@ -364,7 +361,12 @@ def print_startup_summary(app_name: str, checks: list):
         console.print(Rule(f" {app_name} ", style="bold cyan"))
         console.print()
         for label, ok, detail in checks:
-            icon = "[green]\u2714[/green]" if ok else "[red]\u2717[/red]"
+            if ok is None:
+                icon = "[dim]─[/dim]"
+            elif ok:
+                icon = "[green]\u2714[/green]"
+            else:
+                icon = "[red]\u2717[/red]"
             console.print(f"  {icon} {label} {detail}")
         console.print()
         console.print(Rule(style="dim"))
@@ -373,7 +375,7 @@ def print_startup_summary(app_name: str, checks: list):
         print(f"  {app_name}")
         print(f"{'=' * 40}")
         for label, ok, detail in checks:
-            icon = "OK" if ok else "NG"
+            icon = "OK" if ok else ("--" if ok is None else "NG")
             print(f"  [{icon}] {label} {detail}")
         print(f"{'─' * 40}")
 

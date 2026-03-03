@@ -1222,7 +1222,7 @@ def main() -> None:
     db_all_ok = not any("MISSING" in str(row) for row in db_status_data)
     print_startup_summary("改定影響調査 (バッチ)", [
         ("DB接続", db_all_ok, "OK" if db_all_ok else "一部MISSING"),
-        ("LLM判定", enable_llm, f"{'有効' if enable_llm else '無効'} ({config.llm_model})"),
+        ("LLM判定", enable_llm or None, f"{'有効' if enable_llm else '無効 (スキップ)'} ({config.llm_model})"),
         ("プロバイダー", True, provider_labels[args.provider]),
     ])
 
