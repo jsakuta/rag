@@ -193,6 +193,11 @@ search_mode="llm_enhanced"
 - 高精度（意図理解）
 - LLMがクエリを最適化
 
+**前提条件:**
+- `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` / `GEMINI_PROJECT_ID` + GCP認証が必須
+- 未設定時エラー: `RuntimeError: LLM is not initialized. Set DEFAULT_LLM_PROVIDER and DEFAULT_LLM_MODEL.`
+- LLM 不要な場合は `search_mode: original` を使用
+
 #### 多段階検索モード
 
 ```python
@@ -270,7 +275,7 @@ data/output/             # 出力ファイル
 
 | セクション | 用途 | 主な設定 |
 |-----------|------|---------|
-| `common` | 全プログラム共通 | search_type, vector_weight, search_mode, keyword設定 |
+| `common` | 全プログラム共通 | search_type, vector_weight, search_mode, search_source, keyword設定, columns設定 |
 | `ui` | Streamlit UI専用 | top_k, search_type, vector_weight（スライダー初期値） |
 | `batch` | バッチ処理専用 | top_k, vector_weight |
 | `evaluation` | 改定影響調査専用 | max_results, filter_mode, thresholds, revision_areas |
@@ -281,6 +286,55 @@ data/output/             # 出力ファイル
 - `load_settings("ui")` → common + ui をマージして返す
 - `load_settings("batch")` → common + batch をマージして返す
 - セクション固有の値が common を上書き
+
+### search_source（検索対象）
+
+検索対象データの種別を指定する。
+
+| 値 | 説明 |
+|----|------|
+| `history_data` | FAQ（履歴データ）を検索対象とする（デフォルト） |
+| `scenario` | シナリオデータを検索対象とする |
+
+**設定場所:** `config/settings.yaml` の `common.search_source`
+
+**UI vs バッチでの挙動:**
+- **UI**: サイドバーで動的に切替可能（`settings.yaml` の値は初期値として使用）
+- **バッチ**: `settings.yaml` の値を使用（CLI 引数での変更不可）
+
+### keyword設定（キーワード検索パラメータ）
+
+`config/settings.yaml` の `common.keyword` でキーワード検索の動作を制御する。
+
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|-----|-----------|------|
+| `position_weight` | float | 1.2 | テキスト前半に出現するキーワードの重み係数 |
+| `stop_words` | list | 13語 | 除外する一般的な単語のリスト |
+
+**動作概要:** 入力テキスト → Sudachi（形態素解析）→ 名詞抽出 → stop_words 除外 → 出現頻度 Top-5 → Jaccard 類似度で検索結果をスコアリング
+
+### columns設定（Excel列名候補）
+
+`config/settings.yaml` の `common.columns` でバッチ入力 Excel の列名自動検出候補を定義する。各キーに対して候補リストの先頭から順にマッチを試みる。
+
+| キー | 説明 | 必須 | 未検出時の動作 |
+|------|------|------|---------------|
+| `query` | 質問列 | 必須 | `ValueError` で停止 |
+| `answer` | 回答列 | 必須 | `ValueError` で停止 |
+| `tag` | タグ・分類列 | 任意 | 警告を出力して続行 |
+| `correct_id` | 正解ID列 | 任意 | スキップ（精度評価なし） |
+
+**カスタマイズ例:** 独自の列名を使用する場合、候補リストの先頭に追加する。
+
+```yaml
+common:
+  columns:
+    query:
+      - 問い合わせテキスト    # 独自列名を先頭に追加
+      - 分割後質問
+      - 問合せ内容
+      # ...
+```
 
 ### config/business_areas.yaml
 

@@ -274,6 +274,33 @@ pip install --upgrade sudachipy sudachidict-core
 
 2. 入力文字列の確認（最低5文字以上推奨）
 
+### LLM 未初期化エラー
+
+**症状:**
+```
+RuntimeError: LLM is not initialized. Set DEFAULT_LLM_PROVIDER and DEFAULT_LLM_MODEL.
+```
+
+**原因:**
+- `config/settings.yaml` で `search_mode: llm_enhanced` を設定しているが、LLM 環境変数（`DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL`）が未設定
+- または GCP 認証（`GEMINI_PROJECT_ID` + `gemini_credentials.json`）が未設定
+
+**解決策:**
+
+1. LLM が不要な場合、`original` モードに戻す:
+```yaml
+# config/settings.yaml
+common:
+  search_mode: original
+```
+
+2. LLM を使用する場合、環境変数を設定:
+```env
+DEFAULT_LLM_PROVIDER=gemini
+DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
+GEMINI_PROJECT_ID=your-project-id
+```
+
 ---
 
 ## API関連

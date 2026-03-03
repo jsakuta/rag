@@ -52,6 +52,8 @@ FAQ およびシナリオデータから類似回答を検索するシステム�
 | `original` | 原文をそのままクエリとしてハイブリッド検索（デフォルト） |
 | `llm_enhanced` | LLM でクエリを拡張・要約してからハイブリッド検索 |
 
+> **Note:** `llm_enhanced` モードには LLM 環境変数（`DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL`, `GEMINI_PROJECT_ID` + GCP認証）の設定が必須です。未設定時は `RuntimeError: LLM is not initialized` が発生します。`original` モードでは LLM は使用しません。
+
 ### スコア計算式
 
 ```
@@ -76,7 +78,12 @@ final_score = vector_weight x vector_similarity + (1 - vector_weight) x keyword_
 
 ### 埋め込みプロバイダー
 
-回答支援AI は **azure_openai**（text-embedding-3-large、3072次元）のみを使用する。
+| プロバイダー | モデル | 次元数 | 備考 |
+|-------------|--------|--------|------|
+| `azure_openai` | text-embedding-3-large | 3072 | エンタープライズ向け・高精度 |
+| `vertex_ai` | gemini-embedding-001 | 3072 | Google Cloud 統合・MRL対応 |
+
+`build_db.py` は両プロバイダーの DB を構築する。実行時は `DEFAULT_EMBEDDING_PROVIDER` 環境変数に一致するプロバイダーの DB が使用される。
 
 ### ディレクトリ構成
 
@@ -85,10 +92,14 @@ data/
 ├── vector_db/
 │   ├── update_timestamps.json        # 更新日時記録
 │   ├── naibujimu/                    # 内部事務 DB
-│   │   └── azure_openai/
+│   │   ├── azure_openai/
+│   │   │   └── chroma.sqlite3
+│   │   └── vertex_ai/
 │   │       └── chroma.sqlite3
 │   └── smile/                        # スマイル DB
-│       └── azure_openai/
+│       ├── azure_openai/
+│       │   └── chroma.sqlite3
+│       └── vertex_ai/
 │           └── chroma.sqlite3
 ├── source/
 │   ├── faq/latest/                   # FAQ（履歴データ）
@@ -131,6 +142,8 @@ python apps/answer-support/main.py --business naibujimu --limit 10
 |------|------|-----------|
 | `--business` | 対象の業務分野（`naibujimu`, `smile`） | 全業務分野 |
 | `--limit` | 処理する入力データの件数上限 | 無制限 |
+
+> **Note:** バッチ処理の検索対象は CLI 引数では変更できません。`config/settings.yaml` の `common.search_source`（`scenario` / `history_data`、デフォルト: `history_data`）を編集してください。UI ではサイドバーで動的に切替可能です。
 
 #### 入出力
 
@@ -255,8 +268,10 @@ data/source/
 1. **Streamlit UI の停止**: ChromaDB はファイルロックを使用するため、UI と同時にスクリプトを実行するとロックエラーが発生する
 2. **環境変数の設定**: `.env` に以下が必要
    - `DEFAULT_EMBEDDING_PROVIDER`（モデルはプロバイダーから自動解決）
-   - `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
-   - `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL`
+   - **azure_openai 使用時**: `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
+   - **vertex_ai 使用時**: `GEMINI_PROJECT_ID` + GCP認証（`gemini_credentials.json` または Key Vault）
+   - `build_db.py` は両プロバイダーの DB を構築するため、両方の認証が必要。片方のみ使用する場合は、使用しないプロバイダーの認証は省略可
+   - `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL`（`search_mode: llm_enhanced` 使用時のみ）
 3. **参照データの配置**: `data/source/faq/latest/` と `data/source/scenarios/latest/` に対象 Excel ファイルが必要
 
 ---
