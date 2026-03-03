@@ -42,9 +42,11 @@ pip install -r requirements.txt
 
 ### Step 2: 認証情報の準備
 
-#### Google Cloud（Vertex AI / Gemini）
+> **どの認証が必要か？** Step 4 で設定する `DEFAULT_EMBEDDING_PROVIDER` に依存します。`vertex_ai` のみ使用する場合は Azure OpenAI の認証（Step 2b）は不要です。`azure_openai` のみ使用する場合でも、LLM（クエリ拡張・関連性判定）は Gemini を使用するため Google Cloud 認証（Step 2a）は必須です。
 
-LLMおよび埋め込みモデルで VertexAI を使用する場合に必要です。
+#### Step 2a: Google Cloud（Vertex AI / Gemini）
+
+LLMおよび埋め込みモデルで VertexAI を使用する場合に必要です。**LLM は Gemini のみ対応のため、全環境で必須です。**
 
 1. Google Cloud Console でサービスアカウントキーを作成（必要権限: `Vertex AI User`）
 2. JSON キーファイルをダウンロード
@@ -64,9 +66,9 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/gemini_credentials.json"
 
 > **注意**: `gemini_credentials.json` は機密情報です。共有フォルダに置かず、アクセス権限を制限してください。Git にコミットしないでください（`.gitignore` 登録済み）。
 
-#### Azure OpenAI
+#### Step 2b: Azure OpenAI
 
-埋め込みモデルで Azure OpenAI を使用する場合に必要です。
+埋め込みモデルで Azure OpenAI を使用する場合に必要です。`DEFAULT_EMBEDDING_PROVIDER=vertex_ai` で回答支援AIのみ使用する場合はスキップできます。
 
 - Azure Portal で API キーとエンドポイント URL を確認
 - `.env` ファイルに設定（Step 3 参照）
@@ -119,7 +121,13 @@ data/source/
 ### Step 5: DB構築
 
 ```bash
-# 初回: 全DB強制再構築
+# 回答支援AI用のみ構築（推奨）
+python scripts/build_db.py --no-revisions --force
+
+# 改定影響調査用のみ構築
+python scripts/build_db.py --revisions-only --force
+
+# 全DB構築（回答支援AI + 改定影響調査）
 python scripts/build_db.py --force
 
 # 2回目以降: 差分のみ構築（更新があるDBのみ）
@@ -130,6 +138,8 @@ python scripts/build_db.py
 - 改定DB構築は [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) を参照
 
 > **注意**: DB構築中は Streamlit UI を停止してください（ChromaDB のファイルロック競合を防止）。
+
+> **Note:** `build_db.py` は azure_openai と vertex_ai の**両プロバイダー**でDBを構築します。片方の認証が未設定の場合、その側はエラーになりますが、認証済み側のDBは正常に構築されます。VertexAI のみ使用する場合、Azure 側のエラーは無視して構いません。
 
 ### Step 6: 動作確認
 

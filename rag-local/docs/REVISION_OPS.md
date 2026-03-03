@@ -143,11 +143,18 @@ data/vector_db/
 
 3. **環境変数の設定**（`.env`）
    ```bash
-   # Azure OpenAI
+   # Azure OpenAI（--provider both または --provider azure 使用時）
+   AZURE_OPENAI_API_KEY=your-api-key
+   AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
    AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
 
-   # VertexAI
+   # VertexAI（--provider both または --provider vertex 使用時）
+   GEMINI_PROJECT_ID=your-project-id
    VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
+
+   # LLM（クエリ拡張・関連性判定、Gemini のみ対応）
+   DEFAULT_LLM_PROVIDER=gemini
+   DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 
    # LLM分析の有効化（オプション、デフォルト: false）
    ENABLE_LLM_ANALYSIS=true
@@ -175,6 +182,9 @@ python apps/revision-ops/run_eval.py
 python apps/revision-ops/run_eval.py --provider vertex   # VertexAI のみ
 python apps/revision-ops/run_eval.py --provider azure    # Azure のみ
 python apps/revision-ops/run_eval.py --provider both     # 両方（デフォルト）
+
+# 詳細設定を表示して実行
+python apps/revision-ops/run_eval.py --verbose
 ```
 
 > **Note:** デフォルト（`--provider both`）は Azure OpenAI の環境変数（`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`）が必須です。未設定の場合は `--provider vertex` を指定してください。

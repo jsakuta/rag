@@ -64,6 +64,12 @@
 
 **`key_vault`**: Azure Key Vault にサービスアカウント JSON をシークレットとして格納し、`DefaultAzureCredential` で取得。ローカルにファイルを配置できない環境向け。
 
+### 改定影響調査オプション
+
+| 変数名 | 説明 | デフォルト値 | 例 |
+|--------|------|------------|-----|
+| `ENABLE_LLM_ANALYSIS` | LLM関連性判定の有効化（`run_eval.py` 専用） | `false` | `true` |
+
 ### その他
 
 | 変数名 | 説明 | デフォルト値 | 例 |
@@ -278,7 +284,7 @@ data/output/             # 出力ファイル
 | `common` | 全プログラム共通 | search_type, vector_weight, search_mode, search_source, keyword設定, columns設定 |
 | `ui` | Streamlit UI専用 | top_k, search_type, vector_weight（スライダー初期値） |
 | `batch` | バッチ処理専用 | top_k, vector_weight |
-| `evaluation` | 改定影響調査専用 | max_results, filter_mode, thresholds, revision_areas |
+| `evaluation` | 改定影響調査専用 | max_results, filter_mode, thresholds, revision_areas（[詳細](./REVISION_OPS.md#新しい改定の追加手順)） |
 
 > **重要:** settings.yaml は起動時に必須です。ファイルが存在しないか common セクションが欠落している場合、`RuntimeError` が発生します。全キーはフォールバックなしの直接アクセスのため、キー欠落時は `KeyError` になります。
 
@@ -335,6 +341,10 @@ common:
       - 問合せ内容
       # ...
 ```
+
+> **既知の制限:** `input_handler.py` は現在ハードコードされた列名候補を使用しており、`settings.yaml` の `columns` 設定を参照していません。settings.yaml を変更しても `input_handler.py` の動作は変わりません（コード修正は別タスク）。`config.py` の `QUERY_COLUMN_CANDIDATES` 等は settings.yaml から正しく読み込まれています。
+
+> **Note:** `correct_id` は settings.yaml に定義されていますが、`config.py` では読み込まれていません。改定影響調査の入力ファイル（`multi_stage_input.xlsx`）で使用される列名です。
 
 ### config/business_areas.yaml
 

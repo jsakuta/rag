@@ -274,6 +274,35 @@ pip install --upgrade sudachipy sudachidict-core
 
 2. 入力文字列の確認（最低5文字以上推奨）
 
+### 検索結果が0件になる
+
+**症状:**
+- バッチ処理やUIで検索しても結果が返らない
+
+**原因と対処:**
+
+1. **DB が空**: `python scripts/check_db_content.py` で件数を確認。0件なら `python scripts/build_db.py --force` で再構築
+2. **search_source のミスマッチ**: `settings.yaml` の `common.search_source` がDB内のデータ種別と一致しているか確認（`history_data` → FAQ、`scenario` → シナリオ）
+3. **埋め込みプロバイダーの不一致**: `.env` の `DEFAULT_EMBEDDING_PROVIDER` と、構築済みDBのプロバイダーが一致しているか確認（例: vertex_ai で構築したDBに azure_openai でアクセスしていないか）
+4. **Streamlit キャッシュ**: DB再構築後はStreamlitを再起動（Ctrl+C → 再起動）
+
+### バッチ処理で入力ファイルが見つからない
+
+**症状:**
+- バッチ実行時に結果が生成されない、またはスキップされる
+
+**原因:**
+- `data/input/` にファイルがない、またはファイル名が期待形式と異なる
+
+**解決策:**
+
+1. 入力ファイルの配置確認:
+```bash
+ls data/input/
+```
+
+2. ファイル名の確認: `{業務名}_YYYYMMDD.xlsx` 形式で、`{業務名}` は `config/business_areas.yaml` に登録されている日本語名（例: `スマイル_20250301.xlsx`）
+
 ### LLM 未初期化エラー
 
 **症状:**

@@ -54,6 +54,8 @@ FAQ およびシナリオデータから類似回答を検索するシステム�
 
 > **Note:** `llm_enhanced` モードには LLM 環境変数（`DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL`, `GEMINI_PROJECT_ID` + GCP認証）の設定が必須です。未設定時は `RuntimeError: LLM is not initialized` が発生します。`original` モードでは LLM は使用しません。
 
+> **Note:** `multi_stage` モードも存在しますが、改定影響調査（`run_eval.py`）専用です。回答支援AIでは `original` または `llm_enhanced` を使用してください。
+
 ### スコア計算式
 
 ```
@@ -270,7 +272,7 @@ data/source/
    - `DEFAULT_EMBEDDING_PROVIDER`（モデルはプロバイダーから自動解決）
    - **azure_openai 使用時**: `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
    - **vertex_ai 使用時**: `GEMINI_PROJECT_ID` + GCP認証（`gemini_credentials.json` または Key Vault）
-   - `build_db.py` は両プロバイダーの DB を構築するため、両方の認証が必要。片方のみ使用する場合は、使用しないプロバイダーの認証は省略可
+   - `build_db.py` は両プロバイダー（azure_openai / vertex_ai）の DB を常に構築する。未認証のプロバイダー側はエラーになるが、認証済み側の DB は正常に構築されるため、片方のみ使用する場合は未認証側のエラーを無視してよい
    - `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL`（`search_mode: llm_enhanced` 使用時のみ）
 3. **参照データの配置**: `data/source/faq/latest/` と `data/source/scenarios/latest/` に対象 Excel ファイルが必要
 
