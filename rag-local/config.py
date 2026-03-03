@@ -107,8 +107,8 @@ class SearchConfig:
     DEFAULT_FORCE_DB_UPDATE: bool = False  # 強制DB更新フラグ
 
     # バッチサイズ設定
-    # EMBEDDING_BATCH_SIZE: Vertex AI Embedding APIの1回あたりの最大テキスト数。
-    # APIの上限は250件。パフォーマンス向上のため最大値に設定。
+    # EMBEDDING_BATCH_SIZE: 埋め込みAPIの1回あたりの最大テキスト数。
+    # Azure OpenAI の上限は250件。Gemini は gemini_embedding.py 内で100にキャップ。
     EMBEDDING_BATCH_SIZE: int = 250
     # VECTOR_DB_BATCH_SIZE: ChromaDBへの一括書き込み時のバッチサイズ。
     # 大きすぎるとメモリエラーの原因になります。100-500が推奨範囲。

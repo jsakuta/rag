@@ -3,48 +3,44 @@
 import threading
 import numpy as np
 from typing import List, Union, Optional, TYPE_CHECKING
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from src.utils.base_embedding import BaseEmbeddingModel
 from src.utils.logger import setup_logger
-from src.utils.auth import initialize_vertex_ai
 
 if TYPE_CHECKING:
     from config import SearchConfig
 
 logger = setup_logger(__name__)
 
-# Vertex AI SDK のインポート
+# google-genai SDK のインポート
 try:
-    from vertexai.language_models import TextEmbeddingModel
-    from google.api_core.exceptions import (
-        ServiceUnavailable,
-        TooManyRequests,
-        DeadlineExceeded,
-        PermissionDenied,
-        InvalidArgument
-    )
+    from google.genai.errors import ClientError, ServerError
+    from google.genai.types import EmbedContentConfig
     VERTEX_AI_AVAILABLE = True
 except ImportError:
     VERTEX_AI_AVAILABLE = False
     # Retry Logic Fallback: SDKがない場合でもリトライが機能するよう、
     # 独自の例外クラスを定義（Exceptionへのフォールバックを避ける）
-    class ServiceUnavailable(Exception):
-        """Vertex AI SDK not available - placeholder for ServiceUnavailable"""
+    class ClientError(Exception):
+        """google-genai SDK not available - placeholder"""
+        def __init__(self, *args, code=None, **kwargs):
+            self.code = code
+            super().__init__(*args, **kwargs)
+    class ServerError(Exception):
+        """google-genai SDK not available - placeholder"""
         pass
-    class TooManyRequests(Exception):
-        """Vertex AI SDK not available - placeholder for TooManyRequests"""
-        pass
-    class DeadlineExceeded(Exception):
-        """Vertex AI SDK not available - placeholder for DeadlineExceeded"""
-        pass
-    class PermissionDenied(Exception):
-        """Vertex AI SDK not available - placeholder for PermissionDenied"""
-        pass
-    class InvalidArgument(Exception):
-        """Vertex AI SDK not available - placeholder for InvalidArgument"""
-        pass
-    logger.warning("Vertex AI SDK not installed. Run: pip install google-cloud-aiplatform")
+    EmbedContentConfig = None
+    logger.warning("google-genai SDK not installed. Run: pip install google-genai")
+
+
+def _is_retryable(error):
+    """リトライ対象の例外かどうかを判定"""
+    if isinstance(error, ServerError):
+        return True       # 5xx は全てリトライ
+    if isinstance(error, ClientError) and getattr(error, 'code', 0) == 429:
+        return True       # Rate limit のみリトライ
+    return False
 
 
 class GeminiEmbeddingModel(BaseEmbeddingModel):
@@ -57,6 +53,9 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
 
     # gemini-embedding-001 の次元数（デフォルト）
     EMBEDDING_DIM = 3072
+
+    # google-genai SDK のバッチ上限
+    GENAI_SDK_BATCH_LIMIT = 100
 
     _instance: Optional['GeminiEmbeddingModel'] = None
     _lock = threading.Lock()
@@ -90,19 +89,16 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
         """Gemini Embedding API の初期化"""
         if not VERTEX_AI_AVAILABLE:
             raise ImportError(
-                "Vertex AI SDK is not installed. "
-                "Run: pip install google-cloud-aiplatform"
+                "google-genai SDK is not installed. "
+                "Run: pip install google-genai"
             )
 
         try:
-            initialize_vertex_ai(self.config)
-
-            # モデル名を環境変数から取得（デフォルト: gemini-embedding-001）
-            model_name = self.config.embedding_model or "gemini-embedding-001"
-            model = TextEmbeddingModel.from_pretrained(model_name)
-
-            logger.debug(f"Gemini Embedding API initialized successfully (model: {model_name})")
-            return model
+            from src.utils.auth import create_genai_client
+            self._model_name = self.config.embedding_model or "gemini-embedding-001"
+            client = create_genai_client(self.config)
+            logger.debug(f"Gemini Embedding API initialized (model: {self._model_name})")
+            return client  # → base class が self.model に格納
 
         except Exception as e:
             logger.error(f"Failed to initialize Gemini Embedding API: {e}")
@@ -111,20 +107,19 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=2, min=4, max=30),
-        retry=retry_if_exception_type((ServiceUnavailable, TooManyRequests, DeadlineExceeded)),
+        retry=retry_if_exception(_is_retryable),
         reraise=True
     )
     def _get_embeddings_with_retry(self, batch_texts: List[str]):
         """リトライ付きで Embedding API を呼び出す
 
         リトライ対象:
-        - ServiceUnavailable (503): サービス一時不可
-        - TooManyRequests (429): レート制限/クォータ超過
-        - DeadlineExceeded: タイムアウト
+        - ServerError (5xx): サービス一時不可
+        - ClientError (429): レート制限/クォータ超過
 
         リトライ対象外（即座に失敗）:
-        - PermissionDenied (403): 権限エラー
-        - InvalidArgument (400): 無効なリクエスト
+        - ClientError (403): 権限エラー
+        - ClientError (400): 無効なリクエスト
 
         Args:
             batch_texts: テキストのバッチ
@@ -133,10 +128,15 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
             埋め込み結果のリスト
         """
         try:
-            return self.model.get_embeddings(batch_texts)
-        except (PermissionDenied, InvalidArgument) as e:
-            # 回復不可能なエラーは即座に失敗させる
-            logger.error(f"回復不可能なAPIエラー: {type(e).__name__}")
+            response = self.model.models.embed_content(
+                model=self._model_name,
+                contents=batch_texts,
+                config=EmbedContentConfig(output_dimensionality=self.EMBEDDING_DIM),
+            )
+            return response.embeddings
+        except ClientError as e:
+            if getattr(e, 'code', 0) != 429:
+                logger.error(f"回復不可能なAPIエラー (HTTP {getattr(e, 'code', '?')}): {e}")
             raise
 
     def encode(self, texts: Union[str, List[str]], normalize_embeddings: bool = True) -> np.ndarray:
@@ -155,7 +155,7 @@ class GeminiEmbeddingModel(BaseEmbeddingModel):
                 texts = [texts]
 
             # バッチサイズで分割（API制限を回避）
-            batch_size = self.config.EMBEDDING_BATCH_SIZE
+            batch_size = min(self.config.EMBEDDING_BATCH_SIZE, self.GENAI_SDK_BATCH_LIMIT)
             all_embeddings = []
 
             for i in range(0, len(texts), batch_size):

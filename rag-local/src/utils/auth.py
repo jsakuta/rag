@@ -2,14 +2,12 @@
 """Google Cloud認証処理の共通モジュール + 埋め込みモデルファクトリー"""
 import json
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from src.utils.logger import setup_logger
 
-# 遅延インポート: Vertex AI関連（インストールされていない場合もエラーにしない）
-vertexai = None
+# 遅延インポート: 認証モジュール
 service_account = None
-ChatGoogleGenerativeAI = None
 
 if TYPE_CHECKING:
     from config import SearchConfig
@@ -18,16 +16,12 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 
-def _load_vertex_ai_modules():
-    """Vertex AI関連モジュールを遅延ロード"""
-    global vertexai, service_account, ChatGoogleGenerativeAI
-    if vertexai is None:
-        import vertexai as _vertexai
-        from google.oauth2 import service_account as _service_account
-        from langchain_google_genai import ChatGoogleGenerativeAI as _ChatGoogleGenerativeAI
-        vertexai = _vertexai
-        service_account = _service_account
-        ChatGoogleGenerativeAI = _ChatGoogleGenerativeAI
+def _load_auth_modules():
+    """認証モジュールのみ遅延ロード（軽量・高速）"""
+    global service_account
+    if service_account is None:
+        from google.oauth2 import service_account as _sa
+        service_account = _sa
 
 
 def _get_credentials_local(config: 'SearchConfig'):
@@ -42,7 +36,7 @@ def _get_credentials_local(config: 'SearchConfig'):
     Raises:
         FileNotFoundError: 認証ファイルが存在しない場合
     """
-    _load_vertex_ai_modules()
+    _load_auth_modules()
     credentials_path = os.path.join(config.base_dir, config.gemini_credentials_path)
     if not os.path.exists(credentials_path):
         raise FileNotFoundError(f'認証ファイルが見つかりません: {credentials_path}')
@@ -69,7 +63,7 @@ def _get_credentials_key_vault(config: 'SearchConfig'):
     Raises:
         ValueError: Key Vault の設定が不完全な場合
     """
-    _load_vertex_ai_modules()
+    _load_auth_modules()
     from azure.identity import DefaultAzureCredential
     from azure.keyvault.secrets import SecretClient
 
@@ -113,29 +107,27 @@ def get_google_credentials(config: 'SearchConfig'):
     return handler(config)
 
 
-def initialize_vertex_ai(
-    config: 'SearchConfig',
-    credentials = None
-) -> None:
-    """Vertex AIを初期化
+def create_genai_client(config: 'SearchConfig', credentials=None):
+    """google-genai Client を生成
 
     Args:
         config: SearchConfig インスタンス
         credentials: 認証情報（省略時は自動取得）
 
-    Raises:
-        FileNotFoundError: 認証ファイルが存在しない場合
+    Returns:
+        genai.Client インスタンス
     """
-    _load_vertex_ai_modules()
+    from google import genai
     if credentials is None:
         credentials = get_google_credentials(config)
-
-    vertexai.init(
+    client = genai.Client(
+        vertexai=True,
         project=config.gemini_project_id,
         location=config.gemini_location,
-        credentials=credentials
+        credentials=credentials,
     )
-    logger.info("Vertex AI initialized successfully")
+    logger.info("google-genai Client initialized successfully")
+    return client
 
 
 def create_llm(config: 'SearchConfig'):
@@ -156,10 +148,10 @@ def create_llm(config: 'SearchConfig'):
             f"Currently only 'gemini' is supported"
         )
 
-    _load_vertex_ai_modules()
     if not config.gemini_project_id:
         raise ValueError("GEMINI_PROJECT_ID environment variable is not set")
 
+    from langchain_google_genai import ChatGoogleGenerativeAI
     credentials = get_google_credentials(config)
     return ChatGoogleGenerativeAI(
         model=config.llm_model,

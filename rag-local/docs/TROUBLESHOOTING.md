@@ -282,7 +282,7 @@ pip install --upgrade sudachipy sudachidict-core
 
 **症状:**
 ```
-google.api_core.exceptions.ResourceExhausted: 429 Quota exceeded
+google.genai.errors.ClientError: 429 Quota exceeded
 ```
 
 **原因:**
@@ -290,12 +290,12 @@ google.api_core.exceptions.ResourceExhausted: 429 Quota exceeded
 
 **解決策:**
 
-1. リトライ処理を待つ（自動リトライ機能あり）
+1. リトライ処理を待つ（自動リトライ機能あり: 3回、指数バックオフ）
 
 2. バッチサイズを縮小:
 ```python
 # config.py の SearchConfig クラス定数を変更
-EMBEDDING_BATCH_SIZE: int = 50   # デフォルト250から縮小
+EMBEDDING_BATCH_SIZE: int = 50   # デフォルト250から縮小（Gemini は内部で最大100にキャップ）
 ```
 
 3. Google Cloud Console でクォータ引き上げを申請
@@ -343,33 +343,16 @@ Streamlit はユーザー操作（業務分野選択、検索実行等）のた�
 
 ---
 
-### Vertex AI SDK 非推奨警告
+### Vertex AI SDK 非推奨警告（移行済み）
 
-**症状:**
-```
-UserWarning: This feature is deprecated as of June 24, 2025 and will be removed on June 24, 2026.
-For details, see https://cloud.google.com/vertex-ai/generative-ai/docs/deprecations/genai-vertexai-sdk
-```
+**ステータス:** 移行完了（`google-cloud-aiplatform` → `google-genai` SDK）
 
-**原因:**
-本プロジェクトで使用している `vertexai.language_models.TextEmbeddingModel`（`src/utils/gemini_embedding.py`）と `vertexai.init()`（`src/utils/auth.py`）が非推奨になりました。回答支援AI・運用保守AIの**両方**が VertexAI プロバイダー使用時に影響を受けます。
+`vertexai.language_models.TextEmbeddingModel` と `vertexai.init()` は `google-genai` SDK の `genai.Client.models.embed_content()` に移行済みです。非推奨警告は表示されません。
 
-**影響:** **2026年6月24日まで**は正常動作。それ以降は SDK リリースから該当モジュールが除外されます。
-
-**移行先:** `google-cloud-aiplatform` → `google-genai` SDK
-
-```python
-# 現行（非推奨）
-from vertexai.language_models import TextEmbeddingModel
-model = TextEmbeddingModel.from_pretrained("gemini-embedding-001")
-
-# 移行先
-from google import genai
-client = genai.Client(vertexai=True, project=..., location=...)
-client.models.embed_content(model="gemini-embedding-001", contents=...)
-```
-
-**移行対象ファイル:** `src/utils/gemini_embedding.py`, `src/utils/auth.py`
+**移行内容:**
+- `src/utils/auth.py`: `initialize_vertex_ai()` → `create_genai_client()` に置換
+- `src/utils/gemini_embedding.py`: `TextEmbeddingModel` → `genai.Client` API に置換
+- `requirements.txt`: `google-cloud-aiplatform[vertexai]` → `google-genai`
 
 **参照:** https://cloud.google.com/vertex-ai/generative-ai/docs/deprecations/genai-vertexai-sdk
 

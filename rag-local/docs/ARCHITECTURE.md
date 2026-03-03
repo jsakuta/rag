@@ -408,9 +408,8 @@ main.py
 
 | カテゴリ | ライブラリ | 用途 |
 |---------|-----------|------|
-| **Google Cloud** | google-cloud-aiplatform | Vertex AI 統合 |
+| **Google Cloud** | google-genai | Vertex AI Embedding API |
 | | google-auth | Google Cloud 認証 |
-| | google-generativeai | Gemini API |
 | **Azure** | openai | Azure OpenAI Embedding API |
 | | azure-identity | Azure 認証 |
 | | azure-keyvault-secrets | Key Vault 認証（オプション） |
