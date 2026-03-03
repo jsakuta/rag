@@ -70,6 +70,26 @@ AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
 
 3. リソース名とエンドポイントの一致を確認
 
+### Azure OpenAI 未設定で改定影響調査が失敗する
+
+**症状:**
+```
+ValueError: AZURE_OPENAI_EMBEDDING_ENDPOINT is not set
+```
+
+**原因:**
+- `run_eval.py` のデフォルト（`--provider both`）は Azure OpenAI と VertexAI の両方を使用する
+- Azure OpenAI の環境変数（`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`）が未設定
+
+**解決策:**
+
+VertexAI のみで実行する:
+```bash
+python apps/revision-ops/run_eval.py --provider vertex
+```
+
+Streamlit UI（`ops_ui.py`）は環境変数から利用可能なプロバイダーを自動検出するため、この問題は発生しません。
+
 ---
 
 ## データベース関連

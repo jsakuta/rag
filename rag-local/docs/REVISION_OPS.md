@@ -168,7 +168,7 @@ python scripts/build_db.py --revisions-only
 ### Step 2: 評価実行
 
 ```bash
-# 両プロバイダーで実行（デフォルト）
+# 両プロバイダーで実行（デフォルト、Azure OpenAI の環境変数が必須）
 python apps/revision-ops/run_eval.py
 
 # プロバイダーを指定して実行
@@ -176,6 +176,8 @@ python apps/revision-ops/run_eval.py --provider vertex   # VertexAI のみ
 python apps/revision-ops/run_eval.py --provider azure    # Azure のみ
 python apps/revision-ops/run_eval.py --provider both     # 両方（デフォルト）
 ```
+
+> **Note:** デフォルト（`--provider both`）は Azure OpenAI の環境変数（`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`）が必須です。未設定の場合は `--provider vertex` を指定してください。
 
 処理内容:
 - 入力ファイルから改定内容と正解IDを読み込み
@@ -507,6 +509,9 @@ python scripts/check_db_content.py
 ### Step 5: 評価実行
 
 ```bash
+# Azure OpenAI 未設定の場合は --provider vertex を指定
+python apps/revision-ops/run_eval.py --provider vertex
+# 両プロバイダー設定済みの場合
 python apps/revision-ops/run_eval.py
 ```
 

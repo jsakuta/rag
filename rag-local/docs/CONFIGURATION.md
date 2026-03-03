@@ -39,6 +39,8 @@
 
 ### Azure OpenAI 設定
 
+> **Note:** `DEFAULT_EMBEDDING_PROVIDER=vertex_ai` で回答支援AIのみ使用する場合、以下の設定は不要です。改定影響調査（`run_eval.py`）をデフォルト（`--provider both`）で実行する場合に必須となります。
+
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
 | `AZURE_OPENAI_API_KEY` | API キー | **必須** | `sk-...` |
