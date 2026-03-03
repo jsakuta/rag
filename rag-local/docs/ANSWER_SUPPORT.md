@@ -147,10 +147,28 @@ python apps/answer-support/main.py --business naibujimu --limit 10
 
 > **Note:** バッチ処理の検索対象は CLI 引数では変更できません。`config/settings.yaml` の `common.search_source`（`scenario` / `history_data`、デフォルト: `history_data`）を編集してください。UI ではサイドバーで動的に切替可能です。
 
-#### 入出力
+#### 入力ファイル仕様
 
-- **入力**: `data/input/` 配下の Excel ファイル
-- **出力**: `data/output/latest/answer/answer_batch_YYYYMMDD_HHMMSS.xlsx`
+**配置先**: `data/input/`
+
+**ファイル命名規則**: `{業務分野名}_{YYYYMMDD}.xlsx`
+- `{業務分野名}`: 日本語名（例: `スマイル`, `内部事務`）。`config/business_areas.yaml` のマッピングで英語DB名に自動変換される
+- `{YYYYMMDD}`: データ日付。同一業務分野に複数ファイルがある場合、最新日付のファイルが使用される
+- 正規表現: `^([^_]+)_(\d{8})\.xlsx$`
+
+**列構成**（位置ベース検出 — 列名は任意）:
+
+| 位置 | 用途 | 必須 |
+|------|------|------|
+| 1列目 | 番号（入力番号） | 必須 |
+| 2列目 | 質問文（検索クエリとして使用） | 必須 |
+| 3列目 | 回答文（出力に転記、検索には不使用） | 任意 |
+
+> **Note:** 列名は位置で判断されるため、ヘッダー行の文字列は任意です。改定影響調査（`TextInputHandler`）で同じ形式のExcelを使用する場合、正解ID列（`正解ID` / `正解` / `CorrectID` / `Expected`）が列名で自動検出されます。
+
+#### 出力ファイル
+
+- **出力先**: `data/output/latest/answer/answer_batch_YYYYMMDD_HHMMSS.xlsx`
 
 ### Streamlit UI
 
@@ -293,14 +311,16 @@ data/source/
 | `Original_Query` | ユーザーの質問 | 入力された質問文 |
 | `Original_Answer` | ユーザーの回答 | 入力された回答文（存在する場合） |
 | `Search_Query` | 検索クエリ | 実際に検索に使用したクエリ（LLM拡張時は拡張後） |
-| `Search_Result_Q` | 類似質問 | 検索結果の質問文 |
+| `Search_Result_Q` | 類似質問 | 検索結果の質問文（シナリオの場合は階層パス付き） |
 | `Search_Result_A` | 類似回答 | 検索結果の回答文 |
 | `Similarity` | 類似度 | ハイブリッドスコア（0.0 - 1.0） |
+| `Scenario_ID` | Scenario_ID | シナリオID（`{シート名}_{行番号}` 形式） |
+| `Sheet_Name` | Sheet_Name | 元シナリオのシート名 |
+| `Row_Index` | Row_Index | 元シナリオの行番号 |
 | `Vector_Weight` | ベクトルの重み | 使用した vector_weight 値 |
 | `Top_K` | 候補数 | 返却件数上限 |
-| `Generated_Tags` | 生成タグ | 生成されたタグ（存在する場合） |
 
-Metadata シートに検索パラメータ（vector_weight, search_mode, search_type, top_k, embedding_provider, embedding_model, timestamp）を記録する。
+Metadata シートに検索パラメータ（vector_weight, keyword_weight, search_mode, search_type, top_k, embedding_provider, embedding_model, timestamp）を記録する。
 
 ---
 

@@ -50,7 +50,7 @@ GEMINI_LOCATION=us-central1
 
 **症状:**
 ```
-openai.error.AuthenticationError: Incorrect API key provided
+openai.AuthenticationError: Incorrect API key provided
 ```
 
 **原因:**
@@ -316,14 +316,16 @@ RuntimeError: LLM is not initialized. Set DEFAULT_LLM_PROVIDER and DEFAULT_LLM_M
 
 **解決策:**
 
-1. LLM が不要な場合、`original` モードに戻す:
+1. **回答支援AI** で LLM が不要な場合、`original` モードに戻す:
 ```yaml
 # config/settings.yaml
 common:
   search_mode: original
 ```
 
-2. LLM を使用する場合、環境変数を設定:
+2. **改定影響調査**（`run_eval.py`）では `search_mode` に関係なく LLM を常に初期化します。この場合は解決策 3 の環境変数設定が必須です。
+
+3. LLM を使用する場合、環境変数を設定:
 ```env
 DEFAULT_LLM_PROVIDER=gemini
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite

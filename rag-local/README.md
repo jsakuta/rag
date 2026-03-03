@@ -161,6 +161,21 @@ streamlit run apps/revision-ops/ui/ops_ui.py
 
 各AIの詳細な使い方は専用ドキュメントを参照してください。
 
+### テスト実行
+
+```bash
+# 開発用依存関係のインストール
+pip install -r requirements-dev.txt
+
+# 全テスト実行
+pytest
+
+# カバレッジ付き
+pytest --cov=src
+```
+
+テスト構成: `tests/unit/`（ユニットテスト）、`tests/integration/`（統合テスト）、`tests/fixtures/`（テスト用データ）。
+
 ---
 
 ## ディレクトリ構造

@@ -160,21 +160,40 @@ VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 
 **ファイル:** `config.py`
 
+> **Note:** デフォルト値は `config/settings.yaml` の各セクション（`common`, `batch`, `ui`, `evaluation`）から動的にロードされます。以下のコード例の値はリテラルではなく、settings.yaml を変更することでデフォルト値を変更できます。
+
 ```python
 from config import SearchConfig
 
 config = SearchConfig(
     # 検索パラメータ
-    top_k=4,                    # 返却する結果数
+    top_k=4,                    # 返却する結果数（batch=4, ui=3, eval=改定ごと）
     vector_weight=0.9,          # ベクトル検索の重み（keyword_weight は 1.0 - vector_weight で自動計算）
 
     # 検索モード: original | llm_enhanced | multi_stage（multi_stage は改定影響調査専用）
     search_mode="original",
 
+    # 検索タイプ: hybrid | keyword_filter
+    search_type="hybrid",       # hybrid=ベクトル+キーワード, keyword_filter=キーワードのみ
+
     # 参照データ形式
     reference_type="multi_folder",   # excel | hierarchical_excel | multi_folder
 )
 ```
+
+### 検索設定の2軸
+
+検索は `search_mode` と `search_type` の2つの独立した設定で制御されます:
+
+| 設定 | 値 | 説明 |
+|------|-----|------|
+| `search_mode` | `original` / `llm_enhanced` / `multi_stage` | クエリの処理方法（原文/LLM拡張/多段階） |
+| `search_type` | `hybrid` / `keyword_filter` | 検索アルゴリズム（ベクトル+キーワード / キーワードのみ） |
+
+- `search_type=hybrid`: ベクトル検索とキーワード検索を `vector_weight` で加重合算
+- `search_type=keyword_filter`: 事前構築されたキーワードキャッシュでキーワードマッチのみ実行（ベクトル検索なし、`vector_weight` は不使用）
+
+回答支援AI（UI）では `search_type` は `hybrid` に固定されています。改定影響調査では改定ごとに `settings.yaml` の `evaluation.revision_areas` で設定します。
 
 ### 検索モード
 

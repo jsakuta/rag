@@ -156,7 +156,8 @@ data/vector_db/
    DEFAULT_LLM_PROVIDER=gemini
    DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 
-   # LLM分析の有効化（オプション、デフォルト: false）
+   # LLM関連性判定の有効化（オプション、デフォルト: false）
+   # JudgmentSupport による関連性判定のみを制御。LLMクエリ拡張（Stage 2）は常に有効
    ENABLE_LLM_ANALYSIS=true
    ```
 
@@ -195,10 +196,12 @@ python apps/revision-ops/run_eval.py --verbose
 - LLM分析で関連性判定を実行
 - Azure / VertexAI 横並びでExcelに出力
 
-### LLM分析の無効化
+### LLM関連性判定の無効化
+
+`ENABLE_LLM_ANALYSIS` は **JudgmentSupport（関連性判定）のみ**を制御します。LLMクエリ拡張（Stage 2 の QueryEnhancer）は常に有効です。
 
 ```bash
-# LLM分析を無効化して高速実行
+# 関連性判定を無効化して高速実行（クエリ拡張は引き続き実行される）
 ENABLE_LLM_ANALYSIS=false python apps/revision-ops/run_eval.py
 ```
 
@@ -215,56 +218,68 @@ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
 
 1. **サマリーシート**
 
-   | 列名 | 説明 |
-   |-----|------|
-   | 改定番号 | ①②③④⑤⑥ |
-   | 改定内容（先頭50文字） | クエリの概要 |
-   | 正解ID数 | 正解IDの総数 |
-   | Azure_候補数 | Azure検索候補数（filter_mode=top_kなら上位K件、thresholdなら閾値以上） |
-   | Azure_正解一致数 | Azure候補のうち正解数 |
-   | VertexAI_候補数 | VertexAI検索候補数（同上） |
-   | VertexAI_正解一致数 | VertexAI候補のうち正解数 |
+   ヘッダーは2行構成: 1行目がグループ（Azure / VertexAI / 未発見）、2行目が列名。
 
-2. **詳細シート（①～⑥）** - Azure / VertexAI 横並び
+   | # | 列名 | 説明 |
+   |---|------|------|
+   | 1 | 改定番号 | ①②③④⑤⑥ |
+   | 2 | エリア | 検索対象エリア（改定③のように複数エリアがある場合はエリアごとに行が分かれる） |
+   | 3 | 改定内容 | クエリの全文 |
+   | 4 | 正解数 | 正解IDの総数 |
+   | 5 | Azure_候補数 | Azure検索候補数（filter_mode=top_kなら上位K件、thresholdなら閾値以上） |
+   | 6 | Azure_正解発見数 | Azure候補のうち正解と一致した数 |
+   | 7 | Azure_正解発見率 | 正解発見数 / 正解数 |
+   | 8 | Azure_必要確認件数 | 候補数 - 正解発見数（人手で確認が必要な件数） |
+   | 9 | VertexAI_候補数 | VertexAI検索候補数（同上） |
+   | 10 | VertexAI_正解発見数 | VertexAI候補のうち正解と一致した数 |
+   | 11 | VertexAI_正解発見率 | 正解発見数 / 正解数 |
+   | 12 | VertexAI_必要確認件数 | 候補数 - 正解発見数 |
+   | 13 | 未発見数 | どちらのプロバイダーでも発見できなかった正解IDの数 |
+   | 14 | 未発見ID | 未発見の正解IDリスト（カンマ区切り） |
 
-   #### 共通列（検索条件）
-   | 列 | 説明 |
-   |----|------|
-   | 改定内容 | 検索クエリ（全文） |
-   | 正解ID一覧 | 期待される正解ID |
-   | LLM強化クエリ | QueryEnhancerで生成されたクエリ |
-   | 抽出キーワード | Sudachiで抽出したTop-5名詞 |
-   | ベクトル重み | vector_weight（デフォルト0.9） |
+2. **詳細シート（①～⑥）** - Azure / VertexAI / 未発見の横並び
 
-   #### Azure側
-   | 列 | 説明 |
-   |----|------|
-   | Azure_シナリオID | 検索ヒットID |
-   | Azure_類似度 | ハイブリッドスコア |
-   | Azure_カテゴリ | Both / Original_Only / LLM_Enhanced_Only |
-   | Azure_正解フラグ | TRUE / FALSE |
-   | Azure_質問 | Search_Result_Q（全文） |
-   | Azure_回答 | Search_Result_A（全文） |
-   | Azure_関連性判定 | 関連あり / 要確認 / 関連なし |
-   | Azure_判定根拠 | LLMの判定理由 |
-   | Azure_修正案 | LLMの修正提案 |
-   | Azure_ソース | 元ファイル名（rev01_smile等） |
+   #### 共通列（7列）
+   | # | 列名 | 説明 |
+   |---|------|------|
+   | 1 | 検出フラグ | AzureまたはVertexAIのどちらかで正解なら `TRUE`（OR判定） |
+   | 2 | 改定内容 | 検索クエリ（全文、全行に出力） |
+   | 3 | 正解ID一覧 | 期待される正解ID（1行目のみ） |
+   | 4 | LLM強化クエリ | QueryEnhancerで生成されたクエリ（1行目のみ） |
+   | 5 | 抽出キーワード | Sudachiで抽出したキーワード（1行目のみ） |
+   | 6 | 検索タイプ | `類似検索`（hybrid時）/ `キーワード必須`（keyword_filter時）（1行目のみ） |
+   | 7 | ベクトル重み | vector_weight（keyword_filter時は `-`）（1行目のみ） |
 
-   #### VertexAI側
-   | 列 | 説明 |
-   |----|------|
-   | VertexAI_シナリオID | 検索ヒットID |
-   | VertexAI_類似度 | ハイブリッドスコア |
-   | VertexAI_カテゴリ | Both / Original_Only / LLM_Enhanced_Only |
-   | VertexAI_正解フラグ | TRUE / FALSE |
-   | VertexAI_質問 | Search_Result_Q（全文） |
-   | VertexAI_回答 | Search_Result_A（全文） |
-   | VertexAI_関連性判定 | 関連あり / 要確認 / 関連なし |
-   | VertexAI_判定根拠 | LLMの判定理由 |
-   | VertexAI_修正案 | LLMの修正提案 |
-   | VertexAI_ソース | 元ファイル名（rev01_smile等） |
+   #### Azure側（10列: `Azure_` プレフィックス付き）
+   | # | 列名 | 説明 |
+   |---|------|------|
+   | 1 | Azure_順位 | 検索結果の順位 |
+   | 2 | Azure_シナリオID | 検索ヒットID |
+   | 3 | Azure_類似度 | ハイブリッドスコア |
+   | 4 | Azure_マッチ種別 | Both / Original_Only / LLM_Enhanced_Only |
+   | 5 | Azure_正解フラグ | TRUE / FALSE |
+   | 6 | Azure_質問 | 検索結果の質問文（全文） |
+   | 7 | Azure_回答 | 検索結果の回答文（全文） |
+   | 8 | Azure_関連性判定 | LLMによる関連性判定結果（`ENABLE_LLM_ANALYSIS=true` 時のみ） |
+   | 9 | Azure_判定根拠 | LLMの判定理由（同上） |
+   | 10 | Azure_ソースファイル | 元シナリオファイル名（revision_source_files マッピングから特定） |
 
-   **注意**: Azure/VertexAIで候補数が異なる場合、多い方に合わせて少ない方は空欄
+   #### VertexAI側（10列: `VertexAI_` プレフィックス付き）
+
+   Azure側と同じ列構成（プレフィックスが `VertexAI_` に変わるのみ）。
+
+   #### 未発見セクション（5列: `未発見_` プレフィックス付き）
+   | # | 列名 | 説明 |
+   |---|------|------|
+   | 1 | 未発見_未発見ID | どちらのプロバイダーでも発見できなかったシナリオID |
+   | 2 | 未発見_変更内容 | 該当シナリオの変更内容 |
+   | 3 | 未発見_ソースファイル | 該当シナリオの元ファイル名 |
+   | 4 | 未発見_質問 | 該当シナリオの質問文 |
+   | 5 | 未発見_回答 | 該当シナリオの回答文 |
+
+   **合計: 共通7列 + Azure 10列 + VertexAI 10列 + 未発見5列 = 32列**
+
+   **注意**: Azure/VertexAI/未発見で件数が異なる場合、最大件数に合わせて少ない側は空欄で埋められる
 
 ---
 
@@ -307,8 +322,8 @@ DBが存在しません: data/vector_db/rev01_smile/azure_openai
 - シナリオファイルのメタデータ（row_index, source）を確認
 - `generate_correct_ids.py`で正解ID対応表を再生成
 
-### LLM分析が遅い
-- `ENABLE_LLM_ANALYSIS=false`で無効化可能
+### LLM関連性判定が遅い
+- `ENABLE_LLM_ANALYSIS=false` で関連性判定のみ無効化可能（クエリ拡張は引き続き実行）
 - 各候補に対してLLM呼び出しが発生するため、候補数が多いと時間がかかる
 
 ---

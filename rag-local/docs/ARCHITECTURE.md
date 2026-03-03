@@ -70,8 +70,7 @@
 │  ┌────────────────────────────────────────────────────┐   │
 │  │ その他                                              │   │
 │  │   ├─ auth.py - Google Cloud認証                   │   │
-│  │   ├─ logger.py - ログ設定                         │   │
-│  │   └─ utils.py - ユーティリティ関数                │   │
+│  │   └─ logger.py - ログ設定                         │   │
 │  └────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────┘
                             │
@@ -198,15 +197,14 @@ class MultiStageOrchestrator:
 class JudgmentSupport:
     """検索結果の関連性判定"""
 
-    def analyze_relevance(self, query: str, result: SearchResult) -> JudgmentResult:
-        """関連性を分析"""
-        # LLMで判定: 関連あり / 要確認 / 関連なし
+    def evaluate(self, revision_content: str, search_result_q: str, search_result_a: str) -> Dict[str, str]:
+        """関連性を判定"""
+        # LLMで判定し {"relevance_judgment": "...", "judgment_reason": "..."} を返す
 ```
 
 **責務:**
 - 検索結果の関連性判定
 - 判定根拠の生成
-- 修正案の提示
 
 ### 3. Handler Layer
 
