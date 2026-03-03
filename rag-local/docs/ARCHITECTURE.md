@@ -232,6 +232,9 @@ class InputHandler:
 class OutputHandler:
     """出力処理の基底クラス"""
 
+    def __init__(self, config: SearchConfig, app_prefix: str = ""):
+        """app_prefix で出力サブディレクトリを指定（例: "answer", "rev"）"""
+
     def save_data(self, data: list):
         """データを保存"""
 ```
@@ -252,7 +255,7 @@ class DynamicDBManager:
     """業務領域別のベクトルDB管理"""
 
     def __init__(self, config: SearchConfig):
-        self.translator = BusinessAreaTranslator()
+        self._translator = BusinessAreaTranslator()
 
     def update_business_db(self, business_area: str, files: Dict):
         """業務分野のDBを更新（タイムスタンプ検証、差分ベクトル化）"""
@@ -1209,10 +1212,11 @@ class InputHandlerFactory:
 class OutputHandler:
     """出力処理の基底クラス"""
 
-    def __init__(self, config: SearchConfig):
+    def __init__(self, config: SearchConfig, app_prefix: str = ""):
         """
         Args:
             config: 検索設定
+            app_prefix: 出力サブディレクトリ（例: "answer", "rev"）
         """
 
     def save_data(self, data: list):
@@ -1224,7 +1228,7 @@ class OutputHandlerFactory:
     """出力ハンドラーのファクトリ"""
 
     @staticmethod
-    def create(output_type: str, config: SearchConfig) -> OutputHandler:
+    def create(output_type: str, config: SearchConfig, app_prefix: str = "") -> OutputHandler:
         """出力タイプに応じたハンドラーを生成"""
 ```
 

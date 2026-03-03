@@ -9,7 +9,7 @@
 
 前提条件:
 - scripts/build_db.py --revisions-only を実行済みで、
-  reference/vector_db/rev*/{azure_openai,vertex_ai}/ が構築済みであること
+  data/vector_db/rev*/{azure_openai,vertex_ai}/ が構築済みであること
 """
 
 import argparse

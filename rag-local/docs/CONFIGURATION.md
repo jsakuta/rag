@@ -23,7 +23,7 @@
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
-| `DEFAULT_LLM_PROVIDER` | LLMプロバイダー | **必須** | `gemini` |
+| `DEFAULT_LLM_PROVIDER` | LLMプロバイダー（`gemini` のみサポート） | **必須** | `gemini` |
 | `DEFAULT_LLM_MODEL` | LLMモデル名 | **必須** | `gemini-2.5-flash-lite` |
 | `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー | **必須** | `azure_openai` |
 
@@ -82,7 +82,7 @@
 
 ### プロバイダーの選択
 
-#### Gemini（推奨）
+#### Gemini（唯一のサポート対象）
 
 ```env
 DEFAULT_LLM_PROVIDER=gemini
@@ -306,7 +306,10 @@ data/output/             # 出力ファイル
 | `batch` | バッチ処理専用 | top_k, vector_weight |
 | `evaluation` | 改定影響調査専用 | max_results, filter_mode, thresholds, revision_areas（[詳細](./REVISION_OPS.md#新しい改定の追加手順)） |
 
-> **重要:** settings.yaml は起動時に必須です。ファイルが存在しないか common セクションが欠落している場合、`RuntimeError` が発生します。全キーはフォールバックなしの直接アクセスのため、キー欠落時は `KeyError` になります。
+> **重要:** settings.yaml は起動時に必須です。`import config` 時に以下のチェックが実行されます:
+> - `common` セクションが空（ファイル未存在 / 空ファイル / common 欠落）→ `RuntimeError`
+> - `batch` セクションの個別キー（`top_k`, `vector_weight` 等）が欠落 → `KeyError`
+> - 全キーはフォールバックなしの直接アクセスのため、キー追加忘れは即座にエラーとなります
 
 **設定の読み込み方法**:
 - `load_settings("ui")` → common + ui をマージして返す
@@ -484,18 +487,31 @@ DEFAULT_EMBEDDING_PROVIDER=azure_openai
 
 ### 起動時チェック
 
-```python
-# SearchConfig.__post_init__() で自動検証（config.py）
-# SearchConfig インスタンス生成時に以下を検証:
-# - vector_weight が 0〜1 の範囲
-# - top_k が 1 以上の整数
-# - search_mode が有効な値（original / llm_enhanced / multi_stage）
-# - EMBEDDING_BATCH_SIZE が 1〜250 の範囲
-# - embedding_provider が必須（未設定時 ValueError）
-# - embedding_model をプロバイダーから自動解決:
-#     azure_openai → AZURE_OPENAI_EMBEDDING_DEPLOYMENT 環境変数（デフォルト: text-embedding-3-large）
-#     vertex_ai    → VERTEX_AI_EMBEDDING_MODEL 環境変数（デフォルト: gemini-embedding-001）
-```
+**モジュールロード時（`import config`）:**
+- `config/settings.yaml` を読み込み、`common` セクションが空なら `RuntimeError`
+- `_batch_settings` も読み込むが、個別キー（`top_k` 等）が欠落している場合は `KeyError`
+
+**`SearchConfig.__post_init__()` で自動検証:**
+
+| パラメータ | 範囲 | エラー |
+|-----------|------|--------|
+| `vector_weight` | 0.0 〜 1.0 | `ValueError` |
+| `top_k` | 1 以上の整数（>100 で警告） | `ValueError` |
+| `multi_stage_threshold` | 0.0 〜 1.0 | `ValueError` |
+| `multi_stage_max_results` | 1 以上の整数（>1000 で警告） | `ValueError` |
+| `EMBEDDING_BATCH_SIZE` | 1 〜 250 | `ValueError` |
+| `VECTOR_DB_BATCH_SIZE` | 1 〜 1000 | `ValueError` |
+| `VECTOR_SEARCH_MULTIPLIER` | 1 以上 | `ValueError` |
+| `search_type` | `hybrid` / `keyword_filter` | `ValueError` |
+| `search_mode` | `original` / `llm_enhanced` / `multi_stage` | `ValueError` |
+| `search_source` | `scenario` / `history_data` | `ValueError` |
+| `embedding_provider` | `vertex_ai` / `azure_openai`（必須） | `ValueError` |
+| `llm_provider` | `gemini`（必須・唯一） | `ValueError` |
+| `credential_source` | `local` / `key_vault` | `ValueError` |
+
+埋め込みモデルはプロバイダーから自動解決:
+- `azure_openai` → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`（デフォルト: `text-embedding-3-large`）
+- `vertex_ai` → `VERTEX_AI_EMBEDDING_MODEL`（デフォルト: `gemini-embedding-001`）
 
 ### 手動検証
 
