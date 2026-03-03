@@ -136,22 +136,22 @@ class ExcelInputHandler(InputHandler):
       tag_col = None
       date_col = None
       
-      # 問合せ内容の列名を検索
-      possible_query_cols = ['分割後質問', '問合せ内容', '質問内容', '問い合わせ', '質問', 'query', 'Query']
+      # 問合せ内容の列名を検索（settings.yaml の columns.query から取得）
+      possible_query_cols = list(self.config.QUERY_COLUMN_CANDIDATES)
       for col in possible_query_cols:
           if col in reference_df.columns:
               query_col = col
               break
       
-      # 回答の列名を検索
-      possible_answer_cols = ['分割後回答', '回答', '既存回答', 'answer', 'Answer']
+      # 回答の列名を検索（settings.yaml の columns.answer から取得）
+      possible_answer_cols = list(self.config.ANSWER_COLUMN_CANDIDATES)
       for col in possible_answer_cols:
           if col in reference_df.columns:
               answer_col = col
               break
       
-      # タグ付けの列名を検索
-      possible_tag_cols = ['タグ付け', 'タグ', '分類', 'category', 'Category', 'tag', 'Tag']
+      # タグ付けの列名を検索（settings.yaml の columns.tag から取得）
+      possible_tag_cols = list(self.config.TAG_COLUMN_CANDIDATES)
       for col in possible_tag_cols:
           if col in reference_df.columns:
               tag_col = col
@@ -246,19 +246,23 @@ class HierarchicalExcelInputHandler(InputHandler):
         for sheet_name, df in all_sheets.items():
             logger.info(f"Processing sheet: {sheet_name}")
             
-            # タグ列の存在確認（タグレス対応）
-            tag_col_exists = 'タグ付け' in df.columns
-            if not tag_col_exists:
-                logger.info(f"Column 'タグ付け' not found in sheet '{sheet_name}', processing without tags")
+            # タグ列の存在確認（settings.yaml の columns.tag から候補検索、タグレス対応）
+            tag_col_name = None
+            for candidate in self.config.TAG_COLUMN_CANDIDATES:
+                if candidate in df.columns:
+                    tag_col_name = candidate
+                    break
+            if not tag_col_name:
+                logger.info(f"Tag column not found in sheet '{sheet_name}', processing without tags")
             
             # 作成日列の取得（一番左の列）
             creation_date_col = df.columns[0]
             
             # 各行を処理
             for idx, row in df.iterrows():
-                # タグ付け列の確認（タグレス対応）
-                if tag_col_exists:
-                    tag_text = str(row['タグ付け']).strip() if pd.notna(row['タグ付け']) else ""
+                # タグ列の確認（タグレス対応）
+                if tag_col_name:
+                    tag_text = str(row[tag_col_name]).strip() if pd.notna(row[tag_col_name]) else ""
                     if not tag_text:
                         continue  # タグが存在する場合のみ、空タグ行をスキップ
                 else:

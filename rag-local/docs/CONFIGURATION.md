@@ -343,10 +343,6 @@ common:
       # ...
 ```
 
-> **既知の制限:** `input_handler.py` は現在ハードコードされた列名候補を使用しており、`settings.yaml` の `columns` 設定を参照していません。settings.yaml を変更しても `input_handler.py` の動作は変わりません（コード修正は別タスク）。`config.py` の `QUERY_COLUMN_CANDIDATES` 等は settings.yaml から正しく読み込まれています。
-
-> **Note:** `correct_id` は settings.yaml に定義されていますが、`config.py` では読み込まれていません。改定影響調査の入力ファイル（`multi_stage_input.xlsx`）で使用される列名です。
-
 ### config/business_areas.yaml
 
 業務分野の日本語名から ChromaDB コレクション名への変換マッピング。

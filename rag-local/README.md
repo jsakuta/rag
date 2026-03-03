@@ -32,6 +32,8 @@
 
 ### Step 1: Python環境の構築
 
+**前提:** Python 3.9 以上が必要です（依存ライブラリの要件）。
+
 ```bash
 cd rag-local
 python -m venv .venv
