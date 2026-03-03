@@ -169,7 +169,7 @@ class DynamicDBManager:
 
         例:
           "スマイル" → "smile"
-          "総則"    → "general"
+          "内部事務" → "naibujimu"
           "rev03smile" → "rev03_smile"
         """
         migrated = False
@@ -616,7 +616,7 @@ class DynamicDBManager:
     ) -> Dict[str, object]:
         """DB更新の事前チェック（プレフライト）
 
-        本番コレクション（例: deposit_DB）には触らず、
+        本番コレクション（例: naibujimu_DB）には触らず、
         参照データ読込 → 埋め込み生成 → ChromaDBへ少量書込/検索 → クリーンアップ
         までを通して、更新が通りそうかを検証します。
 
@@ -889,7 +889,7 @@ class DynamicDBManager:
             business_area: 業務分野名（日本語）
 
         Returns:
-            str: DBディレクトリパス（例: reference/vector_db/general/vertex_ai/）
+            str: DBディレクトリパス（例: data/vector_db/naibujimu/vertex_ai/）
         """
         # 業務分野名を英語に変換
         english_name = self._translate_business_area(business_area)

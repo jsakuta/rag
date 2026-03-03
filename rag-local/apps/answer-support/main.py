@@ -28,9 +28,9 @@ def parse_args():
         epilog="""
 使用例:
   python main.py                        # 全業務分野でバッチ処理
-  python main.py --business 総則        # 総則のみバッチ処理
+  python main.py --business naibujimu   # 内部事務のみバッチ処理
   python main.py interactive            # UIモード（DB更新はオンデマンド）
-  python main.py preflight --business 総則  # プレフライト（事前検証）
+  python main.py preflight --business smile  # プレフライト（事前検証）
         """
     )
 
@@ -42,11 +42,11 @@ def parse_args():
 
     # preflightサブコマンド
     preflight_parser = subparsers.add_parser("preflight", help="DB更新プレフライト（本番更新は行いません）")
-    preflight_parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（例: 総則）")
+    preflight_parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（naibujimu / smile）")
     preflight_parser.add_argument("--sample-size", dest="sample_size", type=int, default=5, help="検証に使うサンプル件数")
 
     # メイン（バッチ）モードのオプション
-    parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（例: 総則）。未指定時は全業務分野")
+    parser.add_argument("--business", dest="business", default=None, help="対象の業務分野（naibujimu / smile）。未指定時は全業務分野")
     parser.add_argument("--limit", dest="limit", type=int, default=None, help="処理する入力データの件数上限（例: --limit 5 で先頭5件のみ）")
 
     return parser.parse_args()

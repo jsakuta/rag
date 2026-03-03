@@ -31,7 +31,7 @@ logger = setup_logger(__name__)
 _ui_settings = load_settings("ui")
 
 # デフォルトの業務分野リスト（DBが存在しない場合のフォールバック）
-DEFAULT_BUSINESS_AREAS = ["預金", "融資", "外貨", "投信", "住宅ローン", "カード", "保険", "年金", "総則"]
+DEFAULT_BUSINESS_AREAS = ["naibujimu", "smile"]
 
 
 @st.cache_data(ttl=60)
@@ -51,21 +51,27 @@ def get_available_business_areas() -> list:
 def initialize_session_state():
     initialize_common_session_state()
     if "business_area" not in st.session_state:
-        st.session_state.business_area = "預金"
+        st.session_state.business_area = "naibujimu"
 
 
 def _needs_processor_reinit() -> bool:
     """Processorの再初期化が必要かどうかを判定"""
     if "processor" not in st.session_state:
+        logger.debug("再初期化理由: processorがセッションにない")
         return True
 
     config = st.session_state.config
-    return (
-        st.session_state.get("last_business_area") != st.session_state.business_area
-        or st.session_state.get("last_search_type") != config.search_type
-        or st.session_state.get("last_search_mode") != config.search_mode
-        or st.session_state.get("last_search_source") != config.search_source
-    )
+    checks = {
+        "business_area": (st.session_state.get("last_business_area"), st.session_state.business_area),
+        "search_type": (st.session_state.get("last_search_type"), config.search_type),
+        "search_mode": (st.session_state.get("last_search_mode"), config.search_mode),
+        "search_source": (st.session_state.get("last_search_source"), config.search_source),
+    }
+    for name, (last, current) in checks.items():
+        if last != current:
+            logger.debug(f"再初期化理由: {name} が変更 ({last!r} → {current!r})")
+            return True
+    return False
 
 
 def _load_reference_data_for_business(config, business_area: str) -> dict:
@@ -129,14 +135,22 @@ def _load_reference_data_for_business(config, business_area: str) -> dict:
 
 
 def _initialize_processor():
-    """Processorを初期化してセッションステートを更新"""
-    st.session_state.processor = Processor(st.session_state.config)
+    """Processorを初期化してセッションステートを更新
 
-    business_area = st.session_state.business_area
-    reference_data = _load_reference_data_for_business(st.session_state.config, business_area)
+    失敗時は processor をセッションから除去し、次回rerunで再試行可能にする。
+    """
+    try:
+        processor = Processor(st.session_state.config)
+        business_area = st.session_state.business_area
+        reference_data = _load_reference_data_for_business(st.session_state.config, business_area)
+        processor.searcher.prepare_search(reference_data)
+        processor.searcher._select_db_for_business(business_area)
+    except Exception:
+        st.session_state.pop("processor", None)
+        raise
 
-    st.session_state.processor.searcher.prepare_search(reference_data)
-    st.session_state.processor.searcher._select_db_for_business(business_area)
+    # すべて成功した場合のみセッションに設定
+    st.session_state.processor = processor
     st.session_state.last_business_area = business_area
     st.session_state.last_search_type = st.session_state.config.search_type
     st.session_state.last_search_mode = st.session_state.config.search_mode
@@ -190,19 +204,20 @@ def process_query(query: str):
 
 
 def save_chat_history():
-    """チャット履歴を保存"""
+    """チャット履歴を保存（user→botペアのずれに対応）"""
     try:
         chat_data = []
-        for i in range(0, len(st.session_state.chat_history), 2):
-            if i + 1 < len(st.session_state.chat_history):
-                user_query = st.session_state.chat_history[i]["text"]
-                bot_response = st.session_state.chat_history[i + 1]["text"]
-
+        last_user_query = None
+        for msg in st.session_state.chat_history:
+            if msg["type"] == "user":
+                last_user_query = msg["text"]
+            elif msg["type"] == "bot" and last_user_query is not None:
+                bot_response = msg["text"]
                 if isinstance(bot_response, list):
                     for response in bot_response:
                         chat_data.append({
                             'Input_Number': response.get('Input_Number', ''),
-                            'Original_Query': user_query,
+                            'Original_Query': last_user_query,
                             'Search_Query': response.get('Search_Query', ''),
                             'Search_Result_Q': response.get('Search_Result_Q', ''),
                             'Search_Result_A': response.get('Search_Result_A', ''),
@@ -210,6 +225,7 @@ def save_chat_history():
                             'Vector_Weight': response.get('Vector_Weight', ''),
                             'Top_K': response.get('Top_K', '')
                         })
+                last_user_query = None
 
         if chat_data:
             from src.handlers.output_handler import ExcelOutputHandler
@@ -218,7 +234,7 @@ def save_chat_history():
             if output_path:
                 st.sidebar.success(f"チャット履歴を保存しました: {Path(output_path).name}")
         else:
-            st.sidebar.warning("保存するチャット履歴がありません。")
+            st.sidebar.warning("保存するチャット履歴がありません。検索結果が返った履歴のみ保存対象です。")
 
     except Exception as e:
         logger.error(f"Error saving chat history: {str(e)}", exc_info=True)
@@ -283,7 +299,7 @@ def run_streamlit_ui():
         business_areas = get_available_business_areas()
         current_area = st.session_state.business_area
         if current_area not in business_areas:
-            current_area = business_areas[0] if business_areas else "預金"
+            current_area = business_areas[0] if business_areas else "naibujimu"
             st.session_state.business_area = current_area
         st.session_state.business_area = st.selectbox(
             "業務分野",
@@ -298,6 +314,15 @@ def run_streamlit_ui():
             save_chat_history()
 
     st.title(f"回答支援AI（類似回答検索）【{get_display_name(st.session_state.business_area)}】")
+
+    # 初回起動時のみ: Processorを事前初期化して準備完了を明示
+    if "processor" not in st.session_state:
+        with st.spinner("検索エンジンを準備中...（初回は時間がかかります）"):
+            try:
+                _initialize_processor()
+            except Exception as e:
+                st.error(f"初期化エラー: {e}")
+                st.stop()
 
     chat_container = st.container()
     with chat_container:

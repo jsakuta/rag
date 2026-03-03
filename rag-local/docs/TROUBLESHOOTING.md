@@ -211,7 +211,7 @@ VECTOR_DB_BATCH_SIZE: int = 50   # デフォルト100から縮小
 ```bash
 # --limit オプションで処理件数を制限
 python apps/answer-support/main.py --limit 50
-python apps/answer-support/main.py --business 内部事務 --limit 50
+python apps/answer-support/main.py --business naibujimu --limit 50
 ```
 
 ### コレクション名エラー

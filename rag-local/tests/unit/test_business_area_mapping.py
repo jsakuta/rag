@@ -34,11 +34,11 @@ class TestYAMLMappingCompleteness:
 
     def test_existing_mappings_unchanged(self, translator):
         """既存マッピングが壊れていないことを確認"""
-        assert translator.translate("総則") == "general"
-        assert translator.translate("預金") == "deposit"
-        assert translator.translate("融資") == "loan"
-        assert translator.translate("外貨") == "foreign_currency"
-        assert translator.translate("投信") == "investment_trust"
+        assert translator.translate("スマイル") == "smile"
+        assert translator.translate("内部事務") == "naibujimu"
+        assert translator.translate("相続") == "souzoku"
+        assert translator.translate("取引時確認") == "torikaku"
+        assert translator.translate("スマイルタブレット") == "smile_tablet"
 
     def test_revision_mappings_unchanged(self, translator):
         """rev系マッピングが壊れていないことを確認"""
@@ -60,10 +60,8 @@ class TestTranslateDelegatesToTranslator:
         return DynamicDBManager(mock_config)
 
     @pytest.mark.parametrize("input_name", [
-        "総則", "預金", "融資",
         "スマイル", "スマイルタブレット",
         "内部事務", "相続", "取引時確認",
-        "外貨", "投信",
         "rev01_smile", "rev02_souzoku",
     ])
     def test_results_match(self, db_manager, translator, input_name):
@@ -82,8 +80,6 @@ class TestTimestampKeyMigration:
     def test_normalize_japanese_to_english(self, db_manager):
         """日本語キーが英語に正規化されること"""
         assert db_manager._normalize_timestamp_key("スマイル") == "smile"
-        assert db_manager._normalize_timestamp_key("総則") == "general"
-        assert db_manager._normalize_timestamp_key("預金") == "deposit"
         assert db_manager._normalize_timestamp_key("内部事務") == "naibujimu"
         assert db_manager._normalize_timestamp_key("相続") == "souzoku"
         assert db_manager._normalize_timestamp_key("取引時確認") == "torikaku"
@@ -100,8 +96,7 @@ class TestTimestampKeyMigration:
     def test_normalize_already_correct_keys(self, db_manager):
         """既に正しいキーは変更されないこと"""
         assert db_manager._normalize_timestamp_key("smile") == "smile"
-        assert db_manager._normalize_timestamp_key("general") == "general"
-        assert db_manager._normalize_timestamp_key("deposit") == "deposit"
+        assert db_manager._normalize_timestamp_key("naibujimu") == "naibujimu"
         assert db_manager._normalize_timestamp_key("rev01_smile") == "rev01_smile"
         assert db_manager._normalize_timestamp_key("rev03_torikaku") == "rev03_torikaku"
 
@@ -162,7 +157,7 @@ class TestGetAllBusinessAreasRevisionFilter:
         db_manager.base_db_path = str(tmp_path)
 
         # 通常業務: smile/azure_openai/chroma.sqlite3
-        for area in ["smile", "deposit", "general"]:
+        for area in ["smile", "naibujimu"]:
             db_dir = tmp_path / area / "azure_openai"
             db_dir.mkdir(parents=True)
             (db_dir / "chroma.sqlite3").touch()
@@ -185,8 +180,7 @@ class TestGetAllBusinessAreasRevisionFilter:
         """include_revisions=False で改定別コレクションを除外"""
         areas = db_manager_with_dirs.get_all_business_areas(include_revisions=False)
         assert "smile" in areas
-        assert "deposit" in areas
-        assert "general" in areas
+        assert "naibujimu" in areas
         assert not any(a.startswith("rev") for a in areas)
 
     def test_include_revisions_explicit(self, db_manager_with_dirs):
@@ -223,7 +217,7 @@ class TestAnalyzeReferenceFilesRevisionFilter:
         faq_dir = tmp_path / "faq"
         faq_dir.mkdir()
         db_manager.reference_faq_path = str(faq_dir)
-        (faq_dir / "預金_履歴データ_20250830.xlsx").touch()
+        (faq_dir / "内部事務_履歴データ_20250830.xlsx").touch()
         (faq_dir / "スマイル_履歴データ_20250205.xlsx").touch()
 
         return db_manager
@@ -233,13 +227,13 @@ class TestAnalyzeReferenceFilesRevisionFilter:
         areas = db_manager_with_files.analyze_reference_files()
         assert "rev01_smile" in areas
         assert "rev02_souzoku" in areas
-        assert "deposit" in areas
+        assert "naibujimu" in areas
         assert "smile" in areas
 
     def test_exclude_revisions(self, db_manager_with_files):
         """include_revisions=False で改定別エリアを除外"""
         areas = db_manager_with_files.analyze_reference_files(include_revisions=False)
-        assert "deposit" in areas
+        assert "naibujimu" in areas
         assert "smile" in areas
         assert not any(k.startswith("rev") for k in areas)
 
@@ -248,7 +242,7 @@ class TestAnalyzeReferenceFilesRevisionFilter:
         areas = db_manager_with_files.analyze_reference_files(include_revisions=True)
         assert "rev01_smile" in areas
         assert "rev02_souzoku" in areas
-        assert "deposit" in areas
+        assert "naibujimu" in areas
         assert "smile" in areas
 
 

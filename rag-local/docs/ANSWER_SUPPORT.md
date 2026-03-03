@@ -115,21 +115,21 @@ cd rag-local
 # 全業務分野でバッチ処理
 python apps/answer-support/main.py
 
-# 特定業務分野のみ
-python apps/answer-support/main.py --business 内部事務
+# 特定業務分野のみ（naibujimu / smile）
+python apps/answer-support/main.py --business naibujimu
 
 # 処理件数を制限（先頭 N 件のみ）
 python apps/answer-support/main.py --limit 5
 
 # 組み合わせ
-python apps/answer-support/main.py --business 内部事務 --limit 10
+python apps/answer-support/main.py --business naibujimu --limit 10
 ```
 
 #### コマンドライン引数
 
 | 引数 | 説明 | デフォルト |
 |------|------|-----------|
-| `--business` | 対象の業務分野（日本語名） | 全業務分野 |
+| `--business` | 対象の業務分野（`naibujimu`, `smile`） | 全業務分野 |
 | `--limit` | 処理する入力データの件数上限 | 無制限 |
 
 #### 入出力
@@ -172,8 +172,8 @@ cd rag-local
 # 全業務分野の検証
 python apps/answer-support/main.py preflight
 
-# 特定業務分野のみ
-python apps/answer-support/main.py preflight --business 総則
+# 特定業務分野のみ（naibujimu / smile）
+python apps/answer-support/main.py preflight --business naibujimu
 
 # サンプル件数を変更（デフォルト: 5）
 python apps/answer-support/main.py preflight --sample-size 10
@@ -183,7 +183,7 @@ python apps/answer-support/main.py preflight --sample-size 10
 
 | 引数 | 説明 | デフォルト |
 |------|------|-----------|
-| `--business` | 対象の業務分野 | 全業務分野 |
+| `--business` | 対象の業務分野（`naibujimu`, `smile`） | 全業務分野 |
 | `--sample-size` | 検証に使うサンプル件数 | 5 |
 
 ---

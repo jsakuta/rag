@@ -443,6 +443,79 @@ python scripts/build_db.py --force
 
 ---
 
+## 新しい改定の追加手順
+
+例: 事務改定⑦（為替対応）を追加する場合
+
+### Step 1: 変更前シナリオの準備
+
+```bash
+# 修正前カテゴリExcelを前処理（文字数列削除・リネーム）
+python scripts/prepare_before_scenario.py
+```
+
+出力先: `data/source/scenarios/revisions/rev07為替_シナリオデータ_YYYYMMDD.xlsx`
+
+### Step 2: マッピング登録（2箇所）
+
+**config/business_areas.yaml** — `revision_mappings` に追加:
+
+```yaml
+revision_mappings:
+  # ⑦為替対応
+  rev07_smile: rev07_smile
+```
+
+**config/settings.yaml** — `evaluation.revision_areas` に追加:
+
+```yaml
+revision_areas:
+  "⑦":
+    areas:
+      - rev07_smile
+    search_type: hybrid      # hybrid or keyword_filter
+    vector_weight: 0.9       # keyword_filter の場合は不要
+```
+
+`search_type` の選択基準:
+- `hybrid`: 意味的な内容変更（説明文の書き換え、手順の追加等）
+- `keyword_filter`: 単純な用語置換（例: ⑤AML→GPLEX、⑥DC→MDC）
+
+新しいボットが関わる場合は `area_to_bot` と `area_to_category` にも追加が必要。
+
+### Step 3: 正解ID生成
+
+```bash
+python scripts/generate_correct_ids.py
+```
+
+入力: `reference/改定シナリオ/rev07_*/差分.md`
+出力: `data/input/multi_stage_input.xlsx` の該当行に正解IDが追加される
+
+### Step 4: DB構築
+
+```bash
+# Streamlit UI を停止してから実行
+python scripts/build_db.py --revisions-only
+```
+
+確認:
+```bash
+python scripts/check_db_content.py
+```
+
+### Step 5: 評価実行
+
+```bash
+python apps/revision-ops/run_eval.py
+```
+
+### 設定変更のみのケース
+
+既存改定のパラメータ調整（`vector_weight` や `search_type` の変更）は `config/settings.yaml` の編集だけで完了する。DB再構築は不要。
+
+---
+
 ## 関連ファイル
 
 | ファイル | 説明 |

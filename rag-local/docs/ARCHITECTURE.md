@@ -467,6 +467,77 @@ def create_embedding_model(config, use_singleton=True):
         return CustomEmbeddingModel(config)
 ```
 
+### 新しい業務分野の追加
+
+例: 「為替」（kawase）を追加する場合
+
+#### Step 1: マッピング登録
+
+`config/business_areas.yaml` の `mappings` に追加:
+
+```yaml
+mappings:
+  スマイル: smile
+  内部事務: naibujimu
+  為替: kawase          # 追加
+```
+
+ChromaDB コレクション名の制約: 英数字・`.`・`_`・`-` のみ、3-512文字。
+
+#### Step 2: 参照データの配置
+
+ファイル命名規則: `{日本語業務名}_{データ種別}_{YYYYMMDD}.xlsx`
+
+```
+data/source/
+├── faq/latest/
+│   └── 為替_履歴データ_20260601.xlsx        # FAQ（任意）
+└── scenarios/latest/
+    └── 為替_シナリオデータ_20260601.xlsx    # シナリオ（任意）
+```
+
+- FAQ・シナリオの片方だけでも可。両方なくてもDB構築自体は通るがデータが空になる
+- 同一業務名で複数ファイルがある場合、最新日付が優先される
+- ファイル名の日本語部分が `business_areas.yaml` のキーと一致する必要がある
+
+#### Step 3: DB構築
+
+```bash
+# Streamlit UI を停止してから実行（ChromaDB ファイルロック競合防止）
+python scripts/build_db.py --business kawase
+```
+
+確認:
+```bash
+python scripts/check_db_content.py  # ドキュメント数が 0 でないことを確認
+```
+
+#### Step 4: 入力ファイルの作成
+
+バッチ処理用の入力ファイル命名規則: `{英語DB名}_{YYYYMMDD}.xlsx`
+
+```
+data/input/
+└── kawase_20260601.xlsx    # 列: 番号, 質問内容, 既存回答
+```
+
+**注意**: 入力ファイル名は**英語DB名**（`kawase`）を使用する。参照データは日本語名（`為替`）、入力ファイルは英語名という非対称に注意。
+
+#### Step 5: 動作確認
+
+```bash
+python apps/answer-support/main.py --business kawase --limit 3
+```
+
+#### コード変更が不要な理由
+
+- `analyze_reference_files()` が `data/source/` を走査してファイル名から業務分野を自動検出する
+- `BusinessAreaTranslator` が YAML マッピングで日本語→英語を変換する
+- `extract_business_area_from_input()` が入力ファイル名から業務分野を抽出する
+- DB パスは `data/vector_db/{英語名}/{provider}/` に自動生成される
+
+つまり、**設定ファイル + データファイルの配置だけで完結し、コード変更は不要**。
+
 ### 新しい検索エンジンの追加
 
 ```python

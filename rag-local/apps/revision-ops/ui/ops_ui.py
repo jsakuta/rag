@@ -573,25 +573,27 @@ def _search_with_provider(
 
 
 def save_chat_history():
-    """チャット履歴を保存"""
+    """チャット履歴を保存（user→botペアのずれに対応）"""
     try:
         chat_data = []
-        for i in range(0, len(st.session_state.chat_history), 2):
-            if i + 1 < len(st.session_state.chat_history):
-                user_query = st.session_state.chat_history[i]["text"]
-                bot_response = st.session_state.chat_history[i + 1]["text"]
-
+        last_user_query = None
+        for msg in st.session_state.chat_history:
+            if msg["type"] == "user":
+                last_user_query = msg["text"]
+            elif msg["type"] == "bot" and last_user_query is not None:
+                bot_response = msg["text"]
                 if isinstance(bot_response, dict) and bot_response.get("mode") == "dual_provider":
                     for provider_key in ["azure", "vertex"]:
                         for response in bot_response.get(provider_key, []):
                             chat_data.append({
                                 'Provider': provider_key,
-                                'Original_Query': user_query,
+                                'Original_Query': last_user_query,
                                 'Search_Query': response.get('Search_Query', ''),
                                 'Search_Result_Q': response.get('Search_Result_Q', ''),
                                 'Search_Result_A': response.get('Search_Result_A', ''),
                                 'Similarity': response.get('Similarity', ''),
                             })
+                last_user_query = None
 
         if chat_data:
             df = pd.DataFrame(chat_data)
@@ -605,7 +607,7 @@ def save_chat_history():
             df.to_excel(str(output_path), index=False)
             st.sidebar.success(f"チャット履歴を保存しました: {output_path.name}")
         else:
-            st.sidebar.warning("保存するチャット履歴がありません。")
+            st.sidebar.warning("保存するチャット履歴がありません。検索結果が返った履歴のみ保存対象です。")
 
     except Exception as e:
         logger.error(f"Error saving chat history: {str(e)}", exc_info=True)

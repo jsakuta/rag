@@ -2,18 +2,9 @@
 # 日本語の業務分野名 → ChromaDB互換の英語名への変換
 
 # 基本マッピング（完全一致を優先）
+# 業務分野を追加する場合はここにマッピングを追加する
+# 詳細手順: docs/ARCHITECTURE.md「新しい業務分野の追加」
 mappings:
-  総則: general
-  預金: deposit
-  融資: loan
-  外貨: foreign_currency
-  投信: investment_trust
-  住宅ローン: housing_loan
-  投資信託: investment_fund
-  カード: card
-  保険: insurance
-  年金: pension
-  # ボット系（_translate_business_area のハードコードと同一）
   スマイル: smile
   スマイルタブレット: smile_tablet
   内部事務: naibujimu

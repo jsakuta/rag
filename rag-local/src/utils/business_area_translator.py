@@ -89,18 +89,13 @@ class BusinessAreaTranslator:
             self._use_default_mappings()
 
     def _use_default_mappings(self) -> None:
-        """デフォルトのハードコードされたマッピングを使用"""
+        """デフォルトのハードコードされたマッピングを使用（YAML読み込み失敗時のフォールバック）"""
         self.mappings = {
-            "総則": "general",
-            "預金": "deposit",
-            "融資": "loan",
-            "外貨": "foreign_currency",
-            "投信": "investment_trust",
-            "住宅ローン": "housing_loan",
-            "投資信託": "investment_fund",
-            "カード": "card",
-            "保険": "insurance",
-            "年金": "pension",
+            "スマイル": "smile",
+            "スマイルタブレット": "smile_tablet",
+            "内部事務": "naibujimu",
+            "相続": "souzoku",
+            "取引時確認": "torikaku",
         }
         logger.info("デフォルトマッピングを使用します")
 
