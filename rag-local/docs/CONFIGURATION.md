@@ -200,9 +200,10 @@ search_mode="llm_enhanced"
 - LLMがクエリを最適化
 
 **前提条件:**
-- `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` / `GEMINI_PROJECT_ID` + GCP認証が必須
-- 未設定時エラー: `RuntimeError: LLM is not initialized. Set DEFAULT_LLM_PROVIDER and DEFAULT_LLM_MODEL.`
-- LLM 不要な場合は `search_mode: original` を使用
+- `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` は全モードで起動時に必須（`SearchConfig` バリデーション）
+- `GEMINI_PROJECT_ID` + GCP認証が `llm_enhanced` / `multi_stage` モードで追加で必要
+- LLM API 未到達時エラー: `RuntimeError: LLM is not initialized`
+- LLM API 呼び出しが不要な場合は `search_mode: original` を使用（環境変数は必要）
 
 #### 多段階検索モード
 

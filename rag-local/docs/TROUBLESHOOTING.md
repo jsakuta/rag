@@ -311,8 +311,8 @@ RuntimeError: LLM is not initialized. Set DEFAULT_LLM_PROVIDER and DEFAULT_LLM_M
 ```
 
 **原因:**
-- `config/settings.yaml` で `search_mode: llm_enhanced` を設定しているが、LLM 環境変数（`DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL`）が未設定
-- または GCP 認証（`GEMINI_PROJECT_ID` + `gemini_credentials.json`）が未設定
+- `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` が未設定（全モードで起動時に必須）
+- `search_mode: llm_enhanced` 設定時に GCP 認証（`GEMINI_PROJECT_ID` + `gemini_credentials.json`）が未設定
 
 **解決策:**
 
