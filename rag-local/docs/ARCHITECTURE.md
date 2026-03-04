@@ -74,7 +74,7 @@
 │  ┌────────────────────────────────────────────────────┐   │
 │  │ データベース管理                                    │   │
 │  │   ├─ dynamic_db_manager.py - 動的DB管理           │   │
-│  │   ├─ vector_db.py - ChromaDB ラッパー             │   │
+│  │   ├─ vector_db.py - ChromaDB 操作の共通インターフェース             │   │
 │  │   └─ business_area_translator.py - 業務領域変換   │   │
 │  └────────────────────────────────────────────────────┘   │
 │  ┌────────────────────────────────────────────────────┐   │
@@ -166,7 +166,7 @@ class Searcher:
 **責務:**
 - 動的ベクトルDB選択（業務分野・入力ファイルに基づく）
 - 埋め込みモデル・LLMの初期化管理
-- キーワード抽出・キャッシング（N+1問題解消）
+- キーワード抽出・キャッシング（検索のたびに再抽出するコストを回避）
 - ベクトル検索実行とスコア計算
 - SearchStrategy への検索委譲
 
@@ -248,7 +248,7 @@ class InputHandler:
 
 | サブクラス | 用途 | 入力形式 |
 |-----------|------|---------|
-| `ExcelInputHandler` | FAQ履歴データ読み込み（回答支援AI） | 標準Excel（番号, 質問, 回答） |
+| `ExcelInputHandler` | 問い合わせ履歴データ（FAQ）読み込み（回答支援AI） | 標準Excel（番号, 質問, 回答） |
 | `HierarchicalExcelInputHandler` | マージ版シナリオ読み込み | Excel複数シート（階層+質問+回答） |
 | `MultiFolderInputHandler` | シナリオ+FAQ統合（回答支援AI） | 複数フォルダ |
 | `TextInputHandler` | 改定内容入力（改定影響調査） | Excel + 正解ID対応 |
@@ -293,7 +293,7 @@ class DynamicDBManager:
         """業務分野に対応するDBパスを返す"""
 ```
 
-**vector_db.py** - ChromaDB ラッパー
+**vector_db.py** - ChromaDB 操作の共通インターフェース
 
 ```python
 class MetadataVectorDB:
@@ -527,7 +527,7 @@ ChromaDB コレクション名の制約: 英数字・`.`・`_`・`-` のみ、3-
 ```
 data/source/
 ├── faq/latest/
-│   └── 為替_履歴データ_20260601.xlsx        # FAQ（任意）
+│   └── 為替_履歴データ_20260601.xlsx        # 問い合わせ履歴データ（FAQ、任意）
 └── scenarios/latest/
     └── 為替_シナリオデータ_20260601.xlsx    # シナリオ（任意）
 ```
@@ -753,7 +753,7 @@ class SearchConfig:
 
     # 埋め込みモデル設定
     embedding_provider: str  # DEFAULT_EMBEDDING_PROVIDER（必須、vertex_ai / azure_openai）
-    embedding_model: str     # __post_init__ でプロバイダーから自動解決
+    embedding_model: str     # __post_init__ でプロバイダーに応じて自動決定
 
     # 検索設定（settings.yaml batch セクションから読み込み、フォールバックなし）
     top_k: int = 4                    # 返却する結果数
@@ -761,7 +761,7 @@ class SearchConfig:
     keyword_weight: float             # 自動計算（1.0 - vector_weight）
 
     # 検索モード: original | llm_enhanced | multi_stage
-    # 回答支援AIでは original / llm_enhanced のみ使用。
+    # 回答支援AIでは original / llm_enhanced のみ使用可能（multi_stage は組み込まれていない）。
     # multi_stage は改定影響調査（apps/revision-ops/）専用。
     search_mode: str = "original"
 
@@ -783,7 +783,7 @@ class SearchConfig:
 | `top_k` | int | settings.yaml | 返却する結果数 |
 | `vector_weight` | float | settings.yaml | ベクトル検索の重み（0〜1） |
 | `keyword_weight` | float | 自動計算 | キーワード検索の重み（1.0 - vector_weight） |
-| `search_mode` | str | settings.yaml | 検索モード（original/llm_enhanced/multi_stage）。multi_stage は改定影響調査（`apps/revision-ops/`）専用 |
+| `search_mode` | str | settings.yaml | 検索モード: original / llm_enhanced（回答支援AI）、+ multi_stage（改定影響調査AI） |
 | `search_type` | str | settings.yaml | 検索タイプ（hybrid/keyword_filter） |
 | `search_source` | str | settings.yaml | 検索対象（scenario/history_data） |
 | `reference_type` | str | "multi_folder" | 参照データ形式（excel/hierarchical_excel/multi_folder） |
@@ -1076,7 +1076,7 @@ def enhance(self, query: str) -> str:
 |-----------|-------------|------|
 | `OriginalSearchStrategy` | original | 原文でベクトル+キーワード検索 |
 | `LLMEnhancedSearchStrategy` | llm_enhanced | LLMクエリ生成後にベクトル+キーワード検索 |
-| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類 |
+| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類（改定影響調査AI専用） |
 | `KeywordFilterSearchStrategy` | keyword_filter | キーワードマッチのみ（ベクトル検索なし） |
 
 ---
@@ -1105,7 +1105,7 @@ class DynamicDBManager:
 
 **モジュール:** `src/utils/vector_db.py`
 
-ChromaDBの操作ラッパー。メタデータ対応のベクトルデータベースクラス。
+ChromaDBの操作インターフェース。メタデータ対応のベクトルデータベースクラス。
 
 ```python
 class MetadataVectorDB:

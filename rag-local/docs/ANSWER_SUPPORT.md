@@ -1,13 +1,13 @@
 # 回答支援AI（類似回答検索）
 
-FAQ およびシナリオデータから類似回答を検索するシステム。
+問い合わせ履歴データ（FAQ）およびチャットボットのシナリオデータから、類似する質問・回答を検索するシステム。
 
 ## 概要
 
 ### 目的
 
-- ユーザーの質問に対して、既存の FAQ やシナリオボットのデータから類似度の高い質問・回答ペアを検索
-- 業務分野ごとに独立した ChromaDB ベクトルデータベースを使用し、ハイブリッド検索で精度を確保
+- ユーザーの質問に対して、既存の問い合わせ履歴（FAQ）やチャットボットのシナリオから、意味やキーワードが近い質問・回答を検索
+- 業務分野ごとに独立した検索用データベース（ChromaDB）を使用し、意味検索とキーワード検索を組み合わせた方式（ハイブリッド検索）で精度を確保
 
 ### 実行モード
 
@@ -21,22 +21,22 @@ FAQ およびシナリオデータから類似回答を検索するシステム�
 
 ## 処理フロー
 
-### ハイブリッド検索
+### ハイブリッド検索（意味検索 + キーワード検索の組み合わせ）
 
-ベクトル検索（意味的類似度）とキーワード検索（語彙的類似度）を加重合算する方式。
+文章の意味の近さで検索する方式（ベクトル検索）と、共通する単語の一致で検索する方式（キーワード検索）の結果を、重み付けして合算する方式です。
 
 ```
 入力クエリ
     |
-    +---> ベクトル検索（埋め込みモデルでクエリをベクトル化 → ChromaDB で類似度検索）
+    +---> ベクトル検索（AIモデルで質問文を数値に変換 → データベースで意味の近い文書を検索）
     |         |
     |         v
-    |     vector_similarity（コサイン類似度）
+    |     vector_similarity（意味的な近さの指標: コサイン類似度）
     |
-    +---> キーワード抽出（Sudachi: 名詞 Top-5）
+    +---> キーワード抽出（日本語形態素解析ツール Sudachi で名詞を最大5個抽出）
               |
               v
-          keyword_similarity（Jaccard 類似度: 共通キーワード / 全キーワード）
+          keyword_similarity（共通キーワードの割合: Jaccard 類似度）
               |
               v
     スコア合算: final_score = vector_weight x vector_sim + (1 - vector_weight) x keyword_sim
@@ -50,11 +50,11 @@ FAQ およびシナリオデータから類似回答を検索するシステム�
 | モード | 説明 |
 |--------|------|
 | `original` | 原文をそのままクエリとしてハイブリッド検索（デフォルト） |
-| `llm_enhanced` | LLM でクエリを拡張・要約してからハイブリッド検索 |
+| `llm_enhanced` | LLM（大規模言語モデル）でクエリを拡張・要約してからハイブリッド検索 |
 
 > **Note:** `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` は全モードで起動時に必須です（`SearchConfig` のバリデーション）。ただし、LLM API の呼び出しが発生するのは `llm_enhanced` モードのみです。`GEMINI_PROJECT_ID` + GCP認証も `llm_enhanced` 使用時に必須となります。
 
-> **Note:** `multi_stage` モードは改定影響調査専用です。このシステムでは使用しないでください。
+> **Note:** 回答支援AIには `multi_stage` モード（多段階検索）は組み込まれていません。`multi_stage` は改定影響調査AI（`apps/revision-ops/`）専用の機能です。回答支援AIでは `original` または `llm_enhanced` のみ使用できます。
 
 ### スコア計算式
 
@@ -63,8 +63,8 @@ final_score = vector_weight x vector_similarity + (1 - vector_weight) x keyword_
 ```
 
 - `vector_weight`: デフォルト 0.9（`settings.yaml` で変更可能、UI ではスライダーで動的調整）
-- `vector_similarity`: 埋め込みモデルによるコサイン類似度（0.0 - 1.0）
-- `keyword_similarity`: Jaccard 類似度（Sudachi で抽出したキーワード集合の共通割合）
+- `vector_similarity`: AIモデルが算出する意味的な近さの指標（コサイン類似度、0.0 - 1.0）
+- `keyword_similarity`: 共通キーワードの割合で算出する一致度（Jaccard 類似度、Sudachi で名詞を抽出）
 - `keyword_weight`: 1.0 - `vector_weight` で自動計算（手動設定不可）。デフォルト 0.1
 - 最終スコアは 0.0 - 1.0 にクリップ
 
@@ -76,15 +76,15 @@ final_score = vector_weight x vector_similarity + (1 - vector_weight) x keyword_
 
 | 業務分野 | DB名 | 内容 | 件数 |
 |---------|------|------|------|
-| 内部事務 | `naibujimu` | 預金+総則 FAQ + naibujimu-bot シナリオ | 11,439件 |
-| スマイル | `smile` | スマイル FAQ + smile-bot シナリオ | 9,237件 |
+| 内部事務 | `naibujimu` | 預金+総則の問い合わせ履歴（FAQ）+ naibujimu-bot シナリオ | 11,439件 |
+| スマイル | `smile` | スマイルの問い合わせ履歴（FAQ）+ smile-bot シナリオ | 9,237件 |
 
-### 埋め込みプロバイダー
+### 埋め込みプロバイダー（文章を数値に変換するサービス）
 
-| プロバイダー | モデル | 次元数 | 備考 |
-|-------------|--------|--------|------|
+| プロバイダー（文章を数値に変換するサービス） | モデル | 次元数 | 備考 |
+|----------------------------------------------|--------|--------|------|
 | `azure_openai` | text-embedding-3-large | 3072 | エンタープライズ向け・高精度 |
-| `vertex_ai` | gemini-embedding-001 | 3072 | Google Cloud 統合・MRL対応 |
+| `vertex_ai` | gemini-embedding-001 | 3072 | Google Cloud 統合・MRL（次元削減）対応 |
 
 `build_db.py` は両プロバイダーの DB を構築する。実行時は `DEFAULT_EMBEDDING_PROVIDER` 環境変数に一致するプロバイダーの DB が使用される。
 
@@ -105,7 +105,7 @@ data/
 │       └── vertex_ai/
 │           └── chroma.sqlite3
 ├── source/
-│   ├── faq/latest/                   # FAQ（履歴データ）
+│   ├── faq/latest/                   # 問い合わせ履歴データ（FAQ）
 │   │   ├── 内部事務_履歴データ_YYYYMMDD.xlsx
 │   │   └── スマイル_履歴データ_YYYYMMDD.xlsx
 │   └── scenarios/latest/             # 最新シナリオ
@@ -200,7 +200,7 @@ python apps/answer-support/main.py interactive
 | 業務分野選択 | DB に存在する業務分野をプルダウンで選択 |
 | ベクトル重み調整 | スライダーで vector_weight を 0.0 - 1.0 の範囲で動的変更 |
 | 検索モード切替 | 原文検索（original） / LLMクエリ検索（llm_enhanced） |
-| 検索対象切替 | シナリオのみ（scenario） / FAQのみ（history_data） |
+| 検索対象切替 | シナリオのみ（scenario） / 問い合わせ履歴データのみ（history_data） |
 | 候補数設定 | 表示する類似候補数（1 - 10） |
 | チャット履歴保存 | チャット履歴を Excel ファイルとして保存 |
 
@@ -281,7 +281,7 @@ python scripts/build_db.py --no-revisions
 
 ```
 data/source/
-├── faq/latest/                # FAQ（履歴データ）
+├── faq/latest/                # 問い合わせ履歴データ（FAQ）
 │   ├── 内部事務_履歴データ_YYYYMMDD.xlsx
 │   └── スマイル_履歴データ_YYYYMMDD.xlsx
 └── scenarios/latest/          # 最新シナリオ
@@ -292,7 +292,7 @@ data/source/
 ### ファイル命名規則
 
 ```
-{業務名}_履歴データ_{YYYYMMDD}.xlsx     # FAQ
+{業務名}_履歴データ_{YYYYMMDD}.xlsx     # 問い合わせ履歴データ（FAQ）
 {業務名}_シナリオデータ_{YYYYMMDD}.xlsx  # シナリオ
 ```
 
@@ -303,7 +303,7 @@ data/source/
 
 1. **Streamlit UI の停止**: ChromaDB はファイルロックを使用するため、UI と同時にスクリプトを実行するとロックエラーが発生する
 2. **環境変数の設定**: `.env` に以下が必要
-   - `DEFAULT_EMBEDDING_PROVIDER`（モデルはプロバイダーから自動解決）
+   - `DEFAULT_EMBEDDING_PROVIDER`（モデル名はプロバイダーに応じて自動決定）
    - **azure_openai 使用時**: `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
    - **vertex_ai 使用時**: `GEMINI_PROJECT_ID` + GCP認証（`gemini_credentials.json` または Key Vault）
    - `build_db.py` は両プロバイダー（azure_openai / vertex_ai）の DB を常に構築する。未認証のプロバイダー側はエラーになるが、認証済み側の DB は正常に構築されるため、片方のみ使用する場合は未認証側のエラーを無視してよい

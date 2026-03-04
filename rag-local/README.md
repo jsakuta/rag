@@ -2,12 +2,12 @@
 
 ## 概要
 
-2つのAIアプリケーション + 共有コアで構成するローカル RAG 検索システム。
+2つのAIアプリケーションと共有コアで構成する、ローカル環境で動作する検索システム（RAG: Retrieval-Augmented Generation 方式）。
 
 | AI | バッチ | UI | 用途 | 詳細ドキュメント |
 |----|-------|-----|------|----------------|
-| **回答支援AI（類似回答検索）** | `apps/answer-support/main.py` | `apps/answer-support/ui/chat.py` | FAQ/シナリオ検索 | [docs/ANSWER_SUPPORT.md](./docs/ANSWER_SUPPORT.md) |
-| **運用保守効率化AI（改定影響調査）** | `apps/revision-ops/run_eval.py` | `apps/revision-ops/ui/ops_ui.py` | 改定影響候補の調査 | [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) |
+| **回答支援AI（類似回答検索）** | `apps/answer-support/main.py` | `apps/answer-support/ui/chat.py` | 問い合わせ履歴やシナリオから似た質問・回答を検索 | [docs/ANSWER_SUPPORT.md](./docs/ANSWER_SUPPORT.md) |
+| **運用保守効率化AI（改定影響調査）** | `apps/revision-ops/run_eval.py` | `apps/revision-ops/ui/ops_ui.py` | 事務改定で影響を受けるシナリオ候補を調査 | [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) |
 
 ---
 
@@ -44,11 +44,11 @@ pip install -r requirements.txt
 
 ### Step 2: 認証情報の準備
 
-> **どの認証が必要か？** Step 4 で設定する `DEFAULT_EMBEDDING_PROVIDER` に依存します。`vertex_ai` のみ使用する場合は Azure OpenAI の認証（Step 2b）は不要です。`azure_openai` のみ使用する場合でも、LLM（クエリ拡張・関連性判定）は Gemini を使用するため Google Cloud 認証（Step 2a）は必須です。
+> **どの認証が必要か？** Step 4 で設定する `DEFAULT_EMBEDDING_PROVIDER` に依存します。`vertex_ai` のみ使用する場合は Azure OpenAI の認証（Step 2b）は不要です。`azure_openai` のみ使用する場合でも、LLM（大規模言語モデル。検索語の補強や関連性判定に使用）は Gemini を使用するため Google Cloud 認証（Step 2a）は必須です。
 
 #### Step 2a: Google Cloud（Vertex AI / Gemini）
 
-LLMおよび埋め込みモデルで VertexAI を使用する場合に必要です。**LLM は Gemini のみ対応のため、全環境で必須です。**
+LLMおよび埋め込みモデル（文章を数値に変換するAIモデル）で VertexAI を使用する場合に必要です。**LLM は Gemini のみ対応のため、全環境で必須です。**
 
 1. Google Cloud Console でサービスアカウントキーを作成（必要権限: `Vertex AI User`）
 2. JSON キーファイルをダウンロード
@@ -85,9 +85,9 @@ cp .env.example .env
 
 | 変数 | 説明 | 例 |
 |------|------|-----|
-| `DEFAULT_LLM_PROVIDER` | LLMプロバイダー | `gemini` |
-| `DEFAULT_LLM_MODEL` | LLMモデル名 | `gemini-2.5-flash-lite` |
-| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー（モデルは自動解決） | `azure_openai` |
+| `DEFAULT_LLM_PROVIDER` | LLM（言語モデル）のプロバイダー | `gemini` |
+| `DEFAULT_LLM_MODEL` | LLMのモデル名 | `gemini-2.5-flash-lite` |
+| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みモデルのプロバイダー（モデル名はプロバイダーから自動決定） | `azure_openai` |
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI API キー | `your-api-key` |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI エンドポイント | `https://your-resource.openai.azure.com/` |
 | `GEMINI_PROJECT_ID` | Google Cloud プロジェクトID | `your-project-id` |
@@ -100,7 +100,7 @@ cp .env.example .env
 
 ```
 data/source/
-├── faq/latest/                    # FAQ（履歴データ）
+├── faq/latest/                    # 問い合わせ履歴データ（FAQ）
 │   ├── 内部事務_履歴データ_YYYYMMDD.xlsx
 │   └── スマイル_履歴データ_YYYYMMDD.xlsx
 ├── scenarios/
@@ -113,7 +113,7 @@ data/source/
 ```
 
 **ファイル命名規則**:
-- FAQ: `{業務名}_履歴データ_{YYYYMMDD}.xlsx`
+- 問い合わせ履歴データ（FAQ）: `{業務名}_履歴データ_{YYYYMMDD}.xlsx`
 - シナリオ: `{業務名}_シナリオデータ_{YYYYMMDD}.xlsx`
 - `{業務名}` は日本語名（スマイル、内部事務等）。`config/business_areas.yaml` のマッピングで英語DB名に自動変換
 - `{YYYYMMDD}` はデータ日付。同一業務分野に複数ファイルがある場合、最新日付のファイルが使用される
@@ -139,7 +139,7 @@ python scripts/build_db.py
 - 回答支援AI用DBの詳細は [docs/ANSWER_SUPPORT.md](./docs/ANSWER_SUPPORT.md) を参照
 - 改定DB構築は [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) を参照
 
-> **注意**: DB構築中は Streamlit UI を停止してください（ChromaDB のファイルロック競合を防止）。
+> **注意**: DB構築中は Streamlit UI を停止してください（検索用データベース ChromaDB のファイルロック競合を防止）。
 
 > **Note:** `build_db.py` は azure_openai と vertex_ai の**両プロバイダー**でDBを構築します。片方の認証が未設定の場合、その側はエラーになりますが、認証済み側のDBは正常に構築されます。VertexAI のみ使用する場合、Azure 側のエラーは無視して構いません。
 
@@ -221,7 +221,7 @@ rag-local/
 │   │   ├── searcher.py           # 検索統合（Processor から使用）
 │   │   ├── judgment_support.py   # LLM判断支援
 │   │   └── search/               # 検索エンジン
-│   │       ├── multi_stage_orchestrator.py  # 多段階検索
+│   │       ├── multi_stage_orchestrator.py  # 多段階検索（改定影響調査AI専用）
 │   │       ├── search_strategy.py           # 検索戦略切替
 │   │       ├── query_enhancer.py            # クエリ拡張
 │   │       ├── vector_search_engine.py      # ベクトル検索
@@ -238,8 +238,8 @@ rag-local/
 │   │
 │   └── utils/                    # ユーティリティ
 │       ├── dynamic_db_manager.py # DB管理
-│       ├── vector_db.py          # ChromaDB ラッパー
-│       ├── base_embedding.py     # 埋め込みモデル基底
+│       ├── vector_db.py          # ChromaDB 操作の共通インターフェース
+│       ├── base_embedding.py     # 埋め込みモデル共通の基底クラス
 │       ├── gemini_embedding.py   # Gemini埋め込み
 │       ├── azure_embedding.py    # Azure埋め込み
 │       ├── auth.py               # Google Cloud認証
@@ -265,12 +265,12 @@ rag-local/
 │   └── shared.py                 # 共通UI部品
 │
 ├── data/                         # データディレクトリ
-│   ├── vector_db/                # ベクトルDB（自動生成）
+│   ├── vector_db/                # 検索用データベース（自動生成、ベクトルDB）
 │   ├── source/
 │   │   ├── scenarios/            # シナリオExcel
 │   │   │   ├── latest/
 │   │   │   └── revisions/
-│   │   └── faq/                  # FAQデータ
+│   │   └── faq/                  # 問い合わせ履歴データ（FAQ）
 │   │       └── latest/
 │   ├── input/                    # 入力ファイル
 │   └── output/                   # 出力ファイル
@@ -291,9 +291,9 @@ rag-local/
 
 | 処理 | AIモデル | 設定環境変数 |
 |-----|---------|-------------|
-| ベクトル化 | text-embedding-3-large / gemini-embedding-001 | `DEFAULT_EMBEDDING_PROVIDER` |
-| クエリ拡張 | gemini-2.5-flash-lite | `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL` |
-| 関連性判定 | gemini-2.5-flash-lite | `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL` |
+| 文章の数値変換（ベクトル化） | text-embedding-3-large / gemini-embedding-001 | `DEFAULT_EMBEDDING_PROVIDER` |
+| 検索語の自動補強（クエリ拡張） | gemini-2.5-flash-lite | `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL` |
+| 検索結果の関連度チェック（関連性判定） | gemini-2.5-flash-lite | `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL` |
 
 ---
 

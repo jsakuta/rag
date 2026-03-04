@@ -98,7 +98,7 @@ Streamlit UI（`ops_ui.py`）は環境変数から利用可能なプロバイダ
 
 ## データベース関連
 
-### ChromaDB エラー: コレクションが見つからない
+### ChromaDB（検索用データベース）エラー: コレクションが見つからない
 
 **症状:**
 ```
@@ -106,7 +106,7 @@ ValueError: Collection 'naibujimu' does not exist.
 ```
 
 **原因:**
-- ベクトルDBが初期化されていない
+- 検索用データベース（ベクトルDB）が初期化されていない
 - DBファイルが破損している
 
 **解決策:**
@@ -294,8 +294,8 @@ pip install --upgrade sudachipy sudachidict-core
 **原因と対処:**
 
 1. **DB が空**: `python scripts/check_db_content.py` で件数を確認。0件なら `python scripts/build_db.py --force` で再構築
-2. **search_source のミスマッチ**: `settings.yaml` の `common.search_source` がDB内のデータ種別と一致しているか確認（`history_data` → FAQ、`scenario` → シナリオ）
-3. **埋め込みプロバイダーの不一致**: `.env` の `DEFAULT_EMBEDDING_PROVIDER` と、構築済みDBのプロバイダーが一致しているか確認（例: vertex_ai で構築したDBに azure_openai でアクセスしていないか）
+2. **検索対象の設定ミスマッチ**: `settings.yaml` の `common.search_source` がDB内のデータ種別と一致しているか確認。`history_data` は問い合わせ履歴データ（FAQ）、`scenario` はシナリオデータを意味します
+3. **文章変換モデル（埋め込みプロバイダー）の不一致**: `.env` の `DEFAULT_EMBEDDING_PROVIDER` と、構築済みDBのプロバイダーが一致しているか確認（例: vertex_ai で構築したDBに azure_openai でアクセスしていないか）。DB構築時と検索時で異なるモデルを使うと、文章から変換された数値の意味が変わるため、正しく類似検索ができません
 4. **Streamlit キャッシュ**: DB再構築後はStreamlitを再起動（Ctrl+C → 再起動）
 
   Streamlit は `@st.cache_resource` でDBクライアントやLLMをキャッシュしているため、DB再構築後は必ず再起動が必要です（`session_state` のキャッシュ値も古いまま残ります）。
@@ -498,12 +498,12 @@ streamlit run apps/answer-support/ui/chat.py --server.port 8502
 - 初回実行時に5-10分かかる
 
 **原因:**
-- ベクトル化処理（正常な動作）
+- 文章を検索用の数値データに変換する処理（ベクトル化）が初回に実行されるため（正常な動作）
 
 **解決策:**
 
 1. 初回のみ時間がかかります（2回目以降は数秒）
-2. タイムスタンプ検証により、不要な再ベクトル化を回避
+2. ファイルの更新日時を確認する仕組み（タイムスタンプ検証）により、変更のないデータの再変換を自動的に回避します
 
 ### 検索が遅い
 
@@ -511,7 +511,7 @@ streamlit run apps/answer-support/ui/chat.py --server.port 8502
 - 各クエリに数秒かかる
 
 **原因:**
-- LLM クエリ拡張が有効（API呼び出し）
+- AIによる検索語の自動補強（LLMクエリ拡張）が有効になっている。この機能はユーザーの入力をAIモデルに送信して関連語句を追加するため、AIモデルへの問い合わせが発生し時間がかかる
 
 **解決策:**
 
@@ -587,13 +587,13 @@ Unique documents: 11439
 Duplicate documents: 0
 
 Source distribution:
-  scenario: 1384
-  faq_data: 10055
+  scenario: 1384        ← シナリオデータの件数
+  faq_data: 10055       ← 問い合わせ履歴データ（FAQ）の件数
 ```
 
 ---
 
-## よくある質問 (FAQ)
+## よくある質問
 
 ### Q: ベクトルDBを完全にリセットするには?
 
@@ -608,9 +608,9 @@ rm -rf data/vector_db/
 python apps/answer-support/main.py
 ```
 
-### Q: 複数の埋め込みモデルを同時に使用できる?
+### Q: 複数の文章を数値に変換するAIモデル（埋め込みモデル）を同時に使用できる?
 
-いいえ。同一コレクションに異なるモデルのベクトルは混在できません。
+いいえ。同一のデータの格納単位（コレクション）に異なるモデルの数値データ（ベクトル）は混在できません。
 改定影響調査システムでは、プロバイダーごとに別々のDBディレクトリを使用しています。
 
 ```

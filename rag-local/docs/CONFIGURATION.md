@@ -23,11 +23,11 @@
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
-| `DEFAULT_LLM_PROVIDER` | LLMプロバイダー（`gemini` のみサポート） | **必須** | `gemini` |
-| `DEFAULT_LLM_MODEL` | LLMモデル名 | **必須** | `gemini-2.5-flash-lite` |
-| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー | **必須** | `azure_openai` |
+| `DEFAULT_LLM_PROVIDER` | LLM（大規模言語モデル）のプロバイダー（`gemini` のみサポート） | **必須** | `gemini` |
+| `DEFAULT_LLM_MODEL` | LLMのモデル名 | **必須** | `gemini-2.5-flash-lite` |
+| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー（文章を数値に変換するサービス） | **必須** | `azure_openai` |
 
-> **Note:** `DEFAULT_EMBEDDING_MODEL` は廃止されました。埋め込みモデルはプロバイダーから自動解決されます（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`）。
+> **Note:** `DEFAULT_EMBEDDING_MODEL` は廃止されました。埋め込みモデルはプロバイダーに応じて自動決定されます（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`）。
 
 ### Google Cloud / VertexAI 設定
 
@@ -125,7 +125,7 @@ GEMINI_LOCATION=us-central1
 
 ```env
 DEFAULT_EMBEDDING_PROVIDER=azure_openai
-# モデルは AZURE_OPENAI_EMBEDDING_DEPLOYMENT から自動解決
+# モデルは AZURE_OPENAI_EMBEDDING_DEPLOYMENT に応じて自動決定
 
 # 必須: Azure OpenAI認証
 AZURE_OPENAI_API_KEY=your-api-key
@@ -147,7 +147,7 @@ AZURE_OPENAI_API_VERSION=2024-12-01-preview
 
 ```env
 DEFAULT_EMBEDDING_PROVIDER=vertex_ai
-# モデルは VERTEX_AI_EMBEDDING_MODEL から自動解決
+# モデルは VERTEX_AI_EMBEDDING_MODEL に応じて自動決定
 
 # 必須: Google Cloud認証
 GEMINI_PROJECT_ID=your-project-id
@@ -182,7 +182,8 @@ config = SearchConfig(
     top_k=4,                    # 返却する結果数（batch=4, ui=3, eval=改定ごと）
     vector_weight=0.9,          # ベクトル検索の重み
 
-    # 検索モード: original | llm_enhanced | multi_stage（multi_stage は改定影響調査専用）
+    # 検索モード: original | llm_enhanced
+    # ※ multi_stage は改定影響調査AI専用。回答支援AIには組み込まれていない
     search_mode="original",
 
     # 検索タイプ: hybrid | keyword_filter
@@ -200,7 +201,7 @@ config = SearchConfig(
 | `top_k` | int | batch=4, ui=3 | 返却する結果数 |
 | `vector_weight` | float | 0.9 | ベクトル検索の重み（0.0〜1.0） |
 | `search_type` | str | `hybrid` | 検索アルゴリズム（`hybrid` / `keyword_filter`） |
-| `search_mode` | str | `original` | クエリ処理（`original` / `llm_enhanced` / `multi_stage`） |
+| `search_mode` | str | `original` | クエリ処理方法。回答支援AI: `original` / `llm_enhanced`。改定影響調査AI: 上記に加え `multi_stage`（多段階検索） |
 | `search_source` | str | `history_data` | 検索対象（`scenario` / `history_data`） |
 | `reference_type` | str | `multi_folder` | 参照データ形式 |
 | `multi_stage_threshold` | float | 0.45 | 多段階検索の統合スコア閾値 |
@@ -218,10 +219,12 @@ config = SearchConfig(
 
 | 設定 | 値 | 説明 |
 |------|-----|------|
-| `search_mode` | `original` / `llm_enhanced` / `multi_stage` | クエリの処理方法（原文/LLM拡張/多段階） |
+| `search_mode` | `original` / `llm_enhanced` / `multi_stage`* | クエリの処理方法（原文そのまま / LLMで拡張 / 多段階で網羅的に検索） |
 | `search_type` | `hybrid` / `keyword_filter` | 検索アルゴリズム（ベクトル+キーワード / キーワードのみ） |
 
-- `search_type=hybrid`: ベクトル検索とキーワード検索を `vector_weight` で加重合算
+> \* `multi_stage` は改定影響調査AI専用です。回答支援AIには組み込まれていません。
+
+- `search_type=hybrid`: 意味の近さで検索する方式（ベクトル検索）とキーワードの一致で検索する方式を、`vector_weight` で重み付けして合算
 - `search_type=keyword_filter`: 事前構築されたキーワードキャッシュでキーワードマッチのみ実行（ベクトル検索なし、`vector_weight` は不使用）
 
 回答支援AI（UI）では `search_type` は `hybrid` に固定されています。改定影響調査では改定ごとに `settings.yaml` の `evaluation.revision_areas` で設定します。
@@ -255,16 +258,18 @@ search_mode="llm_enhanced"
 - LLM API 未到達時エラー: `RuntimeError: LLM is not initialized`
 - LLM API 呼び出しが不要な場合は `search_mode: original` を使用（環境変数は必要）
 
-#### 多段階検索モード
+#### 多段階検索モード（改定影響調査AI専用）
+
+> **Note:** このモードは改定影響調査AI専用です。回答支援AIには組み込まれていません。
 
 ```python
 search_mode="multi_stage"
 ```
 
 **特徴:**
-- 原文検索 + LLM拡張検索のOR結合
-- 最高の網羅性
-- 改定影響調査に適する
+- 原文での検索結果とLLMで拡張した検索結果を合わせて、漏れを減らす（OR結合）
+- 検索の網羅性が最も高い
+- 改定影響調査で、変更の影響範囲を広く把握するために使用する
 
 ### 重み調整
 
@@ -295,9 +300,9 @@ search_mode="multi_stage"
 以下のパスは `SearchConfig.base_dir`（デフォルト: プロジェクトルート）を基点としたハードコードパスで、環境変数では変更できません。
 
 ```
-data/vector_db/          # ベクトルDB
+data/vector_db/          # 検索用データベース（ベクトルDB）
 data/source/scenarios/   # シナリオExcel
-data/source/faq/         # FAQデータ
+data/source/faq/         # 問い合わせ履歴データ（FAQ）
 data/input/              # 入力ファイル
 data/output/             # 出力ファイル
 ```
@@ -378,7 +383,7 @@ data/output/             # 出力ファイル
 
 | 値 | 説明 |
 |----|------|
-| `history_data` | FAQ（履歴データ）を検索対象とする（デフォルト） |
+| `history_data` | 問い合わせ履歴データ（FAQ）を検索対象とする（デフォルト） |
 | `scenario` | シナリオデータを検索対象とする |
 
 **設定場所:** `config/settings.yaml` の `common.search_source`
@@ -396,7 +401,7 @@ data/output/             # 出力ファイル
 | `position_weight` | float | 1.2 | テキスト前半に出現するキーワードの重み係数 |
 | `stop_words` | list | 13語 | 除外する一般的な単語のリスト |
 
-**動作概要:** 入力テキスト → Sudachi（形態素解析）→ 名詞抽出 → stop_words 除外 → 出現頻度 Top-5 → Jaccard 類似度で検索結果をスコアリング
+**動作概要:** 入力テキスト → 日本語形態素解析ツール（Sudachi）で単語に分割 → 名詞を抽出 → stop_words を除外 → 出現頻度の高い上位5語を選出 → 共通キーワードの割合（Jaccard類似度）で検索結果をスコアリング
 
 ### columns設定（Excel列名候補）
 
@@ -566,7 +571,7 @@ DEFAULT_EMBEDDING_PROVIDER=azure_openai
 | `llm_provider` | `gemini`（必須・唯一） | `ValueError` |
 | `credential_source` | `local` / `key_vault` | `ValueError` |
 
-埋め込みモデルはプロバイダーから自動解決:
+埋め込みモデルはプロバイダーに応じて自動決定:
 - `azure_openai` → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`（デフォルト: `text-embedding-3-large`）
 - `vertex_ai` → `VERTEX_AI_EMBEDDING_MODEL`（デフォルト: `gemini-embedding-001`）
 
