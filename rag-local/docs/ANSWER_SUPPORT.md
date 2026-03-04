@@ -54,7 +54,7 @@ FAQ およびシナリオデータから類似回答を検索するシステム�
 
 > **Note:** `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` は全モードで起動時に必須です（`SearchConfig` のバリデーション）。ただし、LLM API の呼び出しが発生するのは `llm_enhanced` モードのみです。`GEMINI_PROJECT_ID` + GCP認証も `llm_enhanced` 使用時に必須となります。
 
-> **Note:** `multi_stage` モードも存在しますが、改定影響調査（`run_eval.py`）専用です。回答支援AIでは `original` または `llm_enhanced` を使用してください。
+> **Note:** `multi_stage` モードは改定影響調査専用です。このシステムでは使用しないでください。
 
 ### スコア計算式
 
@@ -65,6 +65,7 @@ final_score = vector_weight x vector_similarity + (1 - vector_weight) x keyword_
 - `vector_weight`: デフォルト 0.9（`settings.yaml` で変更可能、UI ではスライダーで動的調整）
 - `vector_similarity`: 埋め込みモデルによるコサイン類似度（0.0 - 1.0）
 - `keyword_similarity`: Jaccard 類似度（Sudachi で抽出したキーワード集合の共通割合）
+- `keyword_weight`: 1.0 - `vector_weight` で自動計算（手動設定不可）。デフォルト 0.1
 - 最終スコアは 0.0 - 1.0 にクリップ
 
 ---
@@ -147,6 +148,14 @@ python apps/answer-support/main.py --business naibujimu --limit 10
 
 > **Note:** バッチ処理の検索対象は CLI 引数では変更できません。`config/settings.yaml` の `common.search_source`（`scenario` / `history_data`、デフォルト: `history_data`）を編集してください。UI ではサイドバーで動的に切替可能です。
 
+> **Note:** バッチ処理実行時、DB は自動更新されます。実行フロー：
+> 1. `run_db_update()` で参照ファイル（FAQ / シナリオ）の更新を検出
+> 2. 参照ファイル未更新 + DB既存 → スキップ（API コスト発生なし）
+> 3. 参照ファイル更新あり or DB未存在 → 構築/更新実行
+> 4. DB 更新完了後、バッチ処理を開始
+>
+> UI（インタラクティブ）モードでは DB更新を実行しません。
+
 #### 入力ファイル仕様
 
 **配置先**: `data/input/`
@@ -194,6 +203,13 @@ python apps/answer-support/main.py interactive
 | 検索対象切替 | シナリオのみ（scenario） / FAQのみ（history_data） |
 | 候補数設定 | 表示する類似候補数（1 - 10） |
 | チャット履歴保存 | チャット履歴を Excel ファイルとして保存 |
+
+> **Note:** UI 内で変更したパラメータ（ベクトル重み、検索モード等）は、セッション内のメモリのみに保持されます。
+> `config/settings.yaml` には保存されないため、UI を閉じると変更は失われます。永続化が必要な場合は、YAML を直接編集してください。
+
+> **Note:** チャット履歴とバッチ出力で列構成が異なります:
+> - チャット履歴: 8列（`Original_Answer`, `Scenario_ID`, `Sheet_Name`, `Row_Index` を省略）
+> - バッチ出力: 12列（全列を含む詳細分析用）
 
 ### プレフライト検証
 

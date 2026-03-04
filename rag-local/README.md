@@ -166,7 +166,16 @@ streamlit run apps/revision-ops/ui/ops_ui.py
 ```bash
 # 開発用依存関係のインストール
 pip install -r requirements-dev.txt
+```
 
+**開発用パッケージ** (`requirements-dev.txt`):
+- `pytest` — テストフレームワーク
+- `pytest-cov` — カバレッジ計測
+- `pytest-mock` — モックライブラリ
+- `pytest-asyncio` — 非同期テスト対応
+- `faker` — テストデータ生成
+
+```bash
 # 全テスト実行
 pytest
 
@@ -195,6 +204,8 @@ rag-local/
 ├── config.py                     # 設定管理
 ├── requirements.txt              # 依存パッケージ
 ├── .env.example                  # 環境変数テンプレート
+├── .streamlit/
+│   └── config.toml              # Streamlit 設定
 │
 ├── docs/                         # ドキュメント
 │   ├── ANSWER_SUPPORT.md         # 回答支援AI詳細
@@ -301,6 +312,8 @@ rag-local/
 | `.venv/` | Python仮想環境 | `pip install` で再作成 |
 | `logs/` | ログ | 実行時生成 |
 | `CLAUDE.md` | 開発メモ | 引き継ぎ対象外 |
+
+> **注記:** 引き継ぎパッケージは許可リスト方式で生成されます（`create_handover_package.py:INCLUDE`）。`CLAUDE.md` は開発者用のプロジェクトメモであり、運用には不要なため許可リストから除外されています。
 
 ### 同梱するもの
 

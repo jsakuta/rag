@@ -56,10 +56,15 @@ Stage 3: 結果をマージ＋カテゴリ分類
 フィルタリング（filter_mode による切替）
 ```
 
+### 補足: search_type による動作の違い
+
+- **hybrid**: 多段階検索フロー（Stage 1/2/3）を実行。ベクトル+キーワードのハイブリッド検索
+- **keyword_filter**: ベクトル検索をスキップ。ChromaDB キーワードキャッシュのみ使用（多段階検索は実行しない）。用語の単純置換（AML→GPLEX等）の検出に適する
+
 ### 設定値
 | パラメータ | 値 | 説明 |
 |-----------|---|------|
-| FILTER_MODE | top_k | フィルタリング方式（`top_k` / `threshold`） |
+| FILTER_MODE | top_k | フィルタリング方式（`top_k` / `threshold`）。settings.yaml で指定、コード上のフォールバックは `threshold` |
 | TOP_K | 130 | 上位件数（filter_mode=top_k 時に使用） |
 | THRESHOLDS | Azure=0.40, VertexAI=0.50 | プロバイダー別閾値（filter_mode=threshold 時に使用） |
 | VECTOR_WEIGHT | 0.9 | ベクトルスコアの重み |
@@ -110,6 +115,7 @@ data/vector_db/
 | ④ | 37 | 0円新規開設可能 | naibujimu-bot | rev04_naibujimu |
 | ⑤ | 41-42 | AML→GPLEX | smile-bot | rev05_smile |
 | ⑥ | 43-45 | DC→MDC | smile-bot | rev06_smile |
+| ⑦ | - | 積立定期預金 | smile-bot | rev07_smile（未評価） |
 
 ---
 
@@ -140,6 +146,7 @@ data/vector_db/
    - `番号`: 改定番号（①②③④⑤⑥）
    - `改定内容`: 検索クエリとなる改定の説明文
    - `正解ID`: カンマ区切りの正解シナリオID（例: `smile-bot_129, smile-bot_185`）
+   - `変更内容`（オプション）: 各正解IDごとの具体的な変更内容。未検出シナリオ（「未発見」セクション）に表示される。省略時は自動的に空で初期化
 
 3. **環境変数の設定**（`.env`）
    ```bash
@@ -248,7 +255,7 @@ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
    | 4 | LLM強化クエリ | QueryEnhancerで生成されたクエリ（1行目のみ） |
    | 5 | 抽出キーワード | Sudachiで抽出したキーワード（1行目のみ） |
    | 6 | 検索タイプ | `類似検索`（hybrid時）/ `キーワード必須`（keyword_filter時）（1行目のみ） |
-   | 7 | ベクトル重み | vector_weight（keyword_filter時は `-`）（1行目のみ） |
+   | 7 | ベクトル重み | vector_weight（hybrid時のみ有効、keyword_filter時は `0.0`）（1行目のみ） |
 
    #### Azure側（10列: `Azure_` プレフィックス付き）
    | # | 列名 | 説明 |
@@ -408,7 +415,7 @@ reference/
     + 修正前カテゴリファイル (手動でカテゴリを置換)
         ↓ [自動化スクリプトなし - 手動作成]
 
-2. 変更前シナリオ (reference/変更前シナリオ/X.../X変更前シナリオ_XXX-bot.xlsx)
+2. 変更前シナリオ (reference/改定シナリオ/revXX_*/修正前/revXX_変更前シナリオ_XXX-bot.xlsx)
         ↓
    prepare_before_scenario.py (文字数列削除・リネーム)
         ↓
@@ -484,6 +491,10 @@ python scripts/prepare_before_scenario.py
 出力先: `data/source/scenarios/revisions/rev07為替_シナリオデータ_YYYYMMDD.xlsx`
 
 ### Step 2: マッピング登録（2箇所）
+
+**2つの設定ファイルの役割:**
+- `business_areas.yaml` の `revision_mappings`: エリア名と ChromaDB コレクション名の**物理マッピング**（DB検索時の名前解決に使用）
+- `settings.yaml` の `evaluation.revision_areas`: 改定番号と検索設定の**ロジックマッピング**（search_type, vector_weight 等のパラメータ）
 
 **config/business_areas.yaml** — `revision_mappings` に追加:
 

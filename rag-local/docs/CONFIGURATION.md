@@ -76,6 +76,18 @@
 |--------|------|------------|-----|
 | `LOG_LEVEL` | ログレベル | `INFO` | `DEBUG` |
 
+> **Note:** `GOOGLE_APPLICATION_CREDENTIALS` は Google Cloud SDK の標準環境変数で、認証情報JSONファイルの絶対パスを指定します。`.env` ではなく OS 環境変数として設定してください（`config.py` では直接参照しません）。
+
+### 環境変数の必須度分類
+
+| 分類 | 変数 | 条件 |
+|------|------|------|
+| **常に必須** | `CREDENTIAL_SOURCE`, `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL`, `GEMINI_PROJECT_ID`, `GEMINI_LOCATION` | 全機能で必要 |
+| **プロバイダー別必須** | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION` | `azure_openai` 使用時 |
+| **プロバイダー別必須** | `GOOGLE_APPLICATION_CREDENTIALS` | `vertex_ai` 使用時（OS環境変数として設定） |
+| **オプション** | `DEFAULT_EMBEDDING_PROVIDER`, `VERTEX_AI_EMBEDDING_MODEL`, `GEMINI_CREDENTIALS_PATH`, `GEMINI_LOCATION`, `ENABLE_LLM_ANALYSIS`, `LOG_LEVEL` | デフォルト値あり、または特定機能のみ |
+| **条件付き必須** | `AZURE_KEY_VAULT_URL`, `AZURE_KEY_VAULT_SECRET_NAME` | `CREDENTIAL_SOURCE=key_vault` 時のみ |
+
 ---
 
 ## LLM設定
@@ -168,7 +180,7 @@ from config import SearchConfig
 config = SearchConfig(
     # 検索パラメータ
     top_k=4,                    # 返却する結果数（batch=4, ui=3, eval=改定ごと）
-    vector_weight=0.9,          # ベクトル検索の重み（keyword_weight は 1.0 - vector_weight で自動計算）
+    vector_weight=0.9,          # ベクトル検索の重み
 
     # 検索モード: original | llm_enhanced | multi_stage（multi_stage は改定影響調査専用）
     search_mode="original",
@@ -180,6 +192,25 @@ config = SearchConfig(
     reference_type="multi_folder",   # excel | hierarchical_excel | multi_folder
 )
 ```
+
+### SearchConfig の主要フィールド一覧
+
+| フィールド | 型 | デフォルト値 | 説明 |
+|-----------|-----|-----------|------|
+| `top_k` | int | batch=4, ui=3 | 返却する結果数 |
+| `vector_weight` | float | 0.9 | ベクトル検索の重み（0.0〜1.0） |
+| `search_type` | str | `hybrid` | 検索アルゴリズム（`hybrid` / `keyword_filter`） |
+| `search_mode` | str | `original` | クエリ処理（`original` / `llm_enhanced` / `multi_stage`） |
+| `search_source` | str | `history_data` | 検索対象（`scenario` / `history_data`） |
+| `reference_type` | str | `multi_folder` | 参照データ形式 |
+| `multi_stage_threshold` | float | 0.45 | 多段階検索の統合スコア閾値 |
+| `multi_stage_max_results` | int | 100 | 多段階検索の各検索結果最大数 |
+| `multi_stage_enable_judgment_support` | bool | True | LLM判断支援の有効化 |
+| `include_hierarchy_in_vector` | bool | True | 階層情報をベクトル化に含める |
+| `force_db_update` | bool | False | 強制DB更新フラグ |
+| `embedding_provider` | str | 環境変数 | 埋め込みプロバイダー |
+| `llm_provider` | str | 環境変数 | LLMプロバイダー（`gemini` のみ） |
+| `credential_source` | str | `local` | GCP認証方式（`local` / `key_vault`） |
 
 ### 検索設定の2軸
 
@@ -247,6 +278,14 @@ search_mode="multi_stage"
 | 0.5 | 0.5 | 専門用語の完全一致を重視 |
 | 0.3 | 0.7 | キーワード重視（用語置換検出等） |
 
+### top_k 設定一覧
+
+| 用途 | 設定場所 | 値 | 説明 |
+|------|---------|-----|------|
+| 回答支援AI（UI） | `ui.top_k` | 3 | 画面表示用 |
+| 回答支援AI（バッチ） | `batch.top_k` | 4 | Excel出力用 |
+| 改定影響調査（評価） | `evaluation.top_k` | 130 | 網羅性重視（`filter_mode: top_k` 時） |
+
 ---
 
 ## データベース設定
@@ -305,6 +344,23 @@ data/output/             # 出力ファイル
 | `ui` | Streamlit UI専用 | top_k, search_type, vector_weight（スライダー初期値） |
 | `batch` | バッチ処理専用 | top_k, vector_weight |
 | `evaluation` | 改定影響調査専用 | max_results, filter_mode, thresholds, revision_areas（[詳細](./REVISION_OPS.md#新しい改定の追加手順)） |
+
+### 改定影響調査（evaluation）の詳細パラメータ
+
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|-----|-----------|------|
+| `max_results` | int | 100 | 最大検索結果数 |
+| `filter_mode` | str | `top_k` | フィルタリング（`threshold` / `top_k`） |
+| `top_k` | int | 130 | `filter_mode: top_k` 時の上位K件数 |
+| `thresholds.azure_openai` | float | 0.40 | Azure OpenAI 類似度閾値 |
+| `thresholds.vertex_ai` | float | 0.50 | VertexAI 類似度閾値 |
+| `enable_judgment_support` | bool | true | LLM判断支援の有効化 |
+
+**revision_areas:**
+改定番号ごとに `areas`（検索対象DBエリア）、`search_type`、`vector_weight` を指定。
+
+**area_to_bot / area_to_category:**
+エリア名からボット名・日本語カテゴリ名への変換マッピング。
 
 > **重要:** settings.yaml は起動時に必須です。`import config` 時に以下のチェックが実行されます:
 > - `common` セクションが空（ファイル未存在 / 空ファイル / common 欠落）→ `RuntimeError`
@@ -375,6 +431,8 @@ common:
 | `revision_mappings` | 改定別DB名（rev01_smile, rev02_souzoku 等） |
 | `collection_constraints` | ChromaDB命名制約（3-512文字、英数字+._-） |
 
+> **Note:** `smile_tablet`（スマイルタブレット）は `smile`（スマイル）と別の業務分野マッピングです。現在の回答支援AIでは `smile` に統合されていますが、将来的なタブレット専用DB拡張時に活用されます。
+
 ---
 
 ## UI設定
@@ -428,9 +486,8 @@ logger = setup_logger(__name__)  # ログレベルは LOG_LEVEL 環境変数で�
 
 ```
 logs/
-├── app.log          # メインログ
-├── error.log        # エラーログ（将来実装予定）
-└── access.log       # アクセスログ（将来実装予定）
+├── app.log          # メインログ（全レベル統合出力）
+└── archive/         # アーカイブ
 ```
 
 ---

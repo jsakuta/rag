@@ -32,7 +32,11 @@ google.auth.exceptions.DefaultCredentialsError: Could not automatically determin
 1. 認証ファイルの確認:
 ```bash
 # ファイルが存在するか確認
-ls -l C:\VSCode\rag\rag-local\gemini_credentials.json
+# Windows
+dir rag-local\gemini_credentials.json
+
+# Linux/Mac
+ls -l rag-local/gemini_credentials.json
 ```
 
 2. `.env` ファイルの確認:
@@ -120,6 +124,14 @@ python apps/answer-support/main.py
 ```bash
 python scripts/build_db.py --revisions-only
 ```
+
+### 用途別の再構築コマンド
+
+| 用途 | コマンド | 対象DB |
+|------|---------|--------|
+| 回答支援AI用のみ | `python scripts/build_db.py --no-revisions` | naibujimu, smile 等 |
+| 改定影響調査用のみ | `python scripts/build_db.py --revisions-only` | rev01_smile, rev02_souzoku 等 |
+| 両方 | `python scripts/build_db.py` | 全DB |
 
 ### ChromaDB エラー: Device or resource busy
 
@@ -286,6 +298,8 @@ pip install --upgrade sudachipy sudachidict-core
 3. **埋め込みプロバイダーの不一致**: `.env` の `DEFAULT_EMBEDDING_PROVIDER` と、構築済みDBのプロバイダーが一致しているか確認（例: vertex_ai で構築したDBに azure_openai でアクセスしていないか）
 4. **Streamlit キャッシュ**: DB再構築後はStreamlitを再起動（Ctrl+C → 再起動）
 
+  Streamlit は `@st.cache_resource` でDBクライアントやLLMをキャッシュしているため、DB再構築後は必ず再起動が必要です（`session_state` のキャッシュ値も古いまま残ります）。
+
 ### バッチ処理で入力ファイルが見つからない
 
 **症状:**
@@ -381,6 +395,19 @@ ENABLE_LLM_ANALYSIS=false python apps/revision-ops/run_eval.py
 3. ネットワーク接続を確認
 
 4. Google Cloud Console でクォータ状況を確認
+
+### LLM分析が失敗する
+
+**症状:**
+```
+ValueError: DEFAULT_LLM_PROVIDER環境変数が設定されていません
+```
+
+**原因:** `run_eval.py` はデフォルトで `enable_llm_analysis=True`（JudgmentSupport による関連性判定）。LLM 環境変数が未設定だと初期化エラー。
+
+**解決策:**
+1. LLM分析を無効化: `ENABLE_LLM_ANALYSIS=false python apps/revision-ops/run_eval.py`
+2. LLM環境変数を設定: `DEFAULT_LLM_PROVIDER=gemini`, `DEFAULT_LLM_MODEL=gemini-2.5-flash-lite`, `GEMINI_PROJECT_ID`
 
 ## Streamlit / SDK 警告
 

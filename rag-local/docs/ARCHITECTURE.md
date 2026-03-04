@@ -26,6 +26,15 @@
                             │
                             ▼
 ┌────────────────────────────────────────────────────────────┐
+│                   Configuration Layer                      │
+│  config/ - 設定ファイル                                    │
+│    ├─ settings.yaml（common/ui/batch/evaluation）          │
+│    └─ business_areas.yaml（業務分野マッピング）              │
+│  config.py - SearchConfig データクラス                      │
+└────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌────────────────────────────────────────────────────────────┐
 │                      Core Layer                            │
 │  ┌──────────────────────────────────────────────────────┐ │
 │  │ processor.py - データ処理エンジン                    │ │
@@ -41,6 +50,13 @@
 │  │   ├─ chromadb_keyword_search.py - ChromaDBキーワード│ │
 │  │   └─ text_combiner.py - テキスト結合                │ │
 │  └──────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌────────────────────────────────────────────────────────────┐
+│                     Types Layer                            │
+│  types/ - 型定義・定数                                     │
+│    └─ search_types.py（TypedDict / Dataclass / 定数）     │
 └────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -97,6 +113,8 @@
 ---
 
 ## レイヤー構造
+
+> **注:** 各モジュールの詳細 API 仕様は [API リファレンス](#api-リファレンス) を参照してください。
 
 ### 1. Entry Points Layer
 
@@ -226,6 +244,17 @@ class InputHandler:
 - データ形式検証
 - 階層構造解析
 
+**サブクラス一覧:**
+
+| サブクラス | 用途 | 入力形式 |
+|-----------|------|---------|
+| `ExcelInputHandler` | FAQ履歴データ読み込み（回答支援AI） | 標準Excel（番号, 質問, 回答） |
+| `HierarchicalExcelInputHandler` | マージ版シナリオ読み込み | Excel複数シート（階層+質問+回答） |
+| `MultiFolderInputHandler` | シナリオ+FAQ統合（回答支援AI） | 複数フォルダ |
+| `TextInputHandler` | 改定内容入力（改定影響調査） | Excel + 正解ID対応 |
+
+**列名の動的解決:** settings.yaml の `columns` セクションに候補列を列挙し、Excelに存在する最初の列を採用。query/answer は必須（ValueError）、tag は任意（警告続行）。
+
 #### output_handler.py - 出力処理
 
 ```python
@@ -279,6 +308,10 @@ class MetadataVectorDB:
         """メタデータフィルタリング付きベクトル検索"""
 ```
 
+**パフォーマンス最適化:**
+- `LRUCache(max_size=10)`: ChromaDB クライアントを DB パス別にキャッシュ
+- スレッドセーフ（`threading.Lock`）、最大10エントリで古いものを自動削除
+
 #### 埋め込みモデル
 
 **base_embedding.py** - 抽象基底クラス
@@ -304,6 +337,8 @@ class BaseEmbeddingModel(ABC):
 - バッチ処理（`EMBEDDING_BATCH_SIZE = 250`）
 - エラーハンドリング
 - リトライロジック
+
+**対応プロバイダー:** `config.py` の `VALID_EMBEDDING_PROVIDERS = ("vertex_ai", "azure_openai")`
 
 ---
 
@@ -417,6 +452,7 @@ main.py
 | **ベクトルDB** | chromadb | ベクトルストレージ |
 | **LangChain** | langchain-google-genai | Gemini LLM API |
 | **NLP** | sudachipy | 日本語形態素解析 |
+| **リトライ制御** | tenacity | API呼び出しの自動リトライ・指数バックオフ（5モジュールで使用） |
 | **データ処理** | pandas | データフレーム操作 |
 | | openpyxl | Excel読み書き |
 | **UI** | streamlit | Web UI |
@@ -598,12 +634,11 @@ _CREDENTIAL_HANDLERS = {
    - バッチサイズ: `EMBEDDING_BATCH_SIZE = 250`（Vertex AI / Azure 共通、`config.py`）
    - 並列API呼び出し
 
-2. **LLM判断支援の並列化**（実装済み）
-   - `processor.py`: `ThreadPoolExecutor(max_workers=10)` でLLM評価を並列実行
-
-3. **検索の並列化**（実装済み）
-   - `ops_ui.py`: `ThreadPoolExecutor(max_workers=2)` でAzure / VertexAI検索を並列実行
-   - `run_eval.py`: `ThreadPoolExecutor(max_workers=5)` で複数エリアの検索を並列実行
+| 箇所 | max_workers | 用途 |
+|------|-------------|------|
+| `processor.py` | 10 | LLM判断支援の並列評価 |
+| `ops_ui.py` | 2 | Azure/VertexAI プロバイダー並列検索 |
+| `run_eval.py` | 5 | 複数エリアのDB検索並列実行 |
 
 ---
 
@@ -648,6 +683,17 @@ tests/unit/
 └── test_ui_shared.py               # UI共通ユーティリティ
 ```
 
+### テスト概要
+
+| 項目 | 値 |
+|------|-----|
+| テストフレームワーク | pytest |
+| テストファイル数 | 11 |
+| カバレッジ対象 | コアロジック + ハンドラー + ユーティリティ |
+
+実行: `pytest tests/unit/ -v`
+カバレッジ: `pytest tests/unit/ --cov=src --cov-report=term-missing`
+
 ---
 
 ## API リファレンス
@@ -662,7 +708,9 @@ tests/unit/
 - [データベース管理](#データベース管理)
 - [埋め込みモデル](#埋め込みモデル)
 - [ハンドラー](#ハンドラー)
+- [型定義（Types Layer）](#型定義types-layer)
 - [ユーティリティ](#ユーティリティ)
+- [scripts/ ディレクトリ](#scripts-ディレクトリ)
 
 ---
 
@@ -1020,6 +1068,17 @@ def enhance(self, query: str) -> str:
     """
 ```
 
+#### SearchStrategy - 戦略パターン
+
+統一インターフェース: `execute(input_number, query_text, original_answer) -> List[Dict]`
+
+| 戦略クラス | search_mode | 処理 |
+|-----------|-------------|------|
+| `OriginalSearchStrategy` | original | 原文でベクトル+キーワード検索 |
+| `LLMEnhancedSearchStrategy` | llm_enhanced | LLMクエリ生成後にベクトル+キーワード検索 |
+| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類 |
+| `KeywordFilterSearchStrategy` | keyword_filter | キーワードマッチのみ（ベクトル検索なし） |
+
 ---
 
 ### データベース管理
@@ -1234,6 +1293,23 @@ class OutputHandlerFactory:
 
 ---
 
+### 型定義（Types Layer）
+
+**モジュール:** `src/types/search_types.py`
+
+| 分類 | クラス名 | 用途 |
+|------|---------|------|
+| TypedDict | `SearchResultDict` | 検索結果の基本型 |
+| TypedDict | `MultiStageSearchResultDict` | 多段階検索結果（Search_Category付き） |
+| TypedDict | `VectorSearchResultDict` | ベクトルDB検索結果 |
+| Dataclass | `ParsedCombinedText` | 結合テキスト解析結果（frozen=True） |
+| 定数 | `SearchResultKeys` | Excel出力列名の一元管理 |
+| 定数 | `MetadataKeys` | ChromaDBメタデータキー定数 |
+| 定数 | `SourceValues` | ソース値定数（SCENARIO, HISTORY_DATA） |
+| 定数 | `SearchCategoryValues` | カテゴリ値定数（BOTH, ORIGINAL_ONLY, LLM_ENHANCED_ONLY） |
+
+---
+
 ### ユーティリティ
 
 #### BusinessAreaTranslator
@@ -1302,6 +1378,18 @@ def setup_logger(name: str) -> logging.Logger:
         - コンソール出力: rich 使用時は色付き、未使用時は短縮フォーマット
     """
 ```
+
+---
+
+### scripts/ ディレクトリ
+
+| スクリプト | 用途 | 主要オプション |
+|-----------|------|---------------|
+| `build_db.py` | ベクトルDB構築 | `--force`, `--business {name}`, `--revisions-only`, `--no-revisions` |
+| `check_db_content.py` | DB内容確認 | --- |
+| `generate_correct_ids.py` | 正解ID対応表生成 | --- |
+| `prepare_before_scenario.py` | 改定前データ前処理 | --- |
+| `create_handover_package.py` | 引き継ぎパッケージ作成 | `--include-vectordb`, `--include-examples` |
 
 ---
 
