@@ -636,13 +636,3 @@ DEFAULT_LLM_MODEL=gemini-2.5-flash-lite  # gemini-2.5-flash, gemini-2.5-pro も�
 1. ログファイルを確認: `logs/app.log`
 2. GitHub Issues で報告
 3. [docs/ARCHITECTURE.md](./ARCHITECTURE.md) でシステム構成を確認
-
----
-
-## 関連ドキュメント
-
-- [README.md](../README.md) - 概要とセットアップ
-- [docs/ANSWER_SUPPORT.md](./ANSWER_SUPPORT.md) - 回答支援AI詳細
-- [docs/REVISION_OPS.md](./REVISION_OPS.md) - 改定影響調査詳細
-- [docs/CONFIGURATION.md](./CONFIGURATION.md) - 設定リファレンス
-- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - アーキテクチャ
