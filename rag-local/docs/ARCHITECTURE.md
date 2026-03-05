@@ -6,10 +6,13 @@
 
 - [全体構成](#全体構成)
 - [レイヤー構造](#レイヤー構造)
-- [コアモジュール](#コアモジュール)
+- [主要クラス一覧](#主要クラス一覧)
 - [データフロー](#データフロー)
 - [依存関係](#依存関係)
 - [拡張性](#拡張性)
+- [パフォーマンス最適化](#パフォーマンス最適化)
+- [セキュリティ考慮事項](#セキュリティ考慮事項)
+- [テスト](#テスト)
 
 ---
 
@@ -114,8 +117,6 @@
 
 ## レイヤー構造
 
-> **注:** 各モジュールの詳細 API 仕様は [API リファレンス](#api-リファレンス) を参照してください。
-
 ### 1. Entry Points Layer
 
 | モジュール | 説明 | 用途 |
@@ -127,125 +128,28 @@
 
 ### 2. Core Layer
 
-#### processor.py - データ処理エンジン
+**processor.py** - 入力データ読み込みと検証、Searcher + SearchStrategy による検索実行の管理、結果の集約と整形（通常モード / 多段階検索モード）を統合管理する。
 
-```python
-class Processor:
-    """データ処理の統合管理"""
+**searcher.py** - 動的ベクトルDB選択（業務分野・入力ファイルに基づく）、埋め込みモデル・LLMの初期化管理、キーワード抽出・キャッシング、SearchStrategy への検索委譲を行う。
 
-    def __init__(self, config: SearchConfig):
-        self.config = config
-        self.searcher = Searcher(config)
+**search/multi_stage_orchestrator.py** - 多段階ハイブリッド検索のオーケストレーター。検索ステージの管理、ベクトル・キーワード検索の統合、スコア計算とランキングを担う。
 
-    def process_data(self, mode: str = "batch", limit: int = None):
-        """データ処理のメイン関数"""
-        # 入力データ読み込み → 参照データ読み込み → 検索準備 →
-        # 各質問の検索実行 → 結果出力
-```
+**judgment_support.py** - LLMによる検索結果の関連性判定と判定根拠の生成。
 
-**責務:**
-- 入力データの読み込みと検証
-- Searcher + SearchStrategy による検索実行の管理
-- 結果の集約と整形（通常モード / 多段階検索モード）
+#### SearchStrategy - 戦略パターン
 
-#### searcher.py - 検索統合管理
+統一インターフェース: `execute(input_number, query_text, original_answer) -> List[Dict]`
 
-```python
-class Searcher:
-    """Processor と SearchStrategy を仲介する統合検索クラス"""
-
-    def __init__(self, config, db_manager=None, embedding_model=None):
-        # 依存性注入対応（テスト時にモック可能）
-
-    def prepare_search(self, reference_data):
-        """参照データの読み込みとキーワードキャッシュ構築"""
-
-    def search(self, input_number, query_text, original_answer, input_file=None):
-        """SearchStrategy に委譲して検索実行"""
-```
-
-**責務:**
-- 動的ベクトルDB選択（業務分野・入力ファイルに基づく）
-- 埋め込みモデル・LLMの初期化管理
-- キーワード抽出・キャッシング（検索のたびに再抽出するコストを回避）
-- ベクトル検索実行とスコア計算
-- SearchStrategy への検索委譲
-
-#### search/multi_stage_orchestrator.py - 多段階検索
-
-```python
-class MultiStageOrchestrator:
-    """多段階ハイブリッド検索のオーケストレーター"""
-
-    def __init__(
-        self,
-        vector_engine: VectorSearchEngine,
-        keyword_engine: KeywordSearchEngine,
-        query_enhancer: QueryEnhancer,
-        text_combiner: TextCombiner,
-        vector_weight: float = 0.9,
-        threshold: float = 0.45,
-        max_results: int = 100,
-        filter_mode: str = "threshold",
-        top_k: int = 50
-    ):
-        ...
-
-    def execute(
-        self,
-        input_number: str,
-        query_text: str,
-        original_answer: str,
-        filter_metadata: Dict[str, str] = None,
-        pre_enhanced_query: Optional[str] = None,
-    ) -> List[MultiStageSearchResultDict]:
-        """多段階OR検索を実行"""
-        # Stage 1: 原文でハイブリッド検索
-        # Stage 2: LLMクエリでハイブリッド検索
-        # Stage 3: OR結合と3分類（Both / Original_Only / LLM_Enhanced_Only）
-```
-
-**責務:**
-- 検索ステージの管理
-- ベクトル・キーワード検索の統合
-- スコア計算とランキング
-
-#### judgment_support.py - LLM判断支援
-
-```python
-class JudgmentSupport:
-    """検索結果の関連性判定"""
-
-    def evaluate(self, revision_content: str, search_result_q: str, search_result_a: str) -> Dict[str, str]:
-        """関連性を判定"""
-        # LLMで判定し {"relevance_judgment": "...", "judgment_reason": "..."} を返す
-```
-
-**責務:**
-- 検索結果の関連性判定
-- 判定根拠の生成
+| 戦略クラス | search_mode | 処理 |
+|-----------|-------------|------|
+| `OriginalSearchStrategy` | original | 原文でベクトル+キーワード検索 |
+| `LLMEnhancedSearchStrategy` | llm_enhanced | LLMクエリ生成後にベクトル+キーワード検索 |
+| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類（運用保守効率化AI専用） |
+| `KeywordFilterSearchStrategy` | keyword_filter | キーワードマッチのみ（ベクトル検索なし） |
 
 ### 3. Handler Layer
 
-#### input_handler.py - 入力処理
-
-```python
-class InputHandler:
-    """入力処理の基底クラス"""
-
-    def load_data(self) -> list:
-        """入力データを読み込み、共通の形式に変換"""
-
-    def load_reference_data(self) -> dict:
-        """参照データを読み込み、共通の形式に変換"""
-```
-
-**責務:**
-- Excelファイル読み込み
-- データ形式検証
-- 階層構造解析
-
-**サブクラス一覧:**
+**input_handler.py** - 入力処理。Factoryパターンで入力形式に応じたハンドラーを生成する。
 
 | サブクラス | 用途 | 入力形式 |
 |-----------|------|---------|
@@ -254,92 +158,80 @@ class InputHandler:
 | `MultiFolderInputHandler` | シナリオ+FAQ統合（回答支援AI） | 複数フォルダ |
 | `TextInputHandler` | 改定内容入力（改定影響調査） | Excel + 正解ID対応 |
 
-**列名の動的解決:** settings.yaml の `columns` セクションに候補列を列挙し、Excelに存在する最初の列を採用。query/answer は必須（ValueError）、tag は任意（警告続行）。
+列名の動的解決: settings.yaml の `columns` セクションに候補列を列挙し、Excelに存在する最初の列を採用。query/answer は必須（ValueError）、tag は任意（警告続行）。
 
-#### output_handler.py - 出力処理
-
-```python
-class OutputHandler:
-    """出力処理の基底クラス"""
-
-    def __init__(self, config: SearchConfig, app_prefix: str = ""):
-        """app_prefix で出力サブディレクトリを指定（例: "answer", "rev"）"""
-
-    def save_data(self, data: list):
-        """データを保存"""
-```
-
-**責務:**
-- Excel出力
-- フォーマット調整
-- ファイル命名
+**output_handler.py** - 出力処理。Factoryパターンで出力形式に応じたハンドラーを生成する。`app_prefix` で出力サブディレクトリを指定（例: "answer", "rev"）。
 
 ### 4. Utils Layer
 
-#### データベース管理
+**データベース管理** - `dynamic_db_manager.py`（業務領域別のベクトルDB管理、タイムスタンプ検証、差分ベクトル化）、`vector_db.py`（ChromaDB 操作の共通インターフェース、LRUCache(max_size=10) でクライアントキャッシュ）、`business_area_translator.py`（日本語業務名→英語コレクション名変換）。
 
-**dynamic_db_manager.py** - 動的DB管理
+**埋め込みモデル** - `base_embedding.py`（抽象基底クラス）、`gemini_embedding.py`（VertexAI Gemini）、`azure_embedding.py`（Azure OpenAI）。各プロバイダーの実装はバッチ処理（`EMBEDDING_BATCH_SIZE = 250`）、リトライロジック対応。対応プロバイダー: `config.py` の `VALID_EMBEDDING_PROVIDERS = ("vertex_ai", "azure_openai")`。
 
-```python
-class DynamicDBManager:
-    """業務領域別のベクトルDB管理"""
+**その他** - `auth.py`（Google Cloud 認証）、`logger.py`（ログ設定）。
 
-    def __init__(self, config: SearchConfig):
-        self._translator = BusinessAreaTranslator()
+---
 
-    def update_business_db(self, business_area: str, files: Dict):
-        """業務分野のDBを更新（タイムスタンプ検証、差分ベクトル化）"""
+## 主要クラス一覧
 
-    def get_db_path_for_business(self, business_area: str) -> str:
-        """業務分野に対応するDBパスを返す"""
-```
+各クラスの詳細な API（メソッドシグネチャ・引数・戻り値）はソースコードの docstring を参照してください。
 
-**vector_db.py** - ChromaDB 操作の共通インターフェース
+### コアモジュール
 
-```python
-class MetadataVectorDB:
-    """メタデータ対応のベクトルデータベースクラス"""
+| クラス | モジュール | 責務 |
+|--------|----------|------|
+| `Processor` | `src/core/processor.py` | 入力読込→検索→出力の統合管理。InputHandlerFactory / OutputHandlerFactory で入出力を切替 |
+| `Searcher` | `src/core/searcher.py` | 動的DB選択・キーワードキャッシュ・SearchStrategy への検索委譲 |
+| `JudgmentSupport` | `src/core/judgment_support.py` | LLMによる検索結果の関連性判定（関連あり/要確認/無関係の3段階） |
 
-    def add_documents(self, texts: List[str], embeddings, metadatas: List[Dict],
-                      ids: Optional[List[str]] = None):
-        """ドキュメントとメタデータをベクトルDBに追加"""
+### 検索エンジン
 
-    def search(self, query_embedding: List[float], n_results: int = 10,
-               filter_metadata: Optional[Dict] = None) -> List[Dict]:
-        """メタデータフィルタリング付きベクトル検索"""
-```
+| クラス | モジュール | 責務 |
+|--------|----------|------|
+| `SearchStrategy` | `src/core/search/search_strategy.py` | 4戦略パターン（Original / LLMEnhanced / MultiStage / KeywordFilter） |
+| `MultiStageOrchestrator` | `src/core/search/multi_stage_orchestrator.py` | 多段階ハイブリッド検索（Stage 1: 原文 → Stage 2: LLM拡張 → Stage 3: OR結合・3分類） |
+| `QueryEnhancer` | `src/core/search/query_enhancer.py` | LLMによるクエリ拡張（プロンプト: `prompt/summarize_v1.0.txt`） |
+| `VectorSearchEngine` | `src/core/search/vector_search_engine.py` | ベクトル検索（コサイン類似度） |
+| `KeywordSearchEngine` | `src/core/search/keyword_search_engine.py` | キーワード検索（Jaccard 類似度、Sudachi で名詞抽出） |
+| `ChromaDBKeywordSearcher` | `src/core/search/chromadb_keyword_search.py` | ChromaDB ベースのキーワード検索 |
+| `TextCombiner` | `src/core/search/text_combiner.py` | テキスト結合・パース |
 
-**パフォーマンス最適化:**
-- `LRUCache(max_size=10)`: ChromaDB クライアントを DB パス別にキャッシュ
-- スレッドセーフ（`threading.Lock`）、最大10エントリで古いものを自動削除
+### データベース管理
 
-#### 埋め込みモデル
+| クラス | モジュール | 責務 |
+|--------|----------|------|
+| `DynamicDBManager` | `src/utils/dynamic_db_manager.py` | 業務領域別ベクトルDB管理。タイムスタンプ検証による差分更新 |
+| `MetadataVectorDB` | `src/utils/vector_db.py` | ChromaDB 操作の共通インターフェース。LRUCache(max_size=10) でクライアントキャッシュ |
+| `BusinessAreaTranslator` | `src/utils/business_area_translator.py` | 日本語業務名→英語コレクション名変換（YAML マッピング） |
 
-**base_embedding.py** - 抽象基底クラス
+### 埋め込みモデル
 
-```python
-class BaseEmbeddingModel(ABC):
-    """埋め込みモデルの共通インターフェース"""
+| クラス | モジュール | 責務 |
+|--------|----------|------|
+| `BaseEmbeddingModel` | `src/utils/base_embedding.py` | 抽象基底クラス。`encode()`, `embedding_dimension`, `provider_name` を定義 |
+| `GeminiEmbeddingModel` | `src/utils/gemini_embedding.py` | VertexAI Gemini 埋め込み（gemini-embedding-001、3072次元） |
+| `AzureEmbeddingModel` | `src/utils/azure_embedding.py` | Azure OpenAI 埋め込み（text-embedding-3-large、3072次元） |
 
-    @abstractmethod
-    def encode(self, texts: Union[str, List[str]],
-               normalize_embeddings: bool = True) -> np.ndarray:
-        """テキストをベクトル化（2次元配列を返す）"""
+### ハンドラー
 
-    def encode_single(self, text: str,
-                      normalize_embeddings: bool = True) -> np.ndarray:
-        """単一テキストをベクトル化（1次元配列を返す）"""
-```
+| クラス | モジュール | 責務 |
+|--------|----------|------|
+| `InputHandlerFactory` | `src/handlers/input_handler.py` | 入力形式に応じたハンドラー生成（Excel / Hierarchical / MultiFolder / Text） |
+| `OutputHandlerFactory` | `src/handlers/output_handler.py` | 出力形式に応じたハンドラー生成。`app_prefix` で出力サブディレクトリを指定 |
 
-**gemini_embedding.py** / **azure_embedding.py**
+### 型定義
 
-各プロバイダー固有の実装:
-- API呼び出し
-- バッチ処理（`EMBEDDING_BATCH_SIZE = 250`）
-- エラーハンドリング
-- リトライロジック
+| 定義 | モジュール | 用途 |
+|------|----------|------|
+| `SearchResultDict` / `MultiStageSearchResultDict` | `src/types/search_types.py` | 検索結果の TypedDict |
+| `SearchResultKeys` / `MetadataKeys` | `src/types/search_types.py` | Excel出力列名・ChromaDBメタデータキーの定数 |
 
-**対応プロバイダー:** `config.py` の `VALID_EMBEDDING_PROVIDERS = ("vertex_ai", "azure_openai")`
+### ユーティリティ
+
+| モジュール | 責務 |
+|----------|------|
+| `src/utils/auth.py` | Google Cloud 認証（local / key_vault の2方式） |
+| `src/utils/logger.py` | ログ設定（LOG_LEVEL 環境変数、ファイル + コンソール出力） |
 
 ---
 
@@ -464,44 +356,25 @@ main.py
 
 ### 新しい埋め込みモデルの追加
 
-1. `src/utils/base_embedding.py` を継承
-2. `encode()`, `embedding_dimension`, `provider_name` を実装
-3. `src/utils/auth.py` の `create_embedding_model()` にプロバイダー分岐を追加
-4. `config.py` の `VALID_EMBEDDING_PROVIDERS` タプルにプロバイダー名を追加
+1. `src/utils/base_embedding.py` を継承し、`encode()`, `embedding_dimension`, `provider_name` を実装
+2. `src/utils/auth.py` の `create_embedding_model()` にプロバイダー分岐を追加
+3. `config.py` の `VALID_EMBEDDING_PROVIDERS` タプルにプロバイダー名を追加
 
 ```python
 # src/utils/custom_embedding.py
 from src.utils.base_embedding import BaseEmbeddingModel
 
 class CustomEmbeddingModel(BaseEmbeddingModel):
-    def __init__(self, config: SearchConfig):
-        super().__init__(config)
-
-    def encode(self, texts: Union[str, List[str]],
-               normalize_embeddings: bool = True) -> np.ndarray:
-        # 実装
+    def encode(self, texts, normalize_embeddings=True):
+        ...  # プロバイダー固有の実装
 
     @property
     def embedding_dimension(self) -> int:
-        return 1024  # 例
+        return 1024
 
     @property
     def provider_name(self) -> str:
         return "custom"
-```
-
-```python
-# config.py
-VALID_EMBEDDING_PROVIDERS: Tuple[str, ...] = ("vertex_ai", "azure_openai", "custom")  # 追加
-```
-
-```python
-# src/utils/auth.py の create_embedding_model() に分岐追加
-def create_embedding_model(config, use_singleton=True):
-    ...
-    elif provider == "custom":
-        from src.utils.custom_embedding import CustomEmbeddingModel
-        return CustomEmbeddingModel(config)
 ```
 
 ### 新しい業務分野の追加
@@ -510,55 +383,23 @@ def create_embedding_model(config, use_singleton=True):
 
 #### Step 1: マッピング登録
 
-`config/business_areas.yaml` の `mappings` に追加:
-
-```yaml
-mappings:
-  スマイル: smile
-  内部事務: naibujimu
-  為替: kawase          # 追加
-```
-
-ChromaDB コレクション名の制約: 英数字・`.`・`_`・`-` のみ、3-512文字。
+`config/business_areas.yaml` の `mappings` に `為替: kawase` を追加。ChromaDB コレクション名の制約: 英数字・`.`・`_`・`-` のみ、3-512文字。
 
 #### Step 2: 参照データの配置
 
-ファイル命名規則: `{日本語業務名}_{データ種別}_{YYYYMMDD}.xlsx`
-
-```
-data/source/
-├── faq/latest/
-│   └── 為替_履歴データ_20260601.xlsx        # 問い合わせ履歴データ（FAQ、任意）
-└── scenarios/latest/
-    └── 為替_シナリオデータ_20260601.xlsx    # シナリオ（任意）
-```
-
-- FAQ・シナリオの片方だけでも可。両方なくてもDB構築自体は通るがデータが空になる
-- 同一業務名で複数ファイルがある場合、最新日付が優先される
-- ファイル名の日本語部分が `business_areas.yaml` のキーと一致する必要がある
+`data/source/faq/latest/` や `data/source/scenarios/latest/` にファイルを配置。命名規則: `{日本語業務名}_{データ種別}_{YYYYMMDD}.xlsx`。FAQ・シナリオの片方だけでも可。
 
 #### Step 3: DB構築
 
 ```bash
 # Streamlit UI を停止してから実行（ChromaDB ファイルロック競合防止）
 python scripts/build_db.py --business kawase
-```
-
-確認:
-```bash
 python scripts/check_db_content.py  # ドキュメント数が 0 でないことを確認
 ```
 
 #### Step 4: 入力ファイルの作成
 
-バッチ処理用の入力ファイル命名規則: `{英語DB名}_{YYYYMMDD}.xlsx`
-
-```
-data/input/
-└── kawase_20260601.xlsx    # 列: 番号, 質問内容, 既存回答
-```
-
-**注意**: 入力ファイル名は**英語DB名**（`kawase`）を使用する。参照データは日本語名（`為替`）、入力ファイルは英語名という非対称に注意。
+バッチ処理用の入力ファイル: `data/input/kawase_20260601.xlsx`（列: 番号, 質問内容, 既存回答）。入力ファイル名は英語DB名（`kawase`）を使用する。参照データは日本語名（`為替`）、入力ファイルは英語名という非対称に注意。
 
 #### Step 5: 動作確認
 
@@ -577,26 +418,7 @@ python apps/answer-support/main.py --business kawase --limit 3
 
 ### 新しい検索エンジンの追加
 
-```python
-# src/core/search/custom_search_engine.py
-class CustomSearchEngine:
-    def search(self, query: str, documents: List[Dict]) -> List[SearchResult]:
-        # カスタム検索ロジック
-        pass
-```
-
-MultiStageOrchestrator は個別引数でエンジンを受け取るため、呼び出し元で注入する:
-
-```python
-# 呼び出し元で MultiStageOrchestrator を構築する際にカスタムエンジンを渡す
-orchestrator = MultiStageOrchestrator(
-    vector_engine=vector_engine,
-    keyword_engine=keyword_engine,
-    query_enhancer=query_enhancer,
-    text_combiner=text_combiner,
-    vector_weight=0.9
-)
-```
+MultiStageOrchestrator は個別引数でエンジンを受け取るため、新しいエンジンクラスを作成し、呼び出し元で `MultiStageOrchestrator` のコンストラクタに注入する。
 
 ### 認証方式
 
@@ -606,14 +428,6 @@ LLM は Gemini（Vertex AI）のみをサポート。認証は `CREDENTIAL_SOURC
 |----|---------|------|
 | `local`（デフォルト） | ローカルのサービスアカウント JSON ファイル | 開発環境 |
 | `key_vault` | Azure Key Vault からサービスアカウント JSON を取得 | 本番環境 |
-
-```python
-# src/utils/auth.py - get_google_credentials() の認証ディスパッチ
-_CREDENTIAL_HANDLERS = {
-    "local": _get_credentials_local,        # from_service_account_file()
-    "key_vault": _get_credentials_key_vault, # SecretClient → from_service_account_info()
-}
-```
 
 ---
 
@@ -679,7 +493,7 @@ tests/unit/
 ├── test_logger_noise.py             # サードパーティログ抑制
 ├── test_run_eval_cache.py           # 評価キャッシュ動作
 ├── test_search_strategy.py          # 検索戦略パターン（4戦略）
-├── test_text_combiner.py            # テキスト結合・パース
+├── test_text_combiner.py           # テキスト結合・パース
 ├── test_timestamp_migration.py      # タイムスタンプ移行
 └── test_ui_shared.py               # UI共通ユーティリティ
 ```
@@ -694,824 +508,3 @@ tests/unit/
 
 実行: `pytest tests/unit/ -v`
 カバレッジ: `pytest tests/unit/ --cov=src --cov-report=term-missing`
-
----
-
-## API リファレンス
-
-このドキュメントでは、RAG-Localシステムの主要なPythonモジュールのAPI仕様を説明します。
-
-### 目次
-
-- [設定](#設定)
-- [コアモジュール](#コアモジュール)
-- [検索エンジン](#検索エンジン)
-- [データベース管理](#データベース管理)
-- [埋め込みモデル](#埋め込みモデル)
-- [ハンドラー](#ハンドラー)
-- [型定義（Types Layer）](#型定義types-layer)
-- [ユーティリティ](#ユーティリティ)
-- [scripts/ ディレクトリ](#scripts-ディレクトリ)
-
----
-
-### 設定
-
-#### load_settings()
-
-**モジュール:** `config.py`
-
-`config/settings.yaml` を読み込み、セクション別の設定辞書を返すユーティリティ関数。
-
-```python
-def load_settings(section: Optional[str] = None) -> Dict[str, Any]:
-    """settings.yamlを読み込み、指定セクションの設定を返す
-
-    Args:
-        section: 読み込むセクション名 ("ui", "batch", "evaluation")
-                 Noneの場合は全設定を返す
-
-    Returns:
-        commonセクションと指定セクションをマージした辞書
-        sectionがNoneの場合は全設定辞書
-    """
-```
-
-#### SearchConfig
-
-**モジュール:** `config.py`
-
-検索システムの設定を管理するデータクラス。デフォルト値は `config/settings.yaml` と環境変数から読み込まれる。
-
-```python
-@dataclass
-class SearchConfig:
-    """検索設定を管理するデータクラス"""
-
-    # LLM設定（環境変数から読み込み）
-    llm_provider: str   # DEFAULT_LLM_PROVIDER 環境変数（必須）
-    llm_model: str      # DEFAULT_LLM_MODEL 環境変数（必須）
-
-    # 埋め込みモデル設定
-    embedding_provider: str  # DEFAULT_EMBEDDING_PROVIDER（必須、vertex_ai / azure_openai）
-    embedding_model: str     # __post_init__ でプロバイダーに応じて自動決定
-
-    # 検索設定（settings.yaml batch セクションから読み込み、フォールバックなし）
-    top_k: int = 4                    # 返却する結果数
-    vector_weight: float = 0.9        # ベクトル検索の重み（0〜1）※ batch セクション固有値
-    keyword_weight: float             # 自動計算（1.0 - vector_weight）
-
-    # 検索モード: original | llm_enhanced | multi_stage
-    # multi_stage は運用保守効率化AI（改定影響調査）専用
-    search_mode: str = "original"
-
-    # 入出力設定
-    input_type: str = "excel"
-    output_type: str = "excel"
-    reference_type: str = "multi_folder"
-```
-
-##### 主要パラメータ
-
-| パラメータ | 型 | デフォルト | 説明 |
-|-----------|-----|-----------|------|
-| `credential_source` | str | `local` | GCP認証方式（local/key_vault） |
-| `llm_provider` | str | 環境変数 | LLMプロバイダー（gemini のみ） |
-| `llm_model` | str | 環境変数 | LLMモデル名 |
-| `embedding_provider` | str | 環境変数 | 埋め込みプロバイダー（vertex_ai/azure_openai） |
-| `embedding_model` | str | 環境変数 | 埋め込みモデル名 |
-| `top_k` | int | settings.yaml | 返却する結果数 |
-| `vector_weight` | float | settings.yaml | ベクトル検索の重み（0〜1） |
-| `keyword_weight` | float | 自動計算 | キーワード検索の重み（1.0 - vector_weight） |
-| `search_mode` | str | settings.yaml | 検索モード: original / llm_enhanced（回答支援AI）、+ multi_stage（運用保守効率化AI） |
-| `search_type` | str | settings.yaml | 検索タイプ（hybrid/keyword_filter） |
-| `search_source` | str | settings.yaml | 検索対象（scenario/history_data） |
-| `reference_type` | str | "multi_folder" | 参照データ形式（excel/hierarchical_excel/multi_folder） |
-| `force_db_update` | bool | False | 強制DB更新フラグ |
-| `dual_provider_mode` | bool | False | 両プロバイダー比較モード |
-
-##### 使用例
-
-```python
-from config import SearchConfig, load_settings
-
-# settings.yaml のセクション読み込み
-ui_settings = load_settings("ui")
-
-# SearchConfig は環境変数が必須（.env ファイルで設定）
-config = SearchConfig(
-    top_k=10,
-    vector_weight=0.7,
-    search_mode="llm_enhanced"
-)
-```
-
----
-
-### コアモジュール
-
-#### Processor
-
-**モジュール:** `src/core/processor.py`
-
-データ処理の統合管理クラス。InputHandlerFactory / OutputHandlerFactory で入出力を切り替える。
-
-```python
-class Processor:
-    """データ処理エンジン"""
-
-    def __init__(self, config: SearchConfig):
-        """
-        Args:
-            config: 検索設定
-        """
-```
-
-##### メソッド
-
-###### process_data
-
-```python
-def process_data(self, mode: str = "batch", limit: int = None):
-    """
-    データ処理のメイン関数
-
-    Args:
-        mode: 処理モード（"batch" 等）
-        limit: 処理する入力データの件数上限（Noneで全件）
-
-    Note:
-        内部で入力データ読み込み → 参照データ読み込み → 検索準備 →
-        各質問の検索実行 → 結果出力 を一括で行う。
-        search_mode が "multi_stage" の場合は LLM 判断支援付き3シート出力。
-
-    Raises:
-        Exception: 処理中のエラー
-    """
-```
-
-##### 使用例
-
-```python
-from config import SearchConfig
-from src.core.processor import Processor
-
-config = SearchConfig()
-processor = Processor(config)
-
-# バッチ処理実行
-processor.process_data(mode="batch")
-
-# 件数制限付き
-processor.process_data(mode="batch", limit=10)
-```
-
-#### Searcher
-
-**モジュール:** `src/core/searcher.py`
-
-Processor と SearchStrategy を仲介する統合検索クラス。動的DB選択、キーワードキャッシング、検索委譲を管理する。
-
-```python
-class Searcher:
-    """メタデータ対応ハイブリッド検索クラス"""
-
-    def __init__(
-        self,
-        config: SearchConfig,
-        db_manager: Optional[DynamicDBManager] = None,
-        embedding_model: Optional[BaseEmbeddingModel] = None
-    ):
-        """
-        Args:
-            config: 検索設定
-            db_manager: 動的DB管理（省略時は自動生成）
-            embedding_model: 埋め込みモデル（省略時は自動生成）
-        """
-```
-
-##### メソッド
-
-###### prepare_search
-
-```python
-def prepare_search(self, reference_data: dict):
-    """
-    参照データの読み込みとベクトル化、キーワードキャッシュ構築
-
-    Args:
-        reference_data: 業務分野別の参照データ辞書
-    """
-```
-
-###### search
-
-```python
-def search(
-    self,
-    input_number: str,
-    query_text: str,
-    original_answer: str,
-    input_file: str = None
-) -> list:
-    """
-    SearchStrategy に委譲して検索実行
-
-    Args:
-        input_number: 入力番号
-        query_text: 検索クエリテキスト
-        original_answer: 元の回答
-        input_file: 入力ファイル名（動的DB選択用）
-
-    Returns:
-        検索結果のリスト
-    """
-```
-
-#### JudgmentSupport
-
-**モジュール:** `src/core/judgment_support.py`
-
-LLMによる改定内容と検索結果の関連性判定（人間の意思決定を支援）。
-
-```python
-class JudgmentSupport:
-    """LLMを使用して人間の判断を支援するクラス"""
-
-    def __init__(self, config: SearchConfig):
-        """
-        Args:
-            config: 検索設定
-        """
-```
-
-##### メソッド
-
-###### evaluate
-
-```python
-def evaluate(
-    self,
-    revision_content: str,
-    search_result_q: str,
-    search_result_a: str
-) -> Dict[str, str]:
-    """
-    単一の検索結果に対する関連性評価を実行
-
-    Args:
-        revision_content: 改定内容テキスト
-        search_result_q: 検索結果の質問
-        search_result_a: 検索結果の回答
-
-    Returns:
-        {
-            "relevance_judgment": "関連あり" | "要確認" | "明らかに無関係" | "エラー",
-            "judgment_reason": "判定根拠"
-        }
-    """
-```
-
-##### 使用例
-
-```python
-from src.core.judgment_support import JudgmentSupport
-
-support = JudgmentSupport(config)
-
-result = support.evaluate(
-    revision_content="相続人確認方法を追加する",
-    search_result_q="相続預金の手続きについて",
-    search_result_a="本人確認書類をご持参の上..."
-)
-
-print(result["relevance_judgment"])  # "関連あり"
-print(result["judgment_reason"])     # "改定内容と既存QAが同一業務を対象としている"
-```
-
----
-
-### 検索エンジン
-
-#### MultiStageOrchestrator
-
-**モジュール:** `src/core/search/multi_stage_orchestrator.py`
-
-多段階ハイブリッド検索のオーケストレーター。原文検索 + LLMクエリ検索のOR結合を管理。
-
-```python
-class MultiStageOrchestrator:
-    """多段階検索オーケストレーター"""
-
-    def __init__(
-        self,
-        vector_engine: VectorSearchEngine,
-        keyword_engine: KeywordSearchEngine,
-        query_enhancer: QueryEnhancer,
-        text_combiner: TextCombiner,
-        vector_weight: float = 0.9,
-        threshold: float = 0.45,
-        max_results: int = 100,
-        filter_mode: str = "threshold",
-        top_k: int = 50
-    ):
-        """
-        Args:
-            vector_engine: ベクトル検索エンジン
-            keyword_engine: キーワード検索エンジン
-            query_enhancer: クエリ拡張エンジン
-            text_combiner: テキスト結合ユーティリティ
-            vector_weight: ベクトルスコアの重み
-            threshold: 結果に含めるスコアしきい値
-            max_results: 各検索の最大結果数
-            filter_mode: フィルタリングモード ('threshold' or 'top_k')
-            top_k: TOP-K件数（filter_mode='top_k'の場合に使用）
-        """
-```
-
-#### QueryEnhancer
-
-**モジュール:** `src/core/search/query_enhancer.py`
-
-LLMによるクエリ拡張。
-
-```python
-class QueryEnhancer:
-    """クエリ拡張エンジン"""
-
-    def __init__(self, llm, base_dir: str = "."):
-        """
-        Args:
-            llm: LangChain LLMインスタンス
-            base_dir: プロンプトファイルの基準ディレクトリ
-        """
-```
-
-##### メソッド
-
-###### enhance
-
-```python
-def enhance(self, query: str) -> str:
-    """
-    クエリを拡張
-
-    Args:
-        query: 元のクエリ
-
-    Returns:
-        拡張されたクエリ（キーワード列挙形式）
-
-    Example:
-        >>> enhancer.enhance("口座開設について")
-        "検索クエリ: 銀行口座 新規開設 必要書類 手続き 流れ"
-    """
-```
-
-#### SearchStrategy - 戦略パターン
-
-統一インターフェース: `execute(input_number, query_text, original_answer) -> List[Dict]`
-
-| 戦略クラス | search_mode | 処理 |
-|-----------|-------------|------|
-| `OriginalSearchStrategy` | original | 原文でベクトル+キーワード検索 |
-| `LLMEnhancedSearchStrategy` | llm_enhanced | LLMクエリ生成後にベクトル+キーワード検索 |
-| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類（運用保守効率化AI専用） |
-| `KeywordFilterSearchStrategy` | keyword_filter | キーワードマッチのみ（ベクトル検索なし） |
-
----
-
-### データベース管理
-
-#### DynamicDBManager
-
-**モジュール:** `src/utils/dynamic_db_manager.py`
-
-業務領域別のベクトルDB管理。タイムスタンプ検証による差分更新を行う。
-
-```python
-class DynamicDBManager:
-    """動的DB管理システム"""
-
-    def __init__(self, config: SearchConfig):
-        """
-        Args:
-            config: 検索設定
-                    （config.base_dir から data/vector_db パスを生成）
-        """
-```
-
-#### MetadataVectorDB
-
-**モジュール:** `src/utils/vector_db.py`
-
-ChromaDBの操作インターフェース。メタデータ対応のベクトルデータベースクラス。
-
-```python
-class MetadataVectorDB:
-    """メタデータ対応のベクトルデータベースクラス"""
-
-    def __init__(
-        self,
-        base_dir: str = ".",
-        collection_name: str = None,
-        batch_size: int = 100,
-        db_path: str = None
-    ):
-        """
-        Args:
-            base_dir: ベースディレクトリ
-            collection_name: コレクション名
-            batch_size: バッチサイズ
-            db_path: DB パス（直接指定時、base_dir より優先）
-        """
-```
-
----
-
-### 埋め込みモデル
-
-#### BaseEmbeddingModel
-
-**モジュール:** `src/utils/base_embedding.py`
-
-埋め込みモデルの抽象基底クラス。
-
-```python
-class BaseEmbeddingModel(ABC):
-    """埋め込みモデル基底クラス"""
-
-    def __init__(self, config: SearchConfig):
-        """
-        Args:
-            config: SearchConfig インスタンス
-        """
-
-    @abstractmethod
-    def encode(
-        self,
-        texts: Union[str, List[str]],
-        normalize_embeddings: bool = True
-    ) -> np.ndarray:
-        """
-        テキストをベクトル化
-
-        Args:
-            texts: 単一テキストまたはテキストのリスト
-            normalize_embeddings: ベクトルを正規化するかどうか
-
-        Returns:
-            numpy.ndarray: 埋め込みベクトル（2次元配列）
-        """
-        pass
-
-    def encode_single(self, text: str, normalize_embeddings: bool = True) -> np.ndarray:
-        """
-        単一テキストをベクトル化
-
-        Returns:
-            numpy.ndarray: 埋め込みベクトル（1次元配列）
-        """
-
-    @property
-    @abstractmethod
-    def embedding_dimension(self) -> int:
-        """埋め込みベクトルの次元数を返す"""
-
-    @property
-    @abstractmethod
-    def provider_name(self) -> str:
-        """プロバイダー名を返す（例: "vertex_ai", "azure_openai"）"""
-```
-
-#### GeminiEmbeddingModel
-
-**モジュール:** `src/utils/gemini_embedding.py`
-
-VertexAI Gemini埋め込みモデル。
-
-```python
-class GeminiEmbeddingModel(BaseEmbeddingModel):
-    """Gemini埋め込みモデル"""
-
-    def __init__(self, config: SearchConfig):
-        """
-        Args:
-            config: 検索設定
-
-        Raises:
-            ValueError: 認証エラー
-        """
-```
-
-#### AzureEmbeddingModel
-
-**モジュール:** `src/utils/azure_embedding.py`
-
-Azure OpenAI埋め込みモデル。
-
-```python
-class AzureEmbeddingModel(BaseEmbeddingModel):
-    """Azure OpenAI埋め込みモデル"""
-
-    def __init__(self, config: SearchConfig):
-        """
-        Args:
-            config: 検索設定
-
-        Raises:
-            ValueError: API キーまたはエンドポイントが未設定
-        """
-```
-
----
-
-### ハンドラー
-
-#### InputHandler / InputHandlerFactory
-
-**モジュール:** `src/handlers/input_handler.py`
-
-入力ファイルの処理。Factoryパターンで入力形式に応じたハンドラーを生成する。
-
-```python
-class InputHandler:
-    """入力処理の基底クラス"""
-
-    def __init__(self, config: SearchConfig):
-        """
-        Args:
-            config: 検索設定
-        """
-
-    def load_data(self) -> list:
-        """入力データを読み込み、共通の形式に変換"""
-        raise NotImplementedError
-
-    def load_reference_data(self) -> dict:
-        """参照データを読み込み、共通の形式に変換"""
-        raise NotImplementedError
-
-
-class InputHandlerFactory:
-    """入力ハンドラーのファクトリ"""
-
-    @staticmethod
-    def create(input_type: str, config: SearchConfig) -> InputHandler:
-        """入力タイプに応じたハンドラーを生成"""
-```
-
-#### OutputHandler / OutputHandlerFactory
-
-**モジュール:** `src/handlers/output_handler.py`
-
-出力ファイルの生成。Factoryパターンで出力形式に応じたハンドラーを生成する。
-
-```python
-class OutputHandler:
-    """出力処理の基底クラス"""
-
-    def __init__(self, config: SearchConfig, app_prefix: str = ""):
-        """
-        Args:
-            config: 検索設定
-            app_prefix: 出力サブディレクトリ（例: "answer", "rev"）
-        """
-
-    def save_data(self, data: list):
-        """データを保存"""
-        raise NotImplementedError
-
-
-class OutputHandlerFactory:
-    """出力ハンドラーのファクトリ"""
-
-    @staticmethod
-    def create(output_type: str, config: SearchConfig, app_prefix: str = "") -> OutputHandler:
-        """出力タイプに応じたハンドラーを生成"""
-```
-
----
-
-### 型定義（Types Layer）
-
-**モジュール:** `src/types/search_types.py`
-
-| 分類 | クラス名 | 用途 |
-|------|---------|------|
-| TypedDict | `SearchResultDict` | 検索結果の基本型 |
-| TypedDict | `MultiStageSearchResultDict` | 多段階検索結果（Search_Category付き） |
-| TypedDict | `VectorSearchResultDict` | ベクトルDB検索結果 |
-| Dataclass | `ParsedCombinedText` | 結合テキスト解析結果（frozen=True） |
-| 定数 | `SearchResultKeys` | Excel出力列名の一元管理 |
-| 定数 | `MetadataKeys` | ChromaDBメタデータキー定数 |
-| 定数 | `SourceValues` | ソース値定数（SCENARIO, HISTORY_DATA） |
-| 定数 | `SearchCategoryValues` | カテゴリ値定数（BOTH, ORIGINAL_ONLY, LLM_ENHANCED_ONLY） |
-
----
-
-### ユーティリティ
-
-#### BusinessAreaTranslator
-
-**モジュール:** `src/utils/business_area_translator.py`
-
-業務領域の日本語→英語変換。YAMLファイル（`config/business_areas.yaml`）からマッピングを読み込む。
-
-```python
-class BusinessAreaTranslator:
-    """業務分野名変換クラス"""
-
-    def __init__(self, config_path: Optional[str] = None):
-        """
-        Args:
-            config_path: 設定ファイルのパス（省略時はデフォルトパス）
-        """
-        self.mappings: Dict[str, str] = {}         # YAMLから読み込み
-        self.revision_mappings: Dict[str, str] = {} # 事務改定用マッピング
-
-    def translate(self, business_area: str) -> str:
-        """
-        業務分野名を英語に変換
-
-        Args:
-            business_area: 日本語の業務分野名（例: 内部事務）
-
-        Returns:
-            ChromaDB互換の英語名（例: naibujimu）
-
-        Note:
-            完全一致 → 部分一致 → 英数字サニタイズのフォールバック順で変換。
-            revXXで始まる場合は revision_mappings を優先チェック。
-        """
-```
-
-現在の主要マッピング（`config/business_areas.yaml`から読み込み）:
-
-| 日本語名 | 英語名 |
-|----------|--------|
-| 内部事務 | naibujimu |
-| スマイル | smile |
-| 相続 | souzoku |
-| 取引時確認 | torikaku |
-
-#### Logger
-
-**モジュール:** `src/utils/logger.py`
-
-ログ設定。rich ライブラリによる色付き出力に対応。
-
-```python
-def setup_logger(name: str) -> logging.Logger:
-    """
-    ロガーを設定
-
-    Args:
-        name: ロガー名（通常は __name__）
-
-    Returns:
-        ロガーインスタンス
-
-    Note:
-        - ログレベルは LOG_LEVEL 環境変数で制御（デフォルト: INFO）
-        - ファイル出力: logs/app.log（詳細フォーマット）
-        - コンソール出力: rich 使用時は色付き、未使用時は短縮フォーマット
-    """
-```
-
----
-
-### scripts/ ディレクトリ
-
-| スクリプト | 用途 | 主要オプション |
-|-----------|------|---------------|
-| `build_db.py` | ベクトルDB構築 | `--force`, `--business {name}`, `--revisions-only`, `--no-revisions` |
-| `check_db_content.py` | DB内容確認 | --- |
-| `generate_correct_ids.py` | 正解ID対応表生成 | --- |
-| `prepare_before_scenario.py` | 改定前データ前処理 | --- |
-| `create_handover_package.py` | 引き継ぎパッケージ作成 | `--include-vectordb`, `--include-examples` |
-
----
-
-### エラーハンドリング
-
-#### DynamicDBError
-
-```python
-# src/utils/dynamic_db_manager.py
-
-class DynamicDBError(Exception):
-    """動的DB管理のエラー"""
-    pass
-```
-
-> **Note:** 汎用の `src/exceptions.py` は未実装。各モジュールが個別に例外を定義している。
-
----
-
-### 使用例：完全なワークフロー
-
-```python
-from config import SearchConfig
-from src.core.processor import Processor
-
-# 1. 設定（環境変数 .env で LLM/Embedding プロバイダーを設定済み）
-config = SearchConfig(
-    top_k=4,
-    vector_weight=0.9,
-    search_mode="llm_enhanced"
-)
-
-# 2. Processor が入力読み込み〜検索〜出力を一括実行
-processor = Processor(config)
-processor.process_data(mode="batch")
-```
-
----
-
-## プロンプト
-
-このディレクトリには、LLMに送信するプロンプトテンプレートが格納されています。
-
-### AI使用箇所マップ
-
-```
-入力
-  │
-  ├─ ベクトル化 ─────────────────────────────────── [Embedding Model]
-  │   └─ azure_openai: text-embedding-3-large
-  │   └─ vertex_ai: gemini-embedding-001
-  │
-  ├─ クエリ拡張 ─────────────────────────────────── [LLM]
-  │   └─ prompt/summarize_v1.0.txt
-  │   └─ 呼び出し元: src/core/search/query_enhancer.py
-  │
-  ├─ 検索 ───────────────────────────────────────── [ベクトルDB]
-  │   └─ ChromaDB
-  │
-  └─ 関連性判定 ─────────────────────────────────── [LLM]
-      └─ prompt/judgment_support.txt
-      └─ 呼び出し元: src/core/judgment_support.py
-```
-
-### プロンプトファイル詳細
-
-| ファイル | 用途 | 呼び出し元 | AIモデル |
-|---------|------|-----------|---------|
-| `summarize_v1.0.txt` | 検索クエリ拡張 | `query_enhancer.py` | LLM (gemini-2.5-flash-lite) |
-| `judgment_support.txt` | 関連性判定（関連あり/要確認/無関係） | `judgment_support.py` | LLM (gemini-2.5-flash-lite) |
-
-### 各プロンプトの説明
-
-#### summarize_v1.0.txt（クエリ拡張）
-
-ユーザーの質問文を、ベクトル検索に最適化された検索クエリに変換します。
-
-**入力**: ユーザーの質問文
-**出力**: 検索クエリ（キーワード列挙形式）
-
-```
-検索クエリ: 現金処理 誤操作 WAVE 700 PRO 有高調整 手続き
-```
-
-#### judgment_support.txt（関連性判定）
-
-改定内容と検索結果（既存FAQ）の関連性を3段階で判定します。
-
-**入力**: 改定内容、検索結果（質問・回答）
-**出力**:
-```
-関連性: 関連あり / 要確認 / 明らかに無関係
-根拠: 判定理由（1-2文）
-```
-
-### 設定
-
-使用するLLMモデルは環境変数で設定します：
-
-```
-DEFAULT_LLM_PROVIDER=gemini
-DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
-```
-
-詳細は `.env.example` を参照してください。
-
----
-
-## 規約と注意事項
-
-- **検索モード**: `search_mode` パラメータで制御（`enable_query_enhancement`は廃止済み）
-- **検索実行**: `SearchStrategy`パターン（`src/core/search/search_strategy.py`）で4戦略クラスを切替
-- **タイムスタンプ**: フラット形式（旧3階層から自動移行対応済み）
-- **テスト**: `pytest` で実行（`tests/`, `pytest.ini`, `requirements-dev.txt`）
-- **コレクション命名**: `rev{XX}_{bot}` 形式（例: `rev01_smile`, `rev02_souzoku`）
-
----
-
-## 関連ドキュメント
-
-- [README.md](../README.md) - プロジェクト概要・セットアップ
-- [docs/ANSWER_SUPPORT.md](./ANSWER_SUPPORT.md) - 回答支援AI詳細
-- [docs/REVISION_OPS.md](./REVISION_OPS.md) - 改定影響調査詳細
-- [docs/CONFIGURATION.md](./CONFIGURATION.md) - 設定リファレンス
-- [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - トラブルシューティング
