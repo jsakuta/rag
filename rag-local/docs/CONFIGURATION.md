@@ -8,8 +8,6 @@
 
 - [クイックスタート: .env テンプレート](#クイックスタート-env-テンプレート)
 - [環境変数一覧](#環境変数一覧)
-- [LLM設定](#llm設定)
-- [埋め込みモデル設定](#埋め込みモデル設定)
 - [検索設定](#検索設定)
 - [データベース設定](#データベース設定)
 - [UI設定](#ui設定)
@@ -73,9 +71,9 @@ DEFAULT_EMBEDDING_PROVIDER=azure_openai
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
-| `DEFAULT_LLM_PROVIDER` | LLM（大規模言語モデル）のプロバイダー（`gemini` のみサポート） | **必須** | `gemini` |
+| `DEFAULT_LLM_PROVIDER` | LLM（大規模言語モデル）のプロバイダー（`gemini` のみサポート）。利用可能なモデル: gemini-2.5-flash-lite（推奨）/ gemini-2.5-flash / gemini-2.5-pro | **必須** | `gemini` |
 | `DEFAULT_LLM_MODEL` | LLMのモデル名 | **必須** | `gemini-2.5-flash-lite` |
-| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー（文章を数値に変換するサービス）。埋め込みモデルはプロバイダーに応じて自動決定される（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`） | **必須** | `azure_openai` |
+| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー（文章を数値に変換するサービス）。埋め込みモデルはプロバイダーに応じて自動決定される（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`）。azure_openai: 3072次元、バッチ250。vertex_ai: 3072次元、バッチ100（SDK上限キャップ） | **必須** | `azure_openai` |
 
 ### Google Cloud / VertexAI 設定
 
@@ -135,81 +133,6 @@ DEFAULT_EMBEDDING_PROVIDER=azure_openai
 | **プロバイダー別必須** | `GOOGLE_APPLICATION_CREDENTIALS` | `vertex_ai` 使用時（OS環境変数として設定） |
 | **オプション** | `VERTEX_AI_EMBEDDING_MODEL`, `GEMINI_CREDENTIALS_PATH`, `GEMINI_LOCATION`, `ENABLE_LLM_ANALYSIS`, `LOG_LEVEL` | デフォルト値あり、または特定機能のみ |
 | **条件付き必須** | `AZURE_KEY_VAULT_URL`, `AZURE_KEY_VAULT_SECRET_NAME` | `CREDENTIAL_SOURCE=key_vault` 時のみ |
-
----
-
-## LLM設定
-
-### プロバイダーの選択
-
-#### Gemini（唯一のサポート対象）
-
-```env
-DEFAULT_LLM_PROVIDER=gemini
-DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
-
-# 必須: Google Cloud認証
-GEMINI_PROJECT_ID=your-project-id
-GEMINI_LOCATION=us-central1
-```
-
-**特徴:**
-- 高速レスポンス
-- 日本語対応
-- コスト効率が良い
-
-**利用可能なモデル:**
-- `gemini-2.5-flash-lite` - 最速、低コスト（推奨）
-- `gemini-2.5-flash` - バランス型
-- `gemini-2.5-pro` - 高精度
-
----
-
-## 埋め込みモデル設定
-
-### プロバイダーの選択
-
-#### Azure OpenAI（推奨）
-
-```env
-DEFAULT_EMBEDDING_PROVIDER=azure_openai
-# モデルは AZURE_OPENAI_EMBEDDING_DEPLOYMENT に応じて自動決定
-
-# 必須: Azure OpenAI認証
-AZURE_OPENAI_API_KEY=your-api-key
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-```
-
-**特徴:**
-- 高精度（3072次元）
-- 安定性が高い
-- エンタープライズ向け
-
-**性能:**
-- バッチサイズ: 250（`config.py` の `EMBEDDING_BATCH_SIZE`）
-- 入力上限: 8191トークン/テキスト
-
-#### VertexAI Gemini
-
-```env
-DEFAULT_EMBEDDING_PROVIDER=vertex_ai
-# モデルは VERTEX_AI_EMBEDDING_MODEL に応じて自動決定
-
-# 必須: Google Cloud認証
-GEMINI_PROJECT_ID=your-project-id
-VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
-```
-
-**特徴:**
-- Google Cloud統合
-- 次元数: 3072（固定）
-
-**性能:**
-- バッチサイズ: 100（`EMBEDDING_BATCH_SIZE=250` を SDK上限 100 にキャップ）
-
-> **Note:** Gemini embedding-001 は MRL（Matryoshka Representation Learning）に対応しており、API パラメータで次元数を 3072 / 1536 / 768 から選択可能ですが、本システムでは 3072 固定で使用しています。
 
 ---
 
