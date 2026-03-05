@@ -211,7 +211,7 @@ rm data/vector_db/update_timestamps.json
 python apps/answer-support/main.py
 ```
 
-改定影響調査に固有の問題は [docs/REVISION_OPS.md](./REVISION_OPS.md) の「既知の問題と注意事項」セクションを参照してください。
+改定影響調査に固有の問題は [REVISION_OPS.md](./REVISION_OPS.md) の「既知の問題と注意事項」セクションを参照してください。
 
 ---
 
@@ -635,4 +635,4 @@ DEFAULT_LLM_MODEL=gemini-2.5-flash-lite  # gemini-2.5-flash, gemini-2.5-pro も�
 
 1. ログファイルを確認: `logs/app.log`
 2. GitHub Issues で報告
-3. [docs/ARCHITECTURE.md](./ARCHITECTURE.md) でシステム構成を確認
+3. [ARCHITECTURE.md](./ARCHITECTURE.md) でシステム構成を確認

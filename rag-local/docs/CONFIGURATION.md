@@ -221,7 +221,7 @@ config = SearchConfig(
 | `search_mode` | `original` / `llm_enhanced` / `multi_stage`* | クエリの処理方法（原文そのまま / LLMで拡張 / 多段階で網羅的に検索） |
 | `search_type` | `hybrid` / `keyword_filter` | 検索アルゴリズム（ベクトル+キーワード / キーワードのみ） |
 
-> \* `multi_stage` は運用保守効率化AI（改定影響調査）専用です。詳細は [REVISION_OPS.md](REVISION_OPS.md) を参照。
+> \* `multi_stage` は運用保守効率化AI（改定影響調査）専用です。詳細は [REVISION_OPS.md](./REVISION_OPS.md) を参照。
 
 - `search_type=hybrid`: 意味の近さで検索する方式（ベクトル検索）とキーワードの一致で検索する方式を、`vector_weight` で重み付けして合算
 - `search_type=keyword_filter`: 事前構築されたキーワードキャッシュでキーワードマッチのみ実行（ベクトル検索なし、`vector_weight` は不使用）
