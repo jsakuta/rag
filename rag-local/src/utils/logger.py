@@ -52,7 +52,7 @@ def get_console() -> Optional["Console"]:
     """共有Consoleインスタンスを取得"""
     global _console
     if _console is None and RICH_AVAILABLE:
-        _console = Console(theme=CUSTOM_THEME, force_terminal=True)
+        _console = Console(theme=CUSTOM_THEME, file=open(os.devnull, "w"))
     return _console
 
 
