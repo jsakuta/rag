@@ -6,6 +6,7 @@
 
 ## 目次
 
+- [クイックスタート: .env テンプレート](#クイックスタート-env-テンプレート)
 - [環境変数一覧](#環境変数一覧)
 - [LLM設定](#llm設定)
 - [埋め込みモデル設定](#埋め込みモデル設定)
@@ -13,7 +14,56 @@
 - [データベース設定](#データベース設定)
 - [UI設定](#ui設定)
 - [ログ設定](#ログ設定)
-- [設定ファイル例](#設定ファイル例)
+
+---
+
+## クイックスタート: .env テンプレート
+
+初回セットアップ時は、以下のテンプレートをコピーして `.env` ファイルを作成してください。
+
+### ローカル認証
+
+```env
+# ===== GCP認証 =====
+CREDENTIAL_SOURCE=local
+# GEMINI_CREDENTIALS_PATH=gemini_credentials.json  # デフォルト
+
+# ===== Vertex AI =====
+GEMINI_PROJECT_ID=your-project-id
+GEMINI_LOCATION=us-central1
+
+# ===== Azure OpenAI（埋め込み） =====
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+
+# ===== デフォルト選択 =====
+DEFAULT_LLM_PROVIDER=gemini
+DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
+DEFAULT_EMBEDDING_PROVIDER=azure_openai
+```
+
+### Key Vault 認証
+
+```env
+# ===== GCP認証（Key Vault経由） =====
+CREDENTIAL_SOURCE=key_vault
+AZURE_KEY_VAULT_URL=https://prod-vault.vault.azure.net/
+AZURE_KEY_VAULT_SECRET_NAME=gcp-sa-credentials
+AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
+
+# ===== Vertex AI =====
+GEMINI_PROJECT_ID=your-project-id
+GEMINI_LOCATION=us-central1
+
+# ===== Azure OpenAI（埋め込み） =====
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+
+# ===== デフォルト選択 =====
+DEFAULT_LLM_PROVIDER=gemini
+DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
+DEFAULT_EMBEDDING_PROVIDER=azure_openai
+```
 
 ---
 
@@ -493,54 +543,6 @@ logger = setup_logger(__name__)  # ログレベルは LOG_LEVEL 環境変数で�
 logs/
 ├── app.log          # メインログ（全レベル統合出力）
 └── archive/         # アーカイブ
-```
-
----
-
-## 設定ファイル例
-
-### ローカル認証
-
-```env
-# ===== GCP認証 =====
-CREDENTIAL_SOURCE=local
-# GEMINI_CREDENTIALS_PATH=gemini_credentials.json  # デフォルト
-
-# ===== Vertex AI =====
-GEMINI_PROJECT_ID=your-project-id
-GEMINI_LOCATION=us-central1
-
-# ===== Azure OpenAI（埋め込み） =====
-AZURE_OPENAI_API_KEY=your-api-key
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-
-# ===== デフォルト選択 =====
-DEFAULT_LLM_PROVIDER=gemini
-DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
-DEFAULT_EMBEDDING_PROVIDER=azure_openai
-```
-
-### Key Vault 認証
-
-```env
-# ===== GCP認証（Key Vault経由） =====
-CREDENTIAL_SOURCE=key_vault
-AZURE_KEY_VAULT_URL=https://prod-vault.vault.azure.net/
-AZURE_KEY_VAULT_SECRET_NAME=gcp-sa-credentials
-AZURE_KEY_VAULT_SCOPES=https://www.googleapis.com/auth/cloud-platform
-
-# ===== Vertex AI =====
-GEMINI_PROJECT_ID=your-project-id
-GEMINI_LOCATION=us-central1
-
-# ===== Azure OpenAI（埋め込み） =====
-AZURE_OPENAI_API_KEY=your-api-key
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-
-# ===== デフォルト選択 =====
-DEFAULT_LLM_PROVIDER=gemini
-DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
-DEFAULT_EMBEDDING_PROVIDER=azure_openai
 ```
 
 ---
