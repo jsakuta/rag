@@ -25,9 +25,7 @@
 |--------|------|------------|-----|
 | `DEFAULT_LLM_PROVIDER` | LLM（大規模言語モデル）のプロバイダー（`gemini` のみサポート） | **必須** | `gemini` |
 | `DEFAULT_LLM_MODEL` | LLMのモデル名 | **必須** | `gemini-2.5-flash-lite` |
-| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー（文章を数値に変換するサービス） | **必須** | `azure_openai` |
-
-> **Note:** 以前は `DEFAULT_EMBEDDING_MODEL` で埋め込みモデル名を手動指定していましたが、現在は廃止されています。埋め込みモデルはプロバイダーに応じて自動決定されます（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`）。`.env` にこの旧変数名を設定しても無視されます。
+| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー（文章を数値に変換するサービス）。埋め込みモデルはプロバイダーに応じて自動決定される（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`） | **必須** | `azure_openai` |
 
 ### Google Cloud / VertexAI 設定
 
