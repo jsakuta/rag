@@ -234,7 +234,7 @@ MemoryError: Unable to allocate array
 ```python
 # config.py の SearchConfig クラス定数を変更
 EMBEDDING_BATCH_SIZE: int = 50   # デフォルト250から縮小
-VECTOR_DB_BATCH_SIZE: int = 50   # デフォルト100から縮小
+VECTOR_DB_BATCH_SIZE: int = 50   # デフォルト100から縮小（実装上限: 1000）
 ```
 
 2. システムメモリを増強（推奨: 16GB以上）
@@ -312,11 +312,11 @@ ls data/input/
 
 **症状:**
 ```
-RuntimeError: LLM is not initialized. Set DEFAULT_LLM_PROVIDER and DEFAULT_LLM_MODEL.
+ValueError: DEFAULT_LLM_PROVIDER環境変数が設定されていません（gemini）
 ```
 
 **原因:**
-- `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` が未設定（全モードで起動時に必須）
+- `DEFAULT_LLM_PROVIDER` が未設定、または 'gemini' 以外が指定されている
 - `search_mode: llm_enhanced` 設定時に GCP 認証（`GEMINI_PROJECT_ID` + `gemini_credentials.json`）が未設定
 
 **解決策:**
@@ -556,15 +556,14 @@ python scripts/check_db_content.py
 
 出力例:
 ```text
-=== ChromaDB Content Analysis ===
-Collection: naibujimu
-Total documents: 11439
-Unique documents: 11439
-Duplicate documents: 0
+=== データベース内容確認 ===
+総ドキュメント数: 11439
+ユニークドキュメント数: 11439
+重複ドキュメント数: 0
 
-Source distribution:
-  scenario: 1384        ← シナリオデータの件数
-  faq_data: 10055       ← 問い合わせ履歴データ（FAQ）の件数
+=== ソース別件数 ===
+  scenario: 1384件        ← シナリオデータの件数
+  faq_data: 10055件       ← 問い合わせ履歴データ（FAQ）の件数
 ```
 
 ---
