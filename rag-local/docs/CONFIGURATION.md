@@ -80,10 +80,10 @@
 
 | 分類 | 変数 | 条件 |
 |------|------|------|
-| **常に必須** | `CREDENTIAL_SOURCE`, `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL`, `GEMINI_PROJECT_ID`, `GEMINI_LOCATION` | 全機能で必要 |
+| **常に必須** | `CREDENTIAL_SOURCE`, `DEFAULT_LLM_PROVIDER`, `DEFAULT_LLM_MODEL`, `DEFAULT_EMBEDDING_PROVIDER`, `GEMINI_PROJECT_ID`, `GEMINI_LOCATION` | 全機能で必要 |
 | **プロバイダー別必須** | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION` | `azure_openai` 使用時 |
 | **プロバイダー別必須** | `GOOGLE_APPLICATION_CREDENTIALS` | `vertex_ai` 使用時（OS環境変数として設定） |
-| **オプション** | `DEFAULT_EMBEDDING_PROVIDER`, `VERTEX_AI_EMBEDDING_MODEL`, `GEMINI_CREDENTIALS_PATH`, `GEMINI_LOCATION`, `ENABLE_LLM_ANALYSIS`, `LOG_LEVEL` | デフォルト値あり、または特定機能のみ |
+| **オプション** | `VERTEX_AI_EMBEDDING_MODEL`, `GEMINI_CREDENTIALS_PATH`, `GEMINI_LOCATION`, `ENABLE_LLM_ANALYSIS`, `LOG_LEVEL` | デフォルト値あり、または特定機能のみ |
 | **条件付き必須** | `AZURE_KEY_VAULT_URL`, `AZURE_KEY_VAULT_SECRET_NAME` | `CREDENTIAL_SOURCE=key_vault` 時のみ |
 
 ---
@@ -138,8 +138,8 @@ AZURE_OPENAI_API_VERSION=2024-12-01-preview
 - エンタープライズ向け
 
 **性能:**
-- バッチサイズ: 16
-- API上限: 2048トークン/リクエスト
+- バッチサイズ: 250（`config.py` の `EMBEDDING_BATCH_SIZE`）
+- 入力上限: 8191トークン/テキスト
 
 #### VertexAI Gemini
 
@@ -157,8 +157,7 @@ VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 - 次元数: 3072（固定）
 
 **性能:**
-- バッチサイズ: 5
-- API上限: 250テキスト/リクエスト
+- バッチサイズ: 100（`EMBEDDING_BATCH_SIZE=250` を SDK上限 100 にキャップ）
 
 > **Note:** Gemini embedding-001 は MRL（Matryoshka Representation Learning）に対応しており、API パラメータで次元数を 3072 / 1536 / 768 から選択可能ですが、本システムでは 3072 固定で使用しています。
 
@@ -288,6 +287,8 @@ search_mode="multi_stage"
 | 回答支援AI（UI） | `ui.top_k` | 3 | 画面表示用 |
 | 回答支援AI（バッチ） | `batch.top_k` | 4 | Excel出力用 |
 | 運用保守効率化AI（改定影響調査） | `evaluation.top_k` | 130 | 網羅性重視（`filter_mode: top_k` 時） |
+
+> 評価用の top_k が大きいのは、改定影響調査が再現率（漏れの少なさ）を重視するため。この制限はエリア単位で適用される（複数エリアの改定では 130 × エリア数）。設計意図の詳細は [REVISION_OPS.md の設定値セクション](./REVISION_OPS.md#設定値) を参照。
 
 ---
 
@@ -436,7 +437,6 @@ common:
 | `revision_mappings` | 改定別DB名（rev01_smile, rev02_souzoku 等） |
 | `collection_constraints` | ChromaDB命名制約（3-512文字、英数字+._-） |
 
-> **Note:** `smile_tablet`（スマイルタブレット）は `smile`（スマイル）と別の業務分野マッピングです。現在の回答支援AIでは `smile` に統合されていますが、将来的なタブレット専用DB拡張時に活用されます。
 
 ---
 
