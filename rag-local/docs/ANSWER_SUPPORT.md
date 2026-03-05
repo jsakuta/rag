@@ -80,12 +80,9 @@ final_score = vector_weight x vector_similarity + (1 - vector_weight) x keyword_
 
 > **Note:** Q&A結合ベクトル化の理由 — 問い合わせ履歴の質問文は営業店担当者が書いており、同じ趣旨でも表現にばらつきが大きい（例: 「旧姓の印鑑を登録してもいいか」と「印鑑諸届情報登録100設定は必要か」）。質問文だけをベクトル化すると、表現が異なるケースで検索にかからない。一方、回答文には質問の意図を的確に言い換えた表現が含まれるため（例: 「旧姓であれば問題ない」）、回答文も含めてベクトル化することで意味的な一致率が向上する。
 
-### 埋め込みプロバイダー（文章を数値に変換するサービス）
+### 埋め込みプロバイダー
 
-| プロバイダー（文章を数値に変換するサービス） | モデル | 次元数 | 備考 |
-|----------------------------------------------|--------|--------|------|
-| `azure_openai` | text-embedding-3-large | 3072 | エンタープライズ向け・高精度 |
-| `vertex_ai` | gemini-embedding-001 | 3072 | Google Cloud 統合・MRL（次元削減）対応 |
+2つのプロバイダー（Azure OpenAI / VertexAI）に対応。モデル・次元数の詳細は [ARCHITECTURE.md](./ARCHITECTURE.md#埋め込みモデル) を参照。
 
 `build_db.py` は両プロバイダーの DB を構築する。実行時は `DEFAULT_EMBEDDING_PROVIDER` 環境変数に一致するプロバイダーの DB が使用される。
 
@@ -240,76 +237,19 @@ python apps/answer-support/main.py preflight --sample-size 10
 
 ## DB構築
 
-統合スクリプト `scripts/build_db.py` で回答支援AI用 DB を構築する。
+統合スクリプト `scripts/build_db.py` で回答支援AI用 DB を構築する。セットアップ手順・全コマンドは [README.md の Step 5](../README.md#step-5-db構築) を参照。
 
-### コマンド
+回答支援AI固有のオプション:
 
 ```bash
-cd rag-local
+# 回答支援AI用DBのみ構築（改定別を除外）
+python scripts/build_db.py --no-revisions
 
-# 差分のみ構築（未構築 or 参照ファイル更新時のみ実行）
-python scripts/build_db.py
-
-# 既存DB削除して全再構築
-python scripts/build_db.py --force
-
-# 指定業務分野のみ
-python scripts/build_db.py --business naibujimu
-python scripts/build_db.py --business smile
-
-# 回答支援AI用DBのみ（改定別を除外）
+# 差分のみ構築（未構築 or 参照ファイル更新時のみ）
 python scripts/build_db.py --no-revisions
 ```
 
-### build_db.py 引数
-
-| 引数 | 説明 |
-|------|------|
-| `--force` | 既存DBを削除して全再構築 |
-| `--business <名前>` | 構築対象の業務分野（例: `naibujimu`, `smile`） |
-| `--no-revisions` | 通常業務のみ構築（改定別 `rev*` を除外） |
-| `--revisions-only` | 改定別のみ構築（回答支援AI用を除外） |
-
-`--no-revisions` と `--revisions-only` は排他（同時指定不可）。
-
-### スキップロジック（デフォルト動作）
-
-- DB存在 + ドキュメント数 > 0 + 参照ファイル未更新 --> スキップ（APIコスト発生なし）
-- DB未存在 or 参照ファイル更新あり --> 構築/更新実行
-- `--force` 指定時のみ既存DB削除 --> 全再構築
-
-### 参照データの配置
-
-```
-data/source/
-├── faq/latest/                # 問い合わせ履歴データ（FAQ）
-│   ├── 内部事務_履歴データ_YYYYMMDD.xlsx
-│   └── スマイル_履歴データ_YYYYMMDD.xlsx
-└── scenarios/latest/          # 最新シナリオ
-    ├── 内部事務_シナリオデータ_YYYYMMDD.xlsx
-    └── スマイル_シナリオデータ_YYYYMMDD.xlsx
-```
-
-### ファイル命名規則
-
-```
-{業務名}_履歴データ_{YYYYMMDD}.xlsx     # 問い合わせ履歴データ（FAQ）
-{業務名}_シナリオデータ_{YYYYMMDD}.xlsx  # シナリオ
-```
-
-- `{業務名}`: 日本語名（スマイル、内部事務等）。`config/business_areas.yaml` のマッピングで英語DB名に自動変換
-- `{YYYYMMDD}`: データ日付。同一業務分野に複数ファイルがある場合、最新日付のファイルが使用される
-
-### 前提条件
-
-1. **Streamlit UI の停止**: ChromaDB はファイルロックを使用するため、UI と同時にスクリプトを実行するとロックエラーが発生する
-2. **環境変数の設定**: `.env` に以下が必要
-   - `DEFAULT_EMBEDDING_PROVIDER`（モデル名はプロバイダーに応じて自動決定）
-   - **azure_openai 使用時**: `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
-   - **vertex_ai 使用時**: `GEMINI_PROJECT_ID` + GCP認証（`gemini_credentials.json` または Key Vault）
-   - `build_db.py` は両プロバイダー（azure_openai / vertex_ai）の DB を常に構築する。未認証のプロバイダー側はエラーになるが、認証済み側の DB は正常に構築されるため、片方のみ使用する場合は未認証側のエラーを無視してよい
-   - `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL`（起動時バリデーションで必須。LLM API 呼び出しは `llm_enhanced` モードのみ）
-3. **参照データの配置**: `data/source/faq/latest/` と `data/source/scenarios/latest/` に対象 Excel ファイルが必要
+> **注意**: DB構築中は Streamlit UI を停止してください（ChromaDB のファイルロック競合を防止）。
 
 ---
 
