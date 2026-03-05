@@ -165,25 +165,7 @@ data/vector_db/
    - `正解ID`: カンマ区切りの正解シナリオID（例: `smile-bot_129, smile-bot_185`）
    - `変更内容`（オプション）: 各正解IDごとの具体的な変更内容。未検出シナリオ（「未発見」セクション）に表示される。省略時は自動的に空で初期化
 
-3. **環境変数の設定**（`.env`）
-   ```bash
-   # Azure OpenAI（--provider both または --provider azure 使用時）
-   AZURE_OPENAI_API_KEY=your-api-key
-   AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-   AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
-
-   # VertexAI（--provider both または --provider vertex 使用時）
-   GEMINI_PROJECT_ID=your-project-id
-   VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
-
-   # LLM（クエリ拡張・関連性判定、Gemini のみ対応）
-   DEFAULT_LLM_PROVIDER=gemini
-   DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
-
-   # LLM関連性判定の有効化（オプション、デフォルト: false）
-   # JudgmentSupport による関連性判定のみを制御。LLMクエリ拡張（Stage 2）は常に有効
-   ENABLE_LLM_ANALYSIS=true
-   ```
+3. **環境変数の設定** — [CONFIGURATION.md](./CONFIGURATION.md) を参照。改定影響調査固有の設定: `ENABLE_LLM_ANALYSIS=true`（LLM関連性判定、デフォルト: false）
 
 ### Step 1: DB再構築
 
@@ -390,46 +372,13 @@ reference/
 └── シナリオボットメンテナンス管理台帳.xlsx
 ```
 
-### 差分ファイルの書き方（統一フォーマット）
+### 差分ファイルの書き方
 
-各改定の差分は以下のフォーマットで `差分.md` に記載します:
+各改定の差分は `差分.md` に統一フォーマットで記載する。フォーマットの詳細は CLAUDE.md の「事務改定差分.md 統一フォーマット」セクションを参照。主な構成要素:
 
-```markdown
-# X番号_タイトル - 事務改定差分
-
-## メンテナンス管理台帳との照合
-
-**台帳No.XXの記載**:
-- ボット名: XXX
-- 大分類: XXX
-- 変更箇所: 行番号X, Y, Z
-
-**変更行一覧（メンテ台帳 vs 実際の差分）**:
-
-| 台帳記載行 | Excel行 | 実際の差分 | 状態 |
-|-----------|---------|-----------|------|
-| X | Y | あり | 一致 |
-
-## ボット名-bot
-
-### ファイル: シナリオ_XXX.xlsx
-
-**カテゴリ**: Lv1=XXX
-**変更前シナリオExcelでの範囲**: 行X～行Y
-
-**黄色ハイライト行（変更前シナリオExcel）**: N行
-- 行番号: X, Y, Z
-
----
-変更箇所 N: **カテゴリ内行X** (Excel行Y)
-質問遷移: A → B → C
-
-**LvN**:
-- 変更前: `...`
-- 変更後: `...`
-
-**合計 N 行に変更あり**
-```
+- メンテナンス管理台帳との照合（台帳No.、変更行一覧）
+- ボット名ごとのセクション（ファイル名、カテゴリ、変更箇所の詳細）
+- 変更前・変更後の対比
 
 ---
 
@@ -437,22 +386,9 @@ reference/
 
 ### 変更前シナリオDB生成フロー
 
-```
-1. マージ版シナリオ (reference/マージ版シナリオ/最新/マージ版シナリオ_XXX-bot.xlsx)
-        ↓
-    + 修正前カテゴリファイル (手動でカテゴリを置換)
-        ↓ [自動化スクリプトなし - 手動作成]
-
-2. 変更前シナリオ (reference/改定シナリオ/revXX_*/修正前/revXX_変更前シナリオ_XXX-bot.xlsx)
-        ↓
-   prepare_before_scenario.py (文字数列削除・リネーム)
-        ↓
-3. data/source/scenarios/revisions/revXXボット_シナリオデータ_YYYYMMDD.xlsx
-        ↓
-   build_db.py --revisions-only → DynamicDBManager
-        ↓
-4. data/vector_db/revXX_{bot}/ (ベクトルDB)
-```
+1. **マージ版シナリオ** + 修正前カテゴリファイル（手動でカテゴリを置換）→ 変更前シナリオ作成
+2. `prepare_before_scenario.py` で前処理（文字数列削除・リネーム）→ `data/source/scenarios/revisions/` に出力
+3. `build_db.py --revisions-only` → `data/vector_db/revXX_{bot}/` にベクトルDB生成
 
 ### 重要なスクリプト
 
@@ -462,46 +398,17 @@ reference/
 | `scripts/build_db.py` | DB構築（回答支援AI用 + 改定別、統合スクリプト） |
 | `scripts/generate_correct_ids.py` | 正解ID対応表生成 |
 
-### DB構築コマンド
-
-```bash
-# 改定別DBのみ構築（Azure OpenAI + VertexAI 両方）
-python scripts/build_db.py --revisions-only
-
-# 全DB一括構築（回答支援AI用 + 改定別）
-python scripts/build_db.py --force
-```
-
----
-
-## 正解ID抽出ロジック (generate_correct_ids.py)
-
-### 抽出パターン
-1. ボット名: `## smile-bot` 形式のセクションヘッダー
-2. 行番号リスト: `- 行番号: 129, 185` または `行番号: X, Y, Z`
-3. 変更箇所: `**カテゴリ内行X** (Excel行Y)` → Excel行Yを抽出
-
-### 出力
-- ファイル: `data/input/multi_stage_input.xlsx`
-- 列: 番号, 改定内容, 正解ID
+DB構築コマンドの全オプションは [README.md の Step 5](../README.md#step-5-db構築) を参照。改定DB構築は `python scripts/build_db.py --revisions-only`。
 
 ---
 
 ## 既知の問題と注意事項
 
 ### 空行問題
-**原因**: 修正前カテゴリファイルの末尾に空行が含まれている
-- 例: `修正前/喪失/シナリオ_スマイルタブレット_喪失_20250731.xlsx` の行132が空行
-- この空行が変更前シナリオにマージされ、Excel行365として残存
-
-**対応案**:
-1. `prepare_before_scenario.py` に空行フィルタリング追加: `df = df[df['Lv1'].notna()]`
-2. 元ファイルを手動で修正
+修正前カテゴリファイルの末尾に空行が含まれていると、変更前シナリオにマージされて残存する。対応案: `prepare_before_scenario.py` に `df = df[df['Lv1'].notna()]` を追加、または元ファイルを手動修正。
 
 ### 行番号の注意点
-- **台帳記載行**: メンテナンス管理台帳に記載された行番号（カテゴリ内の行番号）
-- **Excel行番号**: 変更前シナリオExcelでの実際の行番号（ヘッダー行1 + データ行）
-- 計算式: `Excel行番号 = カテゴリ開始行 + カテゴリ内行番号 - 1`
+台帳記載行（カテゴリ内の行番号）と Excel行番号は異なる。計算式: `Excel行番号 = カテゴリ開始行 + カテゴリ内行番号 - 1`
 
 ---
 
@@ -572,12 +479,7 @@ python scripts/check_db_content.py
 
 ### Step 5: 評価実行
 
-```bash
-# Azure OpenAI 未設定の場合は --provider vertex を指定
-python apps/revision-ops/run_eval.py --provider vertex
-# 両プロバイダー設定済みの場合
-python apps/revision-ops/run_eval.py
-```
+[Step 2: 評価実行](#step-2-評価実行) と同じコマンドで実行。
 
 ### 設定変更のみのケース
 

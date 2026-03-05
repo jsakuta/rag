@@ -2,7 +2,7 @@
 
 ## 概要
 
-2つのAIアプリケーションと共有コアで構成する、ローカル環境で動作する検索システム（RAG: Retrieval-Augmented Generation 方式）。※ 問い合わせ整理AIは別リポジトリ（rag-maintenance）で管理。
+2つのAIアプリケーションと共有コアで構成する、ローカル環境で動作する検索システム（RAG: Retrieval-Augmented Generation 方式）。※ 運用保守効率化AIの Azure AI Search 版は別リポジトリ（rag-maintenance）で管理。
 
 | AI | バッチ | UI | 用途 | 詳細ドキュメント |
 |----|-------|-----|------|----------------|
@@ -129,9 +129,14 @@ python scripts/build_db.py --revisions-only --force
 # 全DB構築（回答支援AI + 運用保守効率化AI）
 python scripts/build_db.py --force
 
+# 特定の業務分野のみ構築
+python scripts/build_db.py --business naibujimu
+
 # 2回目以降: 差分のみ構築（更新があるDBのみ）
 python scripts/build_db.py
 ```
+
+全オプションは `python scripts/build_db.py --help` で確認できます。
 
 - 回答支援AI用DBの詳細は [docs/ANSWER_SUPPORT.md](./docs/ANSWER_SUPPORT.md) を参照
 - 改定DB構築は [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) を参照
@@ -332,7 +337,7 @@ python scripts/create_handover_package.py ./handover_package
 python scripts/create_handover_package.py ./handover_package --include-data
 ```
 
-全オプションは `--help` を参照。出力先ディレクトリが既に存在する場合はエラーになります。
+全オプションは `python scripts/create_handover_package.py --help` で確認できます。出力先ディレクトリが既に存在する場合はエラーになります。
 
 ---
 

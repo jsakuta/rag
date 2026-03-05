@@ -88,30 +88,12 @@ final_score = vector_weight x vector_similarity + (1 - vector_weight) x keyword_
 
 ### ディレクトリ構成
 
-```
-data/
-├── vector_db/
-│   ├── update_timestamps.json        # 更新日時記録
-│   ├── naibujimu/                    # 内部事務 DB
-│   │   ├── azure_openai/
-│   │   │   └── chroma.sqlite3
-│   │   └── vertex_ai/
-│   │       └── chroma.sqlite3
-│   └── smile/                        # スマイル DB
-│       ├── azure_openai/
-│       │   └── chroma.sqlite3
-│       └── vertex_ai/
-│           └── chroma.sqlite3
-├── source/
-│   ├── faq/latest/                   # 問い合わせ履歴データ（FAQ）
-│   │   ├── 内部事務_履歴データ_YYYYMMDD.xlsx
-│   │   └── スマイル_履歴データ_YYYYMMDD.xlsx
-│   └── scenarios/latest/             # 最新シナリオ
-│       ├── 内部事務_シナリオデータ_YYYYMMDD.xlsx
-│       └── スマイル_シナリオデータ_YYYYMMDD.xlsx
-├── input/                            # バッチ入力 Excel
-└── output/latest/answer/             # バッチ出力 Excel
-```
+- **DB**: `data/vector_db/{業務分野名}/{プロバイダー}/chroma.sqlite3`
+- **FAQ**: `data/source/faq/latest/{日本語業務名}_履歴データ_YYYYMMDD.xlsx`
+- **シナリオ**: `data/source/scenarios/latest/{日本語業務名}_シナリオデータ_YYYYMMDD.xlsx`
+- **入力**: `data/input/`、**出力**: `data/output/latest/answer/`
+
+全体のディレクトリ構造は [README.md](../README.md#ディレクトリ構造) を参照。
 
 ---
 
@@ -123,18 +105,9 @@ data/
 
 ```bash
 cd rag-local
-
-# 全業務分野でバッチ処理
-python apps/answer-support/main.py
-
-# 特定業務分野のみ（naibujimu / smile）
-python apps/answer-support/main.py --business naibujimu
-
-# 処理件数を制限（先頭 N 件のみ）
-python apps/answer-support/main.py --limit 5
-
-# 組み合わせ
-python apps/answer-support/main.py --business naibujimu --limit 10
+python apps/answer-support/main.py                              # 全業務分野
+python apps/answer-support/main.py --business naibujimu          # 特定業務分野のみ
+python apps/answer-support/main.py --business naibujimu --limit 10  # 件数制限
 ```
 
 #### コマンドライン引数
@@ -182,13 +155,8 @@ python apps/answer-support/main.py --business naibujimu --limit 10
 対話形式で検索を実行する。
 
 ```bash
-cd rag-local
-
-# 直接起動
-streamlit run apps/answer-support/ui/chat.py
-
-# main.py 経由で起動
-python apps/answer-support/main.py interactive
+streamlit run apps/answer-support/ui/chat.py          # 直接起動
+python apps/answer-support/main.py interactive         # main.py 経由
 ```
 
 #### UI機能
@@ -215,15 +183,9 @@ DB更新の事前検証を実行する（本番のDB更新は行わない）。
 
 ```bash
 cd rag-local
-
-# 全業務分野の検証
-python apps/answer-support/main.py preflight
-
-# 特定業務分野のみ（naibujimu / smile）
-python apps/answer-support/main.py preflight --business naibujimu
-
-# サンプル件数を変更（デフォルト: 5）
-python apps/answer-support/main.py preflight --sample-size 10
+python apps/answer-support/main.py preflight                          # 全業務分野
+python apps/answer-support/main.py preflight --business naibujimu     # 特定業務分野
+python apps/answer-support/main.py preflight --sample-size 10         # サンプル件数変更
 ```
 
 #### プレフライト引数
@@ -242,11 +204,11 @@ python apps/answer-support/main.py preflight --sample-size 10
 回答支援AI固有のオプション:
 
 ```bash
-# 回答支援AI用DBのみ構築（改定別を除外）
+# 回答支援AI用DBのみ構築（改定別を除外、未構築 or 更新時のみ）
 python scripts/build_db.py --no-revisions
 
-# 差分のみ構築（未構築 or 参照ファイル更新時のみ）
-python scripts/build_db.py --no-revisions
+# 強制再構築（既存DBを削除して全再構築）
+python scripts/build_db.py --no-revisions --force
 ```
 
 > **注意**: DB構築中は Streamlit UI を停止してください（ChromaDB のファイルロック競合を防止）。
@@ -283,17 +245,7 @@ Metadata シートに検索パラメータ（vector_weight, keyword_weight, sear
 
 ## 設定パラメータ
 
-`config/settings.yaml` で検索パラメータを設定する。
-
-### セクション構成
-
-| セクション | 対象 | 主な設定 |
-|-----------|------|---------|
-| `common` | 全プログラム共通 | search_type, vector_weight, search_mode, search_source, keyword 設定 |
-| `ui` | Streamlit UI | top_k（デフォルト 3）、vector_weight 初期値 |
-| `batch` | バッチ処理 | top_k（デフォルト 4） |
-
-詳細は `docs/CONFIGURATION.md` を参照。
+`config/settings.yaml` で検索パラメータ（vector_weight, search_mode, search_source, top_k 等）を設定する。詳細は [CONFIGURATION.md](./CONFIGURATION.md) を参照。
 
 ---
 
