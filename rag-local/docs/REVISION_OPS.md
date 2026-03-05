@@ -9,27 +9,9 @@
 - Azure OpenAI と VertexAI の2つの埋め込みプロバイダー（文章を数値に変換するサービス）で精度を**横並び比較**
 - **多段階ハイブリッド検索**（原文での検索と、AIが補強したクエリでの検索を組み合わせて候補を網羅する方式）で検索の再現率（漏れの少なさ）を向上
 
-### 2プロバイダー横並び比較の背景
+> **2プロバイダー比較の経緯:** 回答支援AIでは VertexAI のみで開発していたが、クラウド実装は B&DX Azure 上で Azure AI Search（組み込みハイブリッド検索・Semantic Ranker 等）を活用する構成が適している。Azure 切替時の精度低下リスクを検証するため、ローカル段階から両モデルで並行検証した結果、同等の精度が確認され、Azure を採用する方向で事務企画部内で合意している。
 
-回答支援AIでは Vertex AI（Gemini embedding-001）のみで開発・運用していたが、クラウド実装は B&DX Azure 上で構築するため、Azure OpenAI（text-embedding-3-large）+ Azure AI Search の構成が適している。Gemini 埋め込みをそのまま Teams ボットに組み込む場合、Azure 上から GCP への**クロスクラウド呼び出し**が必要になるうえ、ベクトルストア（Cosmos DB 等）やインデクシングパイプライン（Azure Functions 等）を自前で構築・運用する必要がある [1][2]。また、Azure AI Search が組み込みで提供するハイブリッド検索の RRF 統合 [3] や Semantic Ranker による二次ランキング [4] に相当する機能も自前実装となり、開発・運用の負荷が増大する。一方 Azure AI Search は、ハイブリッド検索（BM25 + ベクトル検索の RRF 統合）[3]・Semantic Ranker [4]・Integrated Vectorization（インデクサーによる自動チャンク分割・埋め込み生成）[5] が組み込みで提供されており、パラメータ調整もインデックス定義やクエリパラメータの変更のみで完結する [6]。ただし2つの埋め込みモデルはベクトルの性質が異なるため、回答支援AIで Gemini のみ使用していた状態から Azure に切り替えた際に精度が低下するリスクがあった。
-
-このリスクを最小化するため、**ローカル段階から両モデルで並行検証し、精度差がないことを確認する**方針を採用した。検証の結果、両モデルとも同等の精度が確認され、インフラとの整合性から Azure を採用する方向で事務企画部内で合意している。
-
-### 多段階ハイブリッド検索の設計意図
-
-> **Note:** 多段階検索は精度向上が実証された手法ではなく、**実験的な対応**である。回答支援AIでは原文検索（`original`）の方が精度が高いという結果が出ているが、改定影響調査では漏れを減らすために両方の結果を統合する方式を採用している。今後の評価結果次第では、`original` のみに戻す判断もありうる。
-
-回答支援AI（類似回答検索）では、LLMによるクエリ拡張は要約の過程で業務固有の固有名詞（商品名・手続き名・帳票名など）が落ちるケースがあり、**原文検索の方が精度が高い**という結果が出ている。このため回答支援AIのデフォルトは `original`（原文検索）である。
-
-一方、改定影響調査では検索の性質が根本的に異なる:
-
-| 観点 | 回答支援AI | 改定影響調査 |
-|------|------------|-------------|
-| クエリの性質 | 営業店担当者が入力する短い質問文 | 改定内容の説明文（比較的長い文書） |
-| 検索対象 | シナリオの質問と回答 | 同左 |
-| 求める精度 | **適合率重視**（上位数件が正確であること） | **再現率重視**（影響範囲を漏れなく検出） |
-
-改定影響調査では「改定内容 → 影響を受けるシナリオ」という、回答支援AIとは異なる方向の検索を行うため、原文検索だけでは拾いきれない候補をLLMクエリ拡張で補完できる可能性がある。そこで2つの検索結果をOR結合し、再現率を高める多段階検索を採用している。ただしこの効果は定量的に検証されたものではなく、今後の評価結果次第で見直す可能性がある。
+> **多段階検索について:** 回答支援AIでは原文検索（`original`）の方が精度が高いが、改定影響調査は再現率重視（影響範囲を漏れなく検出）のため、原文検索とLLMクエリ拡張の結果をOR結合する多段階検索を採用している。ただし効果は定量的に検証されておらず、評価結果次第で `original` のみに戻す判断もありうる。
 
 ### 処理フロー
 ```
@@ -89,6 +71,11 @@ Stage 3: 結果をマージ＋カテゴリ分類
 | THRESHOLDS | Azure=0.40, VertexAI=0.50 | プロバイダー別閾値（filter_mode=threshold 時に使用） |
 | VECTOR_WEIGHT | 0.9 | ベクトルスコアの重み |
 | MAX_RESULTS | 100 | 各検索の最大結果数 |
+
+> **TOP_K=130 の設計意図:**
+> 改定影響調査は再現率（漏れの少なさ）を重視するため、閾値ではなく固定件数で上位を取る方式を採用している。閾値モード（`threshold`）はプロバイダー間でスコア分布が異なり、同じ閾値では候補数が大きく変動するため不安定だった。130件は、Stage 1（原文検索）+ Stage 2（LLM拡張検索）のOR結合（最大200件）から上位を取り、コレクション規模（数百件）の約半数をカバーする水準として設定した値。
+>
+> **注意:** この制限は**エリア単位**で適用される。複数エリアの改定（例: ③=4エリア）では、Excel出力の総件数は最大 130 × エリア数 × プロバイダー数 になる。
 
 ---
 
@@ -485,13 +472,3 @@ python scripts/check_db_content.py
 
 既存改定のパラメータ調整（`vector_weight` や `search_type` の変更）は `config/settings.yaml` の編集だけで完了する。DB再構築は不要。
 
----
-
-## 参考文献
-
-- [1] [Introduction to Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/search-what-is-azure-search)
-- [2] [Retrieval-augmented generation (RAG) in Azure Cosmos DB - Microsoft Learn](https://learn.microsoft.com/en-us/azure/cosmos-db/gen-ai/rag)
-- [3] [Hybrid search scoring (RRF) - Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/hybrid-search-ranking)
-- [4] [Semantic ranking - Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/semantic-search-overview)
-- [5] [Integrated vectorization - Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/vector-search-integrated-vectorization)
-- [6] [Hybrid search overview - Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/hybrid-search-overview)
