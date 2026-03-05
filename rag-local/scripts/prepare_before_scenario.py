@@ -34,9 +34,6 @@ REVISION_MAP = {
     "④": "04",
     "⑤": "05",
     "⑥": "06",
-    "⑦": "07",
-    "⑧": "08",
-    "⑨": "09",
 }
 
 # ソースディレクトリ
@@ -46,7 +43,7 @@ SOURCE_DIR = PROJECT_ROOT / "reference" / "変更前シナリオ"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "source" / "scenarios" / "revisions"
 
 # ファイル名パターン: ①変更前シナリオ_smile-bot.xlsx
-FILE_PATTERN = re.compile(r"^([①-⑨])変更前シナリオ_([a-z]+)-bot\.xlsx$")
+FILE_PATTERN = re.compile(r"^([①-⑥])変更前シナリオ_([a-z]+)-bot\.xlsx$")
 
 
 def find_source_files() -> List[Dict]:
