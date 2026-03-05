@@ -2,7 +2,7 @@
 
 ## 概要
 
-2つのAIアプリケーションと共有コアで構成する、ローカル環境で動作する検索システム（RAG: Retrieval-Augmented Generation 方式）。※ 運用保守効率化AIの Azure AI Search 版は別リポジトリ（rag-maintenance）で管理。
+2つのAIアプリケーションと共有コアで構成する、ローカル環境で動作する検索システム（RAG: Retrieval-Augmented Generation 方式）。
 
 | AI | バッチ | UI | 用途 | 詳細ドキュメント |
 |----|-------|-----|------|----------------|

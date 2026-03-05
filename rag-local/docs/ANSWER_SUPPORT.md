@@ -144,7 +144,7 @@ python apps/answer-support/main.py --business naibujimu --limit 10  # 件数制�
 | 2列目 | 質問文（検索クエリとして使用） | 必須 |
 | 3列目 | 回答文（出力に転記、検索には不使用） | 任意 |
 
-> **Note:** 列名は位置で判断されるため、ヘッダー行の文字列は任意です。改定影響調査（`TextInputHandler`）で同じ形式のExcelを使用する場合、正解ID列（`正解ID` / `正解` / `CorrectID` / `Expected`）が列名で自動検出されます。
+> **Note:** 列名は位置で判断されるため、ヘッダー行の文字列は任意です。
 
 #### 出力ファイル
 

@@ -605,12 +605,3 @@ DEFAULT_LLM_MODEL=gemini-2.5-flash-lite  # gemini-2.5-flash, gemini-2.5-pro も�
 
 > **Note:** LLM（文章生成）と埋め込みモデル（文章→数値変換）は別のサービスです。埋め込みモデルは Azure OpenAI / VertexAI の2プロバイダーに対応しています（`DEFAULT_EMBEDDING_PROVIDER` で設定）。
 
----
-
-## サポート
-
-上記の方法で解決しない場合:
-
-1. ログファイルを確認: `logs/app.log`
-2. GitHub Issues で報告
-3. [ARCHITECTURE.md](./ARCHITECTURE.md) でシステム構成を確認
