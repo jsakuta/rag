@@ -227,7 +227,7 @@ class Processor:
             )
         else:  # vertex_ai
             provider_config.embedding_model = os.getenv(
-                "DEFAULT_EMBEDDING_MODEL", "text-multilingual-embedding-002"
+                "VERTEX_AI_EMBEDDING_MODEL", "gemini-embedding-001"
             )
 
         # プロバイダー用のSearcherを作成

@@ -140,12 +140,14 @@
 
 統一インターフェース: `execute(input_number, query_text, original_answer) -> List[Dict]`
 
-| 戦略クラス | search_mode | 処理 |
-|-----------|-------------|------|
-| `OriginalSearchStrategy` | original | 原文でベクトル+キーワード検索 |
-| `LLMEnhancedSearchStrategy` | llm_enhanced | LLMクエリ生成後にベクトル+キーワード検索 |
-| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類（運用保守効率化AI専用） |
-| `KeywordFilterSearchStrategy` | keyword_filter | キーワードマッチのみ（ベクトル検索なし） |
+| 戦略クラス | search_mode | 処理 | 用途 |
+|-----------|-------------|------|------|
+| `OriginalSearchStrategy` | original（**デフォルト**） | 原文でベクトル+キーワード検索 | 回答支援AI。固有名詞の欠落なく最も安定 |
+| `LLMEnhancedSearchStrategy` | llm_enhanced | LLMクエリ生成後にベクトル+キーワード検索 | 表現の揺れが大きい検索語の場合 |
+| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類（運用保守効率化AI専用） | 改定影響調査。漏れを減らすために両方の結果を統合 |
+| `KeywordFilterSearchStrategy` | keyword_filter | キーワードマッチのみ（ベクトル検索なし） | 用語の単純置換（AML→GPLEX等）の検出 |
+
+デフォルト値は `config/settings.yaml` の `search_mode: original`。UI ではサイドバーで動的に切替可能。
 
 ### 3. Handler Layer
 
@@ -200,7 +202,7 @@
 
 | クラス | モジュール | 責務 |
 |--------|----------|------|
-| `DynamicDBManager` | `src/utils/dynamic_db_manager.py` | 業務領域別ベクトルDB管理。タイムスタンプ検証による差分更新 |
+| `DynamicDBManager` | `src/utils/dynamic_db_manager.py` | 業務領域別ベクトルDB管理。参照ファイル（Excel）の更新日時を `data/vector_db/update_timestamps.json` に記録し、ファイルが更新されていなければDB再構築をスキップする（APIコスト削減） |
 | `MetadataVectorDB` | `src/utils/vector_db.py` | ChromaDB 操作の共通インターフェース。LRUCache(max_size=10) でクライアントキャッシュ |
 | `BusinessAreaTranslator` | `src/utils/business_area_translator.py` | 日本語業務名→英語コレクション名変換（YAML マッピング） |
 
@@ -314,13 +316,17 @@ main.py
   ├─ src/core/processor.py
   │   ├─ src/handlers/input_handler.py
   │   ├─ src/handlers/output_handler.py
-  │   ├─ src/core/search/search_strategy.py (4戦略切替)
-  │   ├─ src/core/search/multi_stage_orchestrator.py
-  │   │   ├─ src/core/search/query_enhancer.py
+  │   ├─ src/core/searcher.py (検索統合・スコア計算)
+  │   │   ├─ src/core/search/search_strategy.py (4戦略切替)
+  │   │   ├─ src/core/search/multi_stage_orchestrator.py
+  │   │   │   ├─ src/core/search/query_enhancer.py
+  │   │   │   ├─ src/core/search/vector_search_engine.py
+  │   │   │   │   └─ src/utils/vector_db.py
+  │   │   │   ├─ src/core/search/keyword_search_engine.py
+  │   │   │   ├─ src/core/search/chromadb_keyword_search.py
+  │   │   │   └─ src/core/search/text_combiner.py
   │   │   ├─ src/core/search/vector_search_engine.py
-  │   │   │   └─ src/utils/vector_db.py
   │   │   ├─ src/core/search/keyword_search_engine.py
-  │   │   ├─ src/core/search/chromadb_keyword_search.py
   │   │   └─ src/core/search/text_combiner.py
   │   ├─ src/core/judgment_support.py
   │   └─ src/utils/dynamic_db_manager.py

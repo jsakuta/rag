@@ -11,13 +11,13 @@
 
 ### 2プロバイダー横並び比較の背景
 
-回答支援AIでは Vertex AI（Gemini embedding-001）のみで開発・運用していたが、クラウド実装は B&DX Azure 上で構築するため、Azure OpenAI（text-embedding-3-large）+ Azure AI Search の構成が適している。Gemini 埋め込みをそのまま Teams ボットに組み込む場合、ベクトルDBに Cosmos DB、差分ベクトル化や定期実行に複数の Azure Functions が必要となり、パイプラインの自作・運用保守の負荷・コストが増大する。一方 Azure AI Search は、ハイブリッド検索（RRF）・Semantic Ranker・Integrated Vectorization（自動インデクシング）が組み込みで提供されており、パラメータ調整も設定変更のみで完結するため、実装・運用の両面で有利である。ただし2つの埋め込みモデルはベクトルの性質が異なるため、回答支援AIで Gemini のみ使用していた状態から Azure に切り替えた際に精度が低下するリスクがあった。
+回答支援AIでは Vertex AI（Gemini embedding-001）のみで開発・運用していたが、クラウド実装は B&DX Azure 上で構築するため、Azure OpenAI（text-embedding-3-large）+ Azure AI Search の構成が適している。Gemini 埋め込みをそのまま Teams ボットに組み込む場合、Azure 上から GCP への**クロスクラウド呼び出し**が必要になるうえ、ベクトルストア（Cosmos DB 等）やインデクシングパイプライン（Azure Functions 等）を自前で構築・運用する必要がある [1][2]。また、Azure AI Search が組み込みで提供するハイブリッド検索の RRF 統合 [3] や Semantic Ranker による二次ランキング [4] に相当する機能も自前実装となり、開発・運用の負荷が増大する。一方 Azure AI Search は、ハイブリッド検索（BM25 + ベクトル検索の RRF 統合）[3]・Semantic Ranker [4]・Integrated Vectorization（インデクサーによる自動チャンク分割・埋め込み生成）[5] が組み込みで提供されており、パラメータ調整もインデックス定義やクエリパラメータの変更のみで完結する [6]。ただし2つの埋め込みモデルはベクトルの性質が異なるため、回答支援AIで Gemini のみ使用していた状態から Azure に切り替えた際に精度が低下するリスクがあった。
 
 このリスクを最小化するため、**ローカル段階から両モデルで並行検証し、精度差がないことを確認する**方針を採用した。検証の結果、両モデルとも同等の精度が確認され、インフラとの整合性から Azure を採用する方向で事務企画部内で合意している。
 
 ### 多段階ハイブリッド検索の設計意図
 
-> **Note:** 多段階検索は精度向上が実証された手法ではなく、**実験的な対応**である。
+> **Note:** 多段階検索は精度向上が実証された手法ではなく、**実験的な対応**である。回答支援AIでは原文検索（`original`）の方が精度が高いという結果が出ているが、改定影響調査では漏れを減らすために両方の結果を統合する方式を採用している。今後の評価結果次第では、`original` のみに戻す判断もありうる。
 
 回答支援AI（類似回答検索）では、LLMによるクエリ拡張は要約の過程で業務固有の固有名詞（商品名・手続き名・帳票名など）が落ちるケースがあり、**原文検索の方が精度が高い**という結果が出ている。このため回答支援AIのデフォルトは `original`（原文検索）である。
 
@@ -132,7 +132,6 @@ data/vector_db/
 | ④ | 37 | 0円新規開設可能 | naibujimu-bot | rev04_naibujimu |
 | ⑤ | 41-42 | AML→GPLEX | smile-bot | rev05_smile |
 | ⑥ | 43-45 | DC→MDC | smile-bot | rev06_smile |
-| ⑦ | - | 積立定期預金 | smile-bot | rev07_smile（未評価） |
 
 ---
 
@@ -328,6 +327,8 @@ data/output/latest/rev/rev_eval_batch_YYYYMMDD_HHMMSS.xlsx
 - `smile-bot_129` : smile-botのExcel129行目
 - `naibujimu-bot_641` : naibujimu-botのExcel641行目
 
+> **重要:** 台帳記載行（カテゴリ内の行番号）と Excel行番号は異なる。正解IDには **Excel行番号** を使用する。計算式: `Excel行番号 = カテゴリ開始行 + カテゴリ内行番号 - 1`。`generate_correct_ids.py` は両方のパターンを自動で試行する。
+
 ---
 
 ## トラブルシューティング
@@ -357,7 +358,7 @@ DBが存在しません: data/vector_db/rev01_smile/azure_openai
 
 ## 参照データ管理
 
-改定評価に必要な参照データは `reference/` ディレクトリに格納（git管理外、別途提供）。
+改定評価に必要な参照データは `reference/` ディレクトリに格納（git管理外）。初回セットアップ時は前任者から `reference/` フォルダ一式を受け取り、プロジェクトルートに配置する。
 
 ```
 reference/
@@ -386,6 +387,8 @@ reference/
 
 ### 変更前シナリオDB生成フロー
 
+> **マージ版シナリオ** とは、ボットごとに全カテゴリのシナリオを1ファイルに結合した参照用Excelファイル（`reference/マージ版シナリオ/` に格納）。正解ID生成や変更前シナリオ作成の基準データとして使用する。自動生成スクリプトはなく、手動で管理する。
+
 1. **マージ版シナリオ** + 修正前カテゴリファイル（手動でカテゴリを置換）→ 変更前シナリオ作成
 2. `prepare_before_scenario.py` で前処理（文字数列削除・リネーム）→ `data/source/scenarios/revisions/` に出力
 3. `build_db.py --revisions-only` → `data/vector_db/revXX_{bot}/` にベクトルDB生成
@@ -406,9 +409,6 @@ DB構築コマンドの全オプションは [README.md の Step 5](../README.md
 
 ### 空行問題
 修正前カテゴリファイルの末尾に空行が含まれていると、変更前シナリオにマージされて残存する。対応案: `prepare_before_scenario.py` に `df = df[df['Lv1'].notna()]` を追加、または元ファイルを手動修正。
-
-### 行番号の注意点
-台帳記載行（カテゴリ内の行番号）と Excel行番号は異なる。計算式: `Excel行番号 = カテゴリ開始行 + カテゴリ内行番号 - 1`
 
 ---
 
@@ -484,3 +484,14 @@ python scripts/check_db_content.py
 ### 設定変更のみのケース
 
 既存改定のパラメータ調整（`vector_weight` や `search_type` の変更）は `config/settings.yaml` の編集だけで完了する。DB再構築は不要。
+
+---
+
+## 参考文献
+
+- [1] [Introduction to Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/search-what-is-azure-search)
+- [2] [Retrieval-augmented generation (RAG) in Azure Cosmos DB - Microsoft Learn](https://learn.microsoft.com/en-us/azure/cosmos-db/gen-ai/rag)
+- [3] [Hybrid search scoring (RRF) - Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/hybrid-search-ranking)
+- [4] [Semantic ranking - Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/semantic-search-overview)
+- [5] [Integrated vectorization - Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/vector-search-integrated-vectorization)
+- [6] [Hybrid search overview - Azure AI Search - Microsoft Learn](https://learn.microsoft.com/en-us/azure/search/hybrid-search-overview)

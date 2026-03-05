@@ -42,7 +42,17 @@ pip install -r requirements.txt
 
 ### Step 2: 認証情報の準備
 
-> **どの認証が必要か？** Step 4 で設定する `DEFAULT_EMBEDDING_PROVIDER` に依存します。`vertex_ai` のみ使用する場合は Azure OpenAI の認証（Step 2b）は不要です。`azure_openai` のみ使用する場合でも、LLM（大規模言語モデル。検索語の補強や関連性判定に使用）は Gemini を使用するため Google Cloud 認証（Step 2a）は必須です。
+**認証要件マトリクス:**
+
+| 使用する機能 | Google Cloud（Step 2a） | Azure OpenAI（Step 2b） |
+|---|---|---|
+| 回答支援AI + VertexAI埋め込み | **必須**（LLM + 埋め込み） | 不要 |
+| 回答支援AI + Azure OpenAI埋め込み | **必須**（LLMのみ） | **必須**（埋め込み） |
+| 運用保守効率化AI（`run_eval.py --provider both`） | **必須** | **必須** |
+| 運用保守効率化AI（`run_eval.py --provider vertex`） | **必須** | 不要 |
+| 運用保守効率化AI（`run_eval.py --provider azure`） | **必須**（LLMのみ） | **必須** |
+
+> **要点:** Google Cloud 認証は**常に必須**です（LLM が Gemini のみ対応のため）。Azure OpenAI 認証は埋め込みプロバイダーの選択に依存します。
 
 #### Step 2a: Google Cloud（Vertex AI / Gemini）
 
@@ -73,7 +83,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/gemini_credentials.json"
 - Azure Portal で API キーとエンドポイント URL を確認
 - `.env` ファイルに設定（Step 3 参照）
 
-> **スキップできるケース:** 回答支援AI（類似回答検索）のみ使用し、`DEFAULT_EMBEDDING_PROVIDER=vertex_ai` に設定する場合は、Azure OpenAI の認証は不要です。運用保守効率化AI（改定影響調査）の `run_eval.py` はデフォルトで Azure OpenAI と VertexAI の両プロバイダーを使用するため、Azure OpenAI の認証が必須となります（`--provider vertex` で VertexAI のみに限定することも可能）。
+> **スキップできるケース:** 上記の認証要件マトリクスを参照してください。回答支援AIで VertexAI 埋め込みのみ使用する場合、または `run_eval.py --provider vertex` で実行する場合は、Azure OpenAI の認証は不要です。
 
 ### Step 3: 環境変数の設定
 

@@ -253,18 +253,9 @@ python apps/answer-support/main.py --business naibujimu --limit 50
 ValueError: Collection name contains invalid characters
 ```
 
-**原因:**
-- 日本語文字がコレクション名に含まれている（過去の問題）
+**原因:** ChromaDB のコレクション名に使用できない文字が含まれている。
 
-**解決策:**
-
-現在は自動変換で対応済み。問題が発生した場合:
-
-```python
-# 業務分野名は自動的に英語変換されます
-# 例: "預金" → "deposit" → naibujimu に統合済み
-# 現在の主要コレクション: naibujimu, smile, rev{XX}_{bot}
-```
+**解決策:** 業務分野名は `BusinessAreaTranslator`（`config/business_areas.yaml`）で自動的に英語変換されるため、通常は発生しない。発生した場合は `business_areas.yaml` に対象の日本語名→英語名マッピングが登録されているか確認する。
 
 ### キーワード抽出が空
 
@@ -315,7 +306,7 @@ pip install --upgrade sudachipy sudachidict-core
 ls data/input/
 ```
 
-2. ファイル名の確認: `{業務名}_YYYYMMDD.xlsx` 形式で、`{業務名}` は `config/business_areas.yaml` に登録されている日本語名（例: `スマイル_20250301.xlsx`）
+2. ファイル名の確認: `{業務分野名}_{YYYYMMDD}.xlsx` 形式（正規表現: `^([^_]+)_(\d{8})\.xlsx$`）。`{業務分野名}` は `config/business_areas.yaml` に登録されている日本語名または英語名（例: `スマイル_20250301.xlsx` または `smile_20250301.xlsx`）。日本語名は英語DB名に自動変換される
 
 ### LLM 未初期化エラー
 
@@ -425,21 +416,6 @@ Streamlit はユーザー操作（業務分野選択、検索実行等）のた�
 `DynamicDBManager` → `BusinessAreaTranslator` が再実行ごとに新規インスタンス化され、設定読み込みログが複数回出力されます。
 
 **影響:** なし（YAML読み込みはミリ秒単位のため、パフォーマンス影響は無視できる）。
-
----
-
-### Vertex AI SDK 非推奨警告（移行済み）
-
-**ステータス:** 移行完了（`google-cloud-aiplatform` → `google-genai` SDK）
-
-`vertexai.language_models.TextEmbeddingModel` と `vertexai.init()` は `google-genai` SDK の `genai.Client.models.embed_content()` に移行済みです。非推奨警告は表示されません。
-
-**移行内容:**
-- `src/utils/auth.py`: `initialize_vertex_ai()` → `create_genai_client()` に置換
-- `src/utils/gemini_embedding.py`: `TextEmbeddingModel` → `genai.Client` API に置換
-- `requirements.txt`: `google-cloud-aiplatform[vertexai]` → `google-genai`
-
-**参照:** https://cloud.google.com/vertex-ai/generative-ai/docs/deprecations/genai-vertexai-sdk
 
 ---
 
@@ -621,11 +597,13 @@ data/vector_db/rev01_smile/
 
 ### Q: LLM プロバイダーを変更するには?
 
-現在は Gemini のみサポートしています。`.env` でモデルを変更できます:
+現在 LLM は **Gemini のみ**サポートしています（クエリ拡張・関連性判定に使用）。`.env` でモデルを変更できます:
 ```env
 DEFAULT_LLM_PROVIDER=gemini
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite  # gemini-2.5-flash, gemini-2.5-pro も利用可能
 ```
+
+> **Note:** LLM（文章生成）と埋め込みモデル（文章→数値変換）は別のサービスです。埋め込みモデルは Azure OpenAI / VertexAI の2プロバイダーに対応しています（`DEFAULT_EMBEDDING_PROVIDER` で設定）。
 
 ---
 

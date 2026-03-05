@@ -119,10 +119,10 @@ python apps/answer-support/main.py --business naibujimu --limit 10  # 件数制�
 
 > **Note:** バッチ処理の検索対象は CLI 引数では変更できません。`config/settings.yaml` の `common.search_source`（`scenario` / `history_data`、デフォルト: `history_data`）を編集してください。UI ではサイドバーで動的に切替可能です。
 
-> **Note:** バッチ処理実行時、DB は自動更新されます。実行フロー：
-> 1. `run_db_update()` で参照ファイル（FAQ / シナリオ）の更新を検出
-> 2. 参照ファイル未更新 + DB既存 → スキップ（API コスト発生なし）
-> 3. 参照ファイル更新あり or DB未存在 → 構築/更新実行
+> **Note:** バッチ処理実行時、DB は自動更新されます。実行フロー:
+> 1. `run_db_update()` で参照ファイル（`data/source/` 配下の FAQ Excel / シナリオ Excel）の**ファイル更新日時**を `data/vector_db/update_timestamps.json` の記録と比較
+> 2. ファイル未更新 + DB既存 → スキップ（埋め込みAPI呼び出しなし = コスト発生なし）
+> 3. ファイル更新あり or DB未存在 → 埋め込みAPIを呼び出してDB構築/更新
 > 4. DB 更新完了後、バッチ処理を開始
 >
 > UI（インタラクティブ）モードでは DB更新を実行しません。
@@ -132,7 +132,7 @@ python apps/answer-support/main.py --business naibujimu --limit 10  # 件数制�
 **配置先**: `data/input/`
 
 **ファイル命名規則**: `{業務分野名}_{YYYYMMDD}.xlsx`
-- `{業務分野名}`: 日本語名（例: `スマイル`, `内部事務`）。`config/business_areas.yaml` のマッピングで英語DB名に自動変換される
+- `{業務分野名}`: `config/business_areas.yaml` に登録されている名前。日本語名（例: `スマイル`）でも英語名（例: `smile`）でも可。日本語名は英語DB名に自動変換される
 - `{YYYYMMDD}`: データ日付。同一業務分野に複数ファイルがある場合、最新日付のファイルが使用される
 - 正規表現: `^([^_]+)_(\d{8})\.xlsx$`
 

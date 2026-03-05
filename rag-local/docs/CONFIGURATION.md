@@ -27,7 +27,7 @@
 | `DEFAULT_LLM_MODEL` | LLMのモデル名 | **必須** | `gemini-2.5-flash-lite` |
 | `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー（文章を数値に変換するサービス） | **必須** | `azure_openai` |
 
-> **Note:** `DEFAULT_EMBEDDING_MODEL` は廃止されました。埋め込みモデルはプロバイダーに応じて自動決定されます（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`）。
+> **Note:** `DEFAULT_EMBEDDING_MODEL` は廃止されました。埋め込みモデルはプロバイダーに応じて自動決定されます（azure_openai → `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`、vertex_ai → `VERTEX_AI_EMBEDDING_MODEL`）。旧変数名を `.env` に設定しても無視されます。
 
 ### Google Cloud / VertexAI 設定
 
@@ -156,13 +156,13 @@ VERTEX_AI_EMBEDDING_MODEL=gemini-embedding-001
 
 **特徴:**
 - Google Cloud統合
-- MRL（Matryoshka Representation Learning）対応
-- 柔軟な次元数選択
+- 次元数: 3072（固定）
 
 **性能:**
 - バッチサイズ: 5
 - API上限: 250テキスト/リクエスト
-- 次元数: 3072（デフォルト）/ 1536 / 768
+
+> **Note:** Gemini embedding-001 は MRL（Matryoshka Representation Learning）に対応しており、API パラメータで次元数を 3072 / 1536 / 768 から選択可能ですが、本システムでは 3072 固定で使用しています。
 
 ---
 
@@ -272,7 +272,8 @@ search_mode="multi_stage"
 
 ### 重み調整
 
-`keyword_weight` は `1.0 - vector_weight` で自動計算されます。`vector_weight` のみ設定してください。
+ベクトル検索とキーワード検索の重みバランスを調整します。`vector_weight` を設定すると、`keyword_weight` は `1.0 - vector_weight` で自動計算されます（`config.py` のプロパティ）。
+
 設定場所は `config/settings.yaml` の各セクション（`common`, `ui`, `batch`, `evaluation.revision_areas`）。
 
 | vector_weight | keyword_weight（自動） | 用途 |
