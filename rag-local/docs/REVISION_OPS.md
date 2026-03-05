@@ -51,13 +51,8 @@ Phase 1（ローカル検証）では Vertex AI（Gemini embedding-001）のみ�
 ## 多段階ハイブリッド検索
 
 ### スコア計算
-```
-combined_score = vector_weight × ベクトル類似度 + keyword_weight × キーワード類似度
-                 (デフォルト0.9)                    (デフォルト0.1)
-```
 
-- **ベクトル類似度**: AIモデルが文章を数値に変換し、意味の近さを測る指標
-- **キーワード類似度**: 共通キーワードの割合で測る一致度（Jaccard類似度）。キーワードは日本語形態素解析ツール（Sudachi）で名詞を自動抽出
+スコア計算式は回答支援AIと共通。詳細は [ANSWER_SUPPORT.md のスコア計算式](./ANSWER_SUPPORT.md#スコア計算式) を参照。
 
 ### 検索フロー
 ```
@@ -84,6 +79,9 @@ Stage 3: 結果をマージ＋カテゴリ分類
 - **keyword_filter**: 意味検索（ベクトル検索）をスキップし、キーワードの一致のみで検索する方式（多段階検索は実行しない）。用語の単純な置き換え（AML→GPLEX等）の検出に適する
 
 ### 設定値
+
+改定影響調査でのデフォルト設定値:
+
 | パラメータ | 値 | 説明 |
 |-----------|---|------|
 | FILTER_MODE | top_k | フィルタリング方式（`top_k` / `threshold`）。settings.yaml で指定、コード上のフォールバックは `threshold` |
@@ -120,10 +118,7 @@ data/vector_db/
 - 同じデータベースに異なるモデルで変換した数値は混在できない
 - 検索時は、DB構築時と同じモデルで質問文を変換する必要がある
 
-| プロバイダー | 埋め込みモデル | 次元数 |
-|-------------|---------------|--------|
-| Azure OpenAI | text-embedding-3-large | 3072 |
-| VertexAI | gemini-embedding-001 | 3072 |
+対応プロバイダーの詳細は [ANSWER_SUPPORT.md](./ANSWER_SUPPORT.md#埋め込みプロバイダー) を参照。
 
 ---
 
@@ -380,9 +375,7 @@ DBが存在しません: data/vector_db/rev01_smile/azure_openai
 
 ## 参照データ管理
 
-### フォルダ構造
-
-改定評価に必要な参照データは `reference/` ディレクトリに格納されています（git管理外）。
+改定評価に必要な参照データは `reference/` ディレクトリに格納（git管理外、別途提供）。
 
 ```
 reference/
@@ -391,17 +384,9 @@ reference/
 │   ├── rev01_スマイル機能変更/
 │   │   ├── 差分.md                 # 統一フォーマットの差分ファイル
 │   │   ├── 修正前/
-│   │   ├── 修正後/
-│   │   └── 参考資料/               # 協議書・通達 (PDF/DOCX/PPTX)
+│   │   └── 修正後/
 │   ├── rev02_相続少額払い/
-│   ├── rev03_保険証→資格確認証/
-│   ├── rev04_0円新規開設可能/
-│   ├── rev05_AMLフィルター→GPLEX/
-│   └── rev06_DC→MDC/
-├── マージ版シナリオ/
-│   ├── 改定前/                     # 改定評価用マージ版
-│   └── 最新/                       # 最新版マージ版
-├── 問い合わせ履歴/
+│   └── ...（rev03〜rev06 同様）
 └── シナリオボットメンテナンス管理台帳.xlsx
 ```
 
@@ -597,22 +582,3 @@ python apps/revision-ops/run_eval.py
 ### 設定変更のみのケース
 
 既存改定のパラメータ調整（`vector_weight` や `search_type` の変更）は `config/settings.yaml` の編集だけで完了する。DB再構築は不要。
-
----
-
-## 関連ファイル
-
-| ファイル | 説明 |
-|---------|------|
-| `scripts/build_db.py` | DB構築スクリプト（回答支援AI（類似回答検索）+ 改定別 統合） |
-| `apps/revision-ops/run_eval.py` | 評価スクリプト（多段階検索版） |
-| `scripts/generate_correct_ids.py` | 正解ID対応表生成 |
-| `scripts/prepare_before_scenario.py` | 変更前シナリオの前処理 |
-| `src/core/search/multi_stage_orchestrator.py` | 多段階検索オーケストレーター |
-| `src/core/search/query_enhancer.py` | LLMクエリ拡張エンジン |
-| `src/core/search/keyword_search_engine.py` | キーワード検索エンジン |
-| `src/core/search/vector_search_engine.py` | ベクトル検索エンジン |
-| `src/core/judgment_support.py` | LLM判断支援クラス |
-| `src/utils/dynamic_db_manager.py` | DB管理クラス |
-| `src/utils/gemini_embedding.py` | VertexAI埋め込みモデル |
-| `src/utils/azure_embedding.py` | Azure OpenAI埋め込みモデル |
