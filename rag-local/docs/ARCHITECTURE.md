@@ -362,78 +362,44 @@ main.py
 
 ### 新しい埋め込みモデルの追加
 
-1. `src/utils/base_embedding.py` を継承し、`encode()`, `embedding_dimension`, `provider_name` を実装
-2. `src/utils/auth.py` の `create_embedding_model()` にプロバイダー分岐を追加
-3. `config.py` の `VALID_EMBEDDING_PROVIDERS` タプルにプロバイダー名を追加
+`BaseEmbeddingModel` 抽象基底クラス（`src/utils/base_embedding.py`）+ Factory パターン（`auth.py` の `create_embedding_model()`）で拡張する設計。新プロバイダー追加時の変更ファイル:
 
-```python
-# src/utils/custom_embedding.py
-from src.utils.base_embedding import BaseEmbeddingModel
-
-class CustomEmbeddingModel(BaseEmbeddingModel):
-    def encode(self, texts, normalize_embeddings=True):
-        ...  # プロバイダー固有の実装
-
-    @property
-    def embedding_dimension(self) -> int:
-        return 1024
-
-    @property
-    def provider_name(self) -> str:
-        return "custom"
-```
+1. `src/utils/{provider}_embedding.py` — `BaseEmbeddingModel` を継承し `encode()`, `embedding_dimension`, `provider_name` を実装
+2. `src/utils/auth.py` — `create_embedding_model()` にプロバイダー分岐を追加
+3. `config.py` — `VALID_EMBEDDING_PROVIDERS` タプルにプロバイダー名を追加
 
 ### 新しい業務分野の追加
 
-例: 「為替」（kawase）を追加する場合
-
-#### Step 1: マッピング登録
-
-`config/business_areas.yaml` の `mappings` に `為替: kawase` を追加。ChromaDB コレクション名の制約: 英数字・`.`・`_`・`-` のみ、3-512文字。
-
-#### Step 2: 参照データの配置
-
-`data/source/faq/latest/` や `data/source/scenarios/latest/` にファイルを配置。命名規則: `{日本語業務名}_{データ種別}_{YYYYMMDD}.xlsx`。FAQ・シナリオの片方だけでも可。
-
-#### Step 3: DB構築
-
-```bash
-# Streamlit UI を停止してから実行（ChromaDB ファイルロック競合防止）
-python scripts/build_db.py --business kawase
-python scripts/check_db_content.py  # ドキュメント数が 0 でないことを確認
-```
-
-#### Step 4: 入力ファイルの作成
-
-バッチ処理用の入力ファイル: `data/input/kawase_20260601.xlsx`（列: 番号, 質問内容, 既存回答）。入力ファイル名は英語DB名（`kawase`）を使用する。参照データは日本語名（`為替`）、入力ファイルは英語名という非対称に注意。
-
-#### Step 5: 動作確認
-
-```bash
-python apps/answer-support/main.py --business kawase --limit 3
-```
-
-#### コード変更が不要な理由
+YAML マッピング（`config/business_areas.yaml`）+ ファイル自動検出（`DynamicDBManager.analyze_reference_files()`）により、**設定ファイルとデータファイルの配置だけで完結し、コード変更は不要**。
 
 - `analyze_reference_files()` が `data/source/` を走査してファイル名から業務分野を自動検出する
 - `BusinessAreaTranslator` が YAML マッピングで日本語→英語を変換する
 - `extract_business_area_from_input()` が入力ファイル名から業務分野を抽出する
 - DB パスは `data/vector_db/{英語名}/{provider}/` に自動生成される
 
-つまり、**設定ファイル + データファイルの配置だけで完結し、コード変更は不要**。
+操作手順は [ANSWER_SUPPORT.md の「業務分野の追加」](./ANSWER_SUPPORT.md#業務分野の追加) を参照。
 
 ### 新しい検索エンジンの追加
 
-MultiStageOrchestrator は個別引数でエンジンを受け取るため、新しいエンジンクラスを作成し、呼び出し元で `MultiStageOrchestrator` のコンストラクタに注入する。
+DI（コンストラクタ注入）パターンで拡張する設計。`MultiStageOrchestrator` は `vector_engine`, `keyword_engine`, `query_enhancer`, `text_combiner` を個別引数で受け取るため、新しいエンジンクラスを作成し、呼び出し元（`Searcher`）でコンストラクタに注入する。
 
 ### 認証方式
 
-LLM は Gemini（Vertex AI）のみをサポート。認証は `CREDENTIAL_SOURCE` 環境変数で切替:
+[CONFIGURATION.md の「GCP認証方式」](./CONFIGURATION.md#gcp認証方式) を参照。
 
-| 値 | 認証方式 | 用途 |
-|----|---------|------|
-| `local`（デフォルト） | ローカルのサービスアカウント JSON ファイル | 開発環境 |
-| `key_vault` | Azure Key Vault からサービスアカウント JSON を取得 | 本番環境 |
+### 外部API変更時の変更箇所
+
+> 行番号は 2026-03-06 時点のもの。コード変更により行番号はずれる可能性があるため、クラス名・メソッド名を主キーとして参照すること。
+
+| 変更対象 | 影響ファイル | 変更箇所の詳細 |
+|---------|------------|---------------|
+| Gemini LLM API | src/core/search/query_enhancer.py | QueryEnhancer._invoke_llm_with_retry()（L92）の LangChain 呼び出しを修正する。プロンプト形式が変わる場合は prompt/summarize_v1.0.txt も修正する |
+| | src/core/judgment_support.py | JudgmentSupport._invoke_llm_with_retry()（L52）の LangChain 呼び出しを修正する。プロンプト形式が変わる場合は prompt/judgment_support.txt も修正する |
+| Gemini Embedding API | src/utils/gemini_embedding.py | GeminiEmbeddingModel._get_embeddings_with_retry()（L131）のAPI呼び出しパラメータを修正する。次元数が変わる場合は embedding_dimension プロパティ（L185）も修正する |
+| Azure OpenAI Embedding API | src/utils/azure_embedding.py | AzureOpenAIEmbeddingModel._get_embeddings_with_retry()（L146）のAPI呼び出しパラメータを修正する。認証方式が変わる場合は _setup_model()（L95）のクライアント初期化も修正する |
+| ChromaDB API | src/utils/vector_db.py | MetadataVectorDB の全メソッド（add_documents L178、search L242、delete_collection L275 等）を修正する。クライアント初期化（L79）のパラメータも確認する |
+| Google Cloud 認証 | src/utils/auth.py | _get_credentials_local()（L45）または _get_credentials_key_vault()（L70）を修正する。認証フローが変わる場合は get_google_credentials()（L103）のハンドラー選択ロジックも修正する |
+| Sudachi（形態素解析） | src/core/search/keyword_search_engine.py | KeywordSearchEngine.extract_keywords()（L80）の形態素解析呼び出しを修正する。品詞体系が変わる場合はフィルタ条件も修正する |
 
 ---
 
