@@ -82,7 +82,7 @@ final_score = vector_weight x vector_similarity + (1 - vector_weight) x keyword_
 
 ### 埋め込みプロバイダー
 
-2つのプロバイダー（Azure OpenAI / VertexAI）に対応。モデル・次元数の詳細は [ARCHITECTURE.md](./ARCHITECTURE.md#埋め込みモデル) を参照。
+2つのプロバイダー（Azure OpenAI / VertexAI）に対応。モデル・次元数の詳細は [CONFIGURATION.md](./CONFIGURATION.md#環境変数一覧) を参照。
 
 `build_db.py` は両プロバイダーの DB を構築する。実行時は `DEFAULT_EMBEDDING_PROVIDER` 環境変数に一致するプロバイダーの DB が使用される。
 
@@ -212,6 +212,52 @@ python scripts/build_db.py --no-revisions --force
 ```
 
 > **注意**: DB構築中は Streamlit UI を停止してください（ChromaDB のファイルロック競合を防止）。
+
+---
+
+## 業務分野の追加
+
+新しい業務分野（例: 「為替」）を追加する手順。コード変更は不要で、設定ファイルとデータファイルの配置だけで完結する。
+
+### Step 1: マッピング登録
+
+`config/business_areas.yaml` の `mappings` に日本語名→英語名の対応を追加する。
+
+```yaml
+mappings:
+  為替: kawase
+```
+
+ChromaDB コレクション名の制約: 英数字・`.`・`_`・`-` のみ、3-512文字。
+
+### Step 2: 参照データの配置
+
+`data/source/faq/latest/` や `data/source/scenarios/latest/` にファイルを配置する。命名規則: `{日本語業務名}_{データ種別}_{YYYYMMDD}.xlsx`（例: `為替_履歴データ_20260601.xlsx`）。FAQ・シナリオの片方だけでも可。
+
+### Step 3: DB構築
+
+```bash
+# Streamlit UI を停止してから実行（ChromaDB ファイルロック競合防止）
+python scripts/build_db.py --business kawase
+python scripts/check_db_content.py  # ドキュメント数が 0 でないことを確認
+```
+
+### Step 4: 入力ファイルの作成
+
+バッチ処理用の入力ファイル: `data/input/kawase_20260601.xlsx`（列: 番号, 質問内容, 既存回答）。入力ファイル名は英語DB名（`kawase`）を使用する。参照データは日本語名（`為替`）、入力ファイルは英語名という非対称に注意。
+
+### Step 5: 動作確認
+
+```bash
+python apps/answer-support/main.py --business kawase --limit 3
+```
+
+### コード変更が不要な理由
+
+- `analyze_reference_files()` が `data/source/` を走査してファイル名から業務分野を自動検出する
+- `BusinessAreaTranslator` が YAML マッピングで日本語→英語を変換する
+- `extract_business_area_from_input()` が入力ファイル名から業務分野を抽出する
+- DB パスは `data/vector_db/{英語名}/{provider}/` に自動生成される
 
 ---
 
