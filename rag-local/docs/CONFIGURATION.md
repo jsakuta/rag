@@ -590,40 +590,4 @@ python -c "from config import SearchConfig; config = SearchConfig(); print(confi
 
 ## トラブルシューティング
 
-### 環境変数が読み込まれない
-
-**原因:** `.env` ファイルが正しい場所にない
-
-**解決策:**
-```bash
-# プロジェクトルートに配置
-ls -l .env
-
-# パーミッション確認
-chmod 600 .env
-```
-
-### API キーエラー
-
-**原因:** 環境変数が設定されていない
-
-**解決策:**
-```bash
-# 環境変数の確認
-echo $AZURE_OPENAI_API_KEY
-
-# .env ファイルを再読み込み
-source .env  # Linux/Mac
-```
-
-詳細は [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md) を参照してください。
-
----
-
-## 関連ドキュメント
-
-- [README.md](../README.md) - プロジェクト概要・セットアップ
-- [docs/ANSWER_SUPPORT.md](./ANSWER_SUPPORT.md) - 回答支援AI詳細
-- [docs/REVISION_OPS.md](./REVISION_OPS.md) - 改定影響調査詳細
-- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - アーキテクチャ・API仕様
-- [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - トラブルシューティング
+設定に関する問題は [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) を参照。
