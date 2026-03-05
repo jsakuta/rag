@@ -39,7 +39,7 @@
 
 ### Azure OpenAI 設定
 
-> **Note:** `DEFAULT_EMBEDDING_PROVIDER=vertex_ai` で回答支援AIのみ使用する場合、以下の設定は不要です。改定影響調査（`run_eval.py`）をデフォルト（`--provider both`）で実行する場合に必須となります。
+> **Note:** 回答支援AI（類似回答検索）のみ使用し `DEFAULT_EMBEDDING_PROVIDER=vertex_ai` に設定する場合、以下の設定は不要です。運用保守効率化AI（改定影響調査）の `run_eval.py` をデフォルト（`--provider both`）で実行する場合に必須となります。
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
@@ -64,7 +64,7 @@
 
 **`key_vault`**: Azure Key Vault にサービスアカウント JSON をシークレットとして格納し、`DefaultAzureCredential` で取得。ローカルにファイルを配置できない環境向け。
 
-### 改定影響調査オプション
+### 運用保守効率化AI オプション
 
 | 変数名 | 説明 | デフォルト値 | 例 |
 |--------|------|------------|-----|
@@ -183,7 +183,6 @@ config = SearchConfig(
     vector_weight=0.9,          # ベクトル検索の重み
 
     # 検索モード: original | llm_enhanced
-    # ※ multi_stage は改定影響調査AI専用。回答支援AIには組み込まれていない
     search_mode="original",
 
     # 検索タイプ: hybrid | keyword_filter
@@ -201,7 +200,7 @@ config = SearchConfig(
 | `top_k` | int | batch=4, ui=3 | 返却する結果数 |
 | `vector_weight` | float | 0.9 | ベクトル検索の重み（0.0〜1.0） |
 | `search_type` | str | `hybrid` | 検索アルゴリズム（`hybrid` / `keyword_filter`） |
-| `search_mode` | str | `original` | クエリ処理方法。回答支援AI: `original` / `llm_enhanced`。改定影響調査AI: 上記に加え `multi_stage`（多段階検索） |
+| `search_mode` | str | `original` | クエリ処理方法。回答支援AI（類似回答検索）: `original` / `llm_enhanced`。運用保守効率化AI（改定影響調査）: 上記に加え `multi_stage`（多段階検索） |
 | `search_source` | str | `history_data` | 検索対象（`scenario` / `history_data`） |
 | `reference_type` | str | `multi_folder` | 参照データ形式 |
 | `multi_stage_threshold` | float | 0.45 | 多段階検索の統合スコア閾値 |
@@ -222,12 +221,12 @@ config = SearchConfig(
 | `search_mode` | `original` / `llm_enhanced` / `multi_stage`* | クエリの処理方法（原文そのまま / LLMで拡張 / 多段階で網羅的に検索） |
 | `search_type` | `hybrid` / `keyword_filter` | 検索アルゴリズム（ベクトル+キーワード / キーワードのみ） |
 
-> \* `multi_stage` は改定影響調査AI専用です。回答支援AIには組み込まれていません。
+> \* `multi_stage` は運用保守効率化AI（改定影響調査）専用です。詳細は [REVISION_OPS.md](REVISION_OPS.md) を参照。
 
 - `search_type=hybrid`: 意味の近さで検索する方式（ベクトル検索）とキーワードの一致で検索する方式を、`vector_weight` で重み付けして合算
 - `search_type=keyword_filter`: 事前構築されたキーワードキャッシュでキーワードマッチのみ実行（ベクトル検索なし、`vector_weight` は不使用）
 
-回答支援AI（UI）では `search_type` は `hybrid` に固定されています。改定影響調査では改定ごとに `settings.yaml` の `evaluation.revision_areas` で設定します。
+回答支援AI（UI）では `search_type` は `hybrid` に固定されています。運用保守効率化AI（改定影響調査）では改定ごとに `settings.yaml` の `evaluation.revision_areas` で設定します。
 
 ### 検索モード
 
@@ -258,9 +257,9 @@ search_mode="llm_enhanced"
 - LLM API 未到達時エラー: `RuntimeError: LLM is not initialized`
 - LLM API 呼び出しが不要な場合は `search_mode: original` を使用（環境変数は必要）
 
-#### 多段階検索モード（改定影響調査AI専用）
+#### 多段階検索モード（運用保守効率化AI専用）
 
-> **Note:** このモードは改定影響調査AI専用です。回答支援AIには組み込まれていません。
+> **Note:** このモードは運用保守効率化AI（改定影響調査）専用です。回答支援AI（類似回答検索）には組み込まれていません。
 
 ```python
 search_mode="multi_stage"
@@ -289,7 +288,7 @@ search_mode="multi_stage"
 |------|---------|-----|------|
 | 回答支援AI（UI） | `ui.top_k` | 3 | 画面表示用 |
 | 回答支援AI（バッチ） | `batch.top_k` | 4 | Excel出力用 |
-| 改定影響調査（評価） | `evaluation.top_k` | 130 | 網羅性重視（`filter_mode: top_k` 時） |
+| 運用保守効率化AI（改定影響調査） | `evaluation.top_k` | 130 | 網羅性重視（`filter_mode: top_k` 時） |
 
 ---
 
@@ -348,9 +347,9 @@ data/output/             # 出力ファイル
 | `common` | 全プログラム共通 | search_type, vector_weight, search_mode, search_source, keyword設定, columns設定 |
 | `ui` | Streamlit UI専用 | top_k, search_type, vector_weight（スライダー初期値） |
 | `batch` | バッチ処理専用 | top_k, vector_weight |
-| `evaluation` | 改定影響調査専用 | max_results, filter_mode, thresholds, revision_areas（[詳細](./REVISION_OPS.md#新しい改定の追加手順)） |
+| `evaluation` | 運用保守効率化AI（改定影響調査）専用 | max_results, filter_mode, thresholds, revision_areas（[詳細](./REVISION_OPS.md#新しい改定の追加手順)） |
 
-### 改定影響調査（evaluation）の詳細パラメータ
+### 運用保守効率化AI — evaluation の詳細パラメータ
 
 | パラメータ | 型 | デフォルト | 説明 |
 |-----------|-----|-----------|------|
@@ -391,6 +390,8 @@ data/output/             # 出力ファイル
 **UI vs バッチでの挙動:**
 - **UI**: サイドバーで動的に切替可能（`settings.yaml` の値は初期値として使用）
 - **バッチ**: `settings.yaml` の値を使用（CLI 引数での変更不可）
+
+> **Note:** 運用保守効率化AI UI（`ops_ui.py`）の影響調査モードでも、`source_filter` としてシナリオ / 問い合わせ履歴データ（FAQ）のデータソース切替が可能です。
 
 ### keyword設定（キーワード検索パラメータ）
 

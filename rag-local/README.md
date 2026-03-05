@@ -2,12 +2,12 @@
 
 ## 概要
 
-2つのAIアプリケーションと共有コアで構成する、ローカル環境で動作する検索システム（RAG: Retrieval-Augmented Generation 方式）。
+2つのAIアプリケーションと共有コアで構成する、ローカル環境で動作する検索システム（RAG: Retrieval-Augmented Generation 方式）。※ 問い合わせ整理AIは別リポジトリ（rag-maintenance）で管理。
 
 | AI | バッチ | UI | 用途 | 詳細ドキュメント |
 |----|-------|-----|------|----------------|
 | **回答支援AI（類似回答検索）** | `apps/answer-support/main.py` | `apps/answer-support/ui/chat.py` | 問い合わせ履歴やシナリオから似た質問・回答を検索 | [docs/ANSWER_SUPPORT.md](./docs/ANSWER_SUPPORT.md) |
-| **運用保守効率化AI（改定影響調査）** | `apps/revision-ops/run_eval.py` | `apps/revision-ops/ui/ops_ui.py` | 事務改定で影響を受けるシナリオ候補を調査 | [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) |
+| **運用保守効率化AI（改定影響調査）** | `apps/revision-ops/run_eval.py` | `apps/revision-ops/ui/ops_ui.py` | 事務改定で影響を受けるシナリオや問い合わせ履歴の候補を調査 | [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) |
 
 ---
 
@@ -19,12 +19,10 @@
 |---|------------|------|
 | 1 | **README.md**（本ファイル） | セットアップ手順・全体像 |
 | 2 | [docs/ANSWER_SUPPORT.md](./docs/ANSWER_SUPPORT.md) | 回答支援AIの詳細（使い方・DB構築・出力フォーマット） |
-| 3 | [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) | 改定影響調査AIの詳細（評価フロー・参照データ管理） |
+| 3 | [docs/REVISION_OPS.md](./docs/REVISION_OPS.md) | 運用保守効率化AIの詳細（評価フロー・参照データ管理） |
 | 4 | [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) | 設定リファレンス（環境変数・YAML詳細） |
 | 5 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | 技術アーキテクチャ・API仕様・プロンプト |
 | 6 | [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) | トラブルシューティング |
-
-設計書アーカイブは `docs/plans/` に格納されています。
 
 ---
 
@@ -32,7 +30,7 @@
 
 ### Step 1: Python環境の構築
 
-**前提:** Python 3.9 以上が必要です（依存ライブラリの要件）。
+**前提:** Python 3.11 以上を推奨（開発環境では Python 3.13.5 で動作確認済み）。`requirements.txt` のバージョン下限指定により最新のライブラリがインストールされるため、numpy 等が Python 3.11 以上を要求する。
 
 ```bash
 cd rag-local
@@ -70,10 +68,12 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/gemini_credentials.json"
 
 #### Step 2b: Azure OpenAI
 
-埋め込みモデルで Azure OpenAI を使用する場合に必要です。`DEFAULT_EMBEDDING_PROVIDER=vertex_ai` で回答支援AIのみ使用する場合はスキップできます。
+埋め込みモデルで Azure OpenAI を使用する場合に必要です。
 
 - Azure Portal で API キーとエンドポイント URL を確認
 - `.env` ファイルに設定（Step 3 参照）
+
+> **スキップできるケース:** 回答支援AI（類似回答検索）のみ使用し、`DEFAULT_EMBEDDING_PROVIDER=vertex_ai` に設定する場合は、Azure OpenAI の認証は不要です。運用保守効率化AI（改定影響調査）の `run_eval.py` はデフォルトで Azure OpenAI と VertexAI の両プロバイダーを使用するため、Azure OpenAI の認証が必須となります（`--provider vertex` で VertexAI のみに限定することも可能）。
 
 ### Step 3: 環境変数の設定
 
@@ -129,7 +129,7 @@ python scripts/build_db.py --no-revisions --force
 # 改定影響調査用のみ構築
 python scripts/build_db.py --revisions-only --force
 
-# 全DB構築（回答支援AI + 改定影響調査）
+# 全DB構築（回答支援AI + 運用保守効率化AI）
 python scripts/build_db.py --force
 
 # 2回目以降: 差分のみ構築（更新があるDBのみ）
@@ -199,7 +199,7 @@ rag-local/
 │   └── revision-ops/             # 運用保守効率化AI（改定影響調査）
 │       ├── run_eval.py           # バッチExcel出力
 │       └── ui/
-│           └── ops_ui.py         # 改定影響調査 Streamlit UI
+│           └── ops_ui.py         # 運用保守効率化AI Streamlit UI（評価モード + 影響調査モード）
 │
 ├── config.py                     # 設定管理
 ├── requirements.txt              # 依存パッケージ
@@ -209,11 +209,10 @@ rag-local/
 │
 ├── docs/                         # ドキュメント
 │   ├── ANSWER_SUPPORT.md         # 回答支援AI詳細
-│   ├── REVISION_OPS.md           # 改定影響調査詳細
+│   ├── REVISION_OPS.md           # 運用保守効率化AI（改定影響調査）詳細
 │   ├── CONFIGURATION.md          # 設定リファレンス
 │   ├── ARCHITECTURE.md           # アーキテクチャ・API仕様
-│   ├── TROUBLESHOOTING.md        # トラブルシューティング
-│   └── plans/                    # 設計書アーカイブ
+│   └── TROUBLESHOOTING.md        # トラブルシューティング
 │
 ├── src/                          # 共有コアライブラリ
 │   ├── core/                     # コアロジック
@@ -221,7 +220,7 @@ rag-local/
 │   │   ├── searcher.py           # 検索統合（Processor から使用）
 │   │   ├── judgment_support.py   # LLM判断支援
 │   │   └── search/               # 検索エンジン
-│   │       ├── multi_stage_orchestrator.py  # 多段階検索（改定影響調査AI専用）
+│   │       ├── multi_stage_orchestrator.py  # 多段階検索（運用保守効率化AI専用）
 │   │       ├── search_strategy.py           # 検索戦略切替
 │   │       ├── query_enhancer.py            # クエリ拡張
 │   │       ├── vector_search_engine.py      # ベクトル検索
@@ -311,9 +310,8 @@ rag-local/
 | `reference/` | 改定資料 | 別途提供 |
 | `.venv/` | Python仮想環境 | `pip install` で再作成 |
 | `logs/` | ログ | 実行時生成 |
-| `CLAUDE.md` | 開発メモ | 引き継ぎ対象外 |
 
-> **注記:** 引き継ぎパッケージは許可リスト方式で生成されます（`create_handover_package.py:INCLUDE`）。`CLAUDE.md` は開発者用のプロジェクトメモであり、運用には不要なため許可リストから除外されています。
+> **注記:** 引き継ぎパッケージは許可リスト方式で生成されます（`create_handover_package.py:INCLUDE`）。許可リストに含まれないファイルは自動的に除外されます。
 
 ### 同梱するもの
 

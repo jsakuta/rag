@@ -11,7 +11,7 @@
 |-------------|------|
 | [README.md](../README.md) | プロジェクト概要とクイックスタート |
 | [docs/ANSWER_SUPPORT.md](../docs/ANSWER_SUPPORT.md) | 回答支援AI（類似回答検索・DB構築） |
-| [docs/REVISION_OPS.md](../docs/REVISION_OPS.md) | 改定影響調査システム |
+| [docs/REVISION_OPS.md](../docs/REVISION_OPS.md) | 運用保守効率化AI（改定影響調査） |
 | [docs/CONFIGURATION.md](../docs/CONFIGURATION.md) | 環境変数と設定オプション詳細 |
 | [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) | システムアーキテクチャ・API仕様・プロンプト |
 | [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) | トラブルシューティング |
@@ -183,7 +183,7 @@ rag-local/
 │   └── revision-ops/             # 運用保守効率化AI（改定影響調査）
 │       ├── run_eval.py           # バッチExcel出力
 │       └── ui/
-│           └── ops_ui.py         # 改定影響調査 Streamlit UI
+│           └── ops_ui.py         # 運用保守効率化AI Streamlit UI
 │
 ├── config.py                     # 設定管理
 ├── requirements.txt              # 依存パッケージ
@@ -191,7 +191,7 @@ rag-local/
 │
 ├── docs/                         # ドキュメント
 │   ├── ANSWER_SUPPORT.md         # 回答支援AI詳細
-│   ├── REVISION_OPS.md           # 改定影響調査詳細
+│   ├── REVISION_OPS.md           # 運用保守効率化AI（改定影響調査）詳細
 │   ├── CONFIGURATION.md          # 設定リファレンス
 │   ├── ARCHITECTURE.md           # アーキテクチャ・API仕様
 │   ├── TROUBLESHOOTING.md        # トラブルシューティング
@@ -251,7 +251,7 @@ rag-local/
 │   │   ├── scenarios/            # シナリオExcel
 │   │   │   ├── latest/
 │   │   │   └── revisions/
-│   │   └── faq/                  # FAQデータ
+│   │   └── faq/                  # 問い合わせ履歴データ（FAQ）
 │   │       └── latest/
 │   ├── input/                    # 入力ファイル
 │   └── output/                   # 出力ファイル

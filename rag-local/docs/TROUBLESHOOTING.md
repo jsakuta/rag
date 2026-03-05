@@ -330,14 +330,14 @@ RuntimeError: LLM is not initialized. Set DEFAULT_LLM_PROVIDER and DEFAULT_LLM_M
 
 **解決策:**
 
-1. **回答支援AI** で LLM が不要な場合、`original` モードに戻す:
+1. **回答支援AI（類似回答検索）** で LLM が不要な場合、`original` モードに戻す:
 ```yaml
 # config/settings.yaml
 common:
   search_mode: original
 ```
 
-2. **改定影響調査**（`run_eval.py`）では `search_mode` に関係なく LLM を常に初期化します。この場合は解決策 3 の環境変数設定が必須です。
+2. **運用保守効率化AI（改定影響調査）**（`run_eval.py`）では `search_mode` に関係なく LLM を常に初期化します。この場合は解決策 3 の環境変数設定が必須です。
 
 3. LLM を使用する場合、環境変数を設定:
 ```env
@@ -611,7 +611,7 @@ python apps/answer-support/main.py
 ### Q: 複数の文章を数値に変換するAIモデル（埋め込みモデル）を同時に使用できる?
 
 いいえ。同一のデータの格納単位（コレクション）に異なるモデルの数値データ（ベクトル）は混在できません。
-改定影響調査システムでは、プロバイダーごとに別々のDBディレクトリを使用しています。
+運用保守効率化AI（改定影響調査）では、プロバイダーごとに別々のDBディレクトリを使用しています。
 
 ```
 data/vector_db/rev01_smile/

@@ -1,5 +1,5 @@
 """
-改定影響調査スクリプト（多段階検索・横並び比較版）
+運用保守効率化AI — バッチスクリプト（多段階検索・横並び比較版）
 
 多段階ハイブリッド検索を使用して、Azure/VertexAI両方で検索を実行。
 結果を横並びで比較できるExcelファイルに出力。
@@ -105,7 +105,7 @@ VECTOR_DB_BASE = PROJECT_ROOT / "data" / "vector_db"
 
 
 class RevisionEvaluator:
-    """改定影響調査クラス（多段階検索・横並び比較版）"""
+    """運用保守効率化AI — バッチクラス（多段階検索・横並び比較版）"""
 
     def __init__(self, config: SearchConfig, enable_llm_analysis: bool = True):
         self.config = config
@@ -1178,7 +1178,7 @@ def main() -> None:
     suppress_noise()
     start_time = time.time()
 
-    parser = argparse.ArgumentParser(description="改定影響調査スクリプト")
+    parser = argparse.ArgumentParser(description="運用保守効率化AI（改定影響調査）")
     parser.add_argument(
         "--provider",
         choices=["both", "azure", "vertex"],
@@ -1188,7 +1188,7 @@ def main() -> None:
     parser.add_argument("--verbose", action="store_true", help="詳細設定を表示")
     args = parser.parse_args()
 
-    print_section("改定影響調査 (多段階検索・横並び比較版)")
+    print_section("運用保守効率化AI（改定影響調査）")
 
     print_section("DB存在確認")
     db_status_data = []
@@ -1220,7 +1220,7 @@ def main() -> None:
 
     provider_labels = {"both": "Azure + VertexAI", "azure": "Azure のみ", "vertex": "VertexAI のみ"}
     db_all_ok = not any("MISSING" in str(row) for row in db_status_data)
-    print_startup_summary("改定影響調査 (バッチ)", [
+    print_startup_summary("運用保守効率化AI（バッチ）", [
         ("DB接続", db_all_ok, "OK" if db_all_ok else "一部MISSING"),
         ("LLM判定", enable_llm or None, f"{'有効' if enable_llm else '無効 (スキップ)'} ({config.llm_model})"),
         ("プロバイダー", True, provider_labels[args.provider]),

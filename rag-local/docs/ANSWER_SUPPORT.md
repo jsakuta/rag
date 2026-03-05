@@ -4,6 +4,10 @@
 
 ## 概要
 
+### 背景
+
+問い合わせ対応チームが受ける質問に対し、過去の問い合わせ履歴やシナリオボットのデータから類似回答を提示し、回答作成を支援するために開発されたシステム。
+
 ### 目的
 
 - ユーザーの質問に対して、既存の問い合わせ履歴（FAQ）やチャットボットのシナリオから、意味やキーワードが近い質問・回答を検索
@@ -25,24 +29,19 @@
 
 文章の意味の近さで検索する方式（ベクトル検索）と、共通する単語の一致で検索する方式（キーワード検索）の結果を、重み付けして合算する方式です。
 
-```
-入力クエリ
-    |
-    +---> ベクトル検索（AIモデルで質問文を数値に変換 → データベースで意味の近い文書を検索）
-    |         |
-    |         v
-    |     vector_similarity（意味的な近さの指標: コサイン類似度）
-    |
-    +---> キーワード抽出（日本語形態素解析ツール Sudachi で名詞を最大5個抽出）
-              |
-              v
-          keyword_similarity（共通キーワードの割合: Jaccard 類似度）
-              |
-              v
-    スコア合算: final_score = vector_weight x vector_sim + (1 - vector_weight) x keyword_sim
-              |
-              v
-    スコア降順でソート → top_k 件を返却
+```mermaid
+graph TD
+    A[入力クエリ] --> B[ベクトル検索<br/>AIモデルで質問文を数値に変換<br/>→ DBで意味の近い文書を検索]
+    A --> C[キーワード抽出<br/>Sudachi で名詞を最大5個抽出]
+
+    B --> D[vector_similarity<br/>コサイン類似度]
+    C --> E[keyword_similarity<br/>Jaccard 類似度]
+
+    D --> F["スコア合算<br/>final_score = vector_weight × vector_sim<br/>+ (1 - vector_weight) × keyword_sim"]
+    E --> F
+
+    F --> G[スコア降順でソート]
+    G --> H[top_k 件を返却]
 ```
 
 ### 検索モード
@@ -52,9 +51,9 @@
 | `original` | 原文をそのままクエリとしてハイブリッド検索（デフォルト） |
 | `llm_enhanced` | LLM（大規模言語モデル）でクエリを拡張・要約してからハイブリッド検索 |
 
-> **Note:** `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` は全モードで起動時に必須です（`SearchConfig` のバリデーション）。ただし、LLM API の呼び出しが発生するのは `llm_enhanced` モードのみです。`GEMINI_PROJECT_ID` + GCP認証も `llm_enhanced` 使用時に必須となります。
+> **Note:** `original` がデフォルトの理由: LLM拡張（`llm_enhanced`）は要約により固有名詞が落ちるケースがあり、原文検索の方が精度が高い場合が多いため。
 
-> **Note:** 回答支援AIには `multi_stage` モード（多段階検索）は組み込まれていません。`multi_stage` は改定影響調査AI（`apps/revision-ops/`）専用の機能です。回答支援AIでは `original` または `llm_enhanced` のみ使用できます。
+> **Note:** `DEFAULT_LLM_PROVIDER` / `DEFAULT_LLM_MODEL` は全モードで起動時に必須です（`SearchConfig` のバリデーション）。ただし、LLM API の呼び出しが発生するのは `llm_enhanced` モードのみです。`GEMINI_PROJECT_ID` + GCP認証も `llm_enhanced` 使用時に必須となります。
 
 ### スコア計算式
 
@@ -78,6 +77,8 @@ final_score = vector_weight x vector_similarity + (1 - vector_weight) x keyword_
 |---------|------|------|------|
 | 内部事務 | `naibujimu` | 預金+総則の問い合わせ履歴（FAQ）+ naibujimu-bot シナリオ | 11,439件 |
 | スマイル | `smile` | スマイルの問い合わせ履歴（FAQ）+ smile-bot シナリオ | 9,237件 |
+
+> **Note:** Q&A結合ベクトル化の理由 — 問い合わせ履歴の質問文は営業店担当者が書いており、同じ趣旨でも表現にばらつきが大きい（例: 「旧姓の印鑑を登録してもいいか」と「印鑑諸届情報登録100設定は必要か」）。質問文だけをベクトル化すると、表現が異なるケースで検索にかからない。一方、回答文には質問の意図を的確に言い換えた表現が含まれるため（例: 「旧姓であれば問題ない」）、回答文も含めてベクトル化することで意味的な一致率が向上する。
 
 ### 埋め込みプロバイダー（文章を数値に変換するサービス）
 

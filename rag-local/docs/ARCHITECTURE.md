@@ -122,6 +122,7 @@
 |-----------|------|------|
 | `main.py` | バッチ処理エントリーポイント | 一括検索実行 |
 | `ui/chat.py` | Streamlit UI | インタラクティブ検索 |
+| `ui/ops_ui.py` | 運用保守効率化AI Streamlit UI | 評価モード（正解ID付き精度検証）/ 影響調査モード（正解IDなし影響範囲調査）の2モード構成。詳細は [REVISION_OPS.md](./REVISION_OPS.md) |
 | `scripts/*` | ユーティリティスクリプト | DB再構築、評価実行 |
 
 ### 2. Core Layer
@@ -365,7 +366,7 @@ class BaseEmbeddingModel(ABC):
 5. Excelファイル保存
 ```
 
-### 多段階検索バッチフロー（改定影響調査）
+### 多段階検索バッチフロー（運用保守効率化AI）
 
 ```
 1. 入力ファイル読み込み
@@ -389,7 +390,7 @@ class BaseEmbeddingModel(ABC):
 6. Excelファイル保存
 ```
 
-### 改定影響調査フロー
+### 運用保守効率化AI 実行フロー
 
 ```
 1. 変更前シナリオExcel配置
@@ -761,8 +762,7 @@ class SearchConfig:
     keyword_weight: float             # 自動計算（1.0 - vector_weight）
 
     # 検索モード: original | llm_enhanced | multi_stage
-    # 回答支援AIでは original / llm_enhanced のみ使用可能（multi_stage は組み込まれていない）。
-    # multi_stage は改定影響調査（apps/revision-ops/）専用。
+    # multi_stage は運用保守効率化AI（改定影響調査）専用
     search_mode: str = "original"
 
     # 入出力設定
@@ -783,7 +783,7 @@ class SearchConfig:
 | `top_k` | int | settings.yaml | 返却する結果数 |
 | `vector_weight` | float | settings.yaml | ベクトル検索の重み（0〜1） |
 | `keyword_weight` | float | 自動計算 | キーワード検索の重み（1.0 - vector_weight） |
-| `search_mode` | str | settings.yaml | 検索モード: original / llm_enhanced（回答支援AI）、+ multi_stage（改定影響調査AI） |
+| `search_mode` | str | settings.yaml | 検索モード: original / llm_enhanced（回答支援AI）、+ multi_stage（運用保守効率化AI） |
 | `search_type` | str | settings.yaml | 検索タイプ（hybrid/keyword_filter） |
 | `search_source` | str | settings.yaml | 検索対象（scenario/history_data） |
 | `reference_type` | str | "multi_folder" | 参照データ形式（excel/hierarchical_excel/multi_folder） |
@@ -1076,7 +1076,7 @@ def enhance(self, query: str) -> str:
 |-----------|-------------|------|
 | `OriginalSearchStrategy` | original | 原文でベクトル+キーワード検索 |
 | `LLMEnhancedSearchStrategy` | llm_enhanced | LLMクエリ生成後にベクトル+キーワード検索 |
-| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類（改定影響調査AI専用） |
+| `MultiStageSearchStrategy` | multi_stage | 原文+LLMクエリの両検索→OR結合・3分類（運用保守効率化AI専用） |
 | `KeywordFilterSearchStrategy` | keyword_filter | キーワードマッチのみ（ベクトル検索なし） |
 
 ---

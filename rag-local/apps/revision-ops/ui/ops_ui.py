@@ -909,7 +909,7 @@ def run_streamlit_ui():
     if st.session_state.get("app_mode") == "impact_analysis":
         cats = st.session_state.get("impact_categories", [])
         cat_label = " + ".join(AREA_TO_CATEGORY.get(c, c) for c in cats)
-        st.title(f"運用保守効率化AI（影響調査）【{cat_label}】")
+        st.title(f"運用保守効率化AI（改定影響調査）【{cat_label}】")
     elif st.session_state.selected_revision:
         st.title(f"運用保守効率化AI（改定影響調査）【改定{st.session_state.selected_revision}】")
     else:
