@@ -72,10 +72,14 @@ _archive/
 *.pkl
 *.json.cache
 
+# Node.js
+node_modules/
+
 # OS関連
 .DS_Store
 Thumbs.db
 nul
+~$*
 
 # Docker
 .dockerignore
