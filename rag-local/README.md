@@ -85,14 +85,11 @@ cp .env.example .env
 
 | 変数 | 説明 | 例 |
 |------|------|-----|
-| `DEFAULT_LLM_PROVIDER` | LLM（言語モデル）のプロバイダー | `gemini` |
-| `DEFAULT_LLM_MODEL` | LLMのモデル名 | `gemini-2.5-flash-lite` |
-| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みモデルのプロバイダー（モデル名はプロバイダーから自動決定） | `azure_openai` |
-| `AZURE_OPENAI_API_KEY` | Azure OpenAI API キー | `your-api-key` |
-| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI エンドポイント | `https://your-resource.openai.azure.com/` |
-| `GEMINI_PROJECT_ID` | Google Cloud プロジェクトID | `your-project-id` |
+| `DEFAULT_LLM_PROVIDER` | LLMプロバイダー（`gemini` のみ） | `gemini` |
+| `DEFAULT_LLM_MODEL` | LLMモデル名 | `gemini-2.5-flash-lite` |
+| `DEFAULT_EMBEDDING_PROVIDER` | 埋め込みプロバイダー | `azure_openai` |
 
-全変数の詳細は [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) を参照。
+認証情報（Azure OpenAI / Google Cloud）を含む全変数の詳細は [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) を参照。
 
 ### Step 4: ソースデータの配置
 
@@ -322,30 +319,20 @@ rag-local/
 - **設定テンプレート**: `.env.example`, `requirements.txt`, `requirements-dev.txt`, `pytest.ini`, `.streamlit/`
 - **ソースデータ**: `data/source/`, `data/input/`（別途渡す場合は空ディレクトリ）
 
-引き継ぎパッケージの作成には `scripts/create_handover_package.py` を使用できます（許可リスト方式で秘密情報の混入を防止）:
+引き継ぎパッケージの作成には `scripts/create_handover_package.py` を使用（許可リスト方式で秘密情報の混入を防止）:
 
 ```bash
-# パッケージ作成（コードのみ、data/ は空ディレクトリ構造のみ）
-python scripts/create_handover_package.py ./handover_package
-
-# パッケージ作成（data/source/ と data/input/ の実データも含む）
-python scripts/create_handover_package.py ./handover_package --include-data
-
-# パッケージ作成（出力例を含む — 下記4種から最新1件ずつ選定）
-python scripts/create_handover_package.py ./handover_package --include-examples
-
 # 事前確認（コピーせず対象一覧とサイズを表示）
 python scripts/create_handover_package.py ./handover_package --dry-run
+
+# パッケージ作成（コードのみ）
+python scripts/create_handover_package.py ./handover_package
+
+# パッケージ作成（data/source/ の実データも含む）
+python scripts/create_handover_package.py ./handover_package --include-data
 ```
 
-| フラグ | 動作 |
-|--------|------|
-| （なし） | 許可リストのファイルをコピー。`data/` は空ディレクトリ構造のみ作成 |
-| `--include-data` | `data/source/` と `data/input/` の実データも含める |
-| `--include-examples` | `data/output/examples/` から種類ごとに最新1件を含める（回答支援×バッチ/UI、運用保守×バッチ/UI の4種） |
-| `--dry-run` | コピーせず対象ファイル一覧と合計サイズを表示 |
-
-> **Note:** 出力先ディレクトリが既に存在する場合はエラーになります。コピー後に秘密情報チェック（`.env`, `*credentials*`, `*.key`）を自動実行します。
+全オプションは `--help` を参照。出力先ディレクトリが既に存在する場合はエラーになります。
 
 ---
 
