@@ -315,13 +315,13 @@ rag-local/
 | 対象 | 理由 | 対処 |
 |------|------|------|
 | `.env` | 認証情報 | `.env.example` から作成 |
-| `gemini_credentials.json` | 認証情報 | 別経路で受け渡し |
+| `gemini_credentials.json` | 認証情報 | 引き継ぎ先で新規作成（Step 2a 参照） |
 | `data/vector_db/` | ベクトルDB | `build_db.py` で再構築 |
 | `data/.keyword_cache/` | キャッシュ | 自動生成 |
 | `data/output/` | 出力ファイル | 実行時生成 |
-| `reference/` | 改定資料 | 別途提供 |
 | `.venv/` | Python仮想環境 | `pip install` で再作成 |
 | `logs/` | ログ | 実行時生成 |
+| 問い合わせ履歴データ | 別途提供 | `data/source/faq/latest/` と `reference/問い合わせ履歴/` に配置 |
 
 > **注記:** 引き継ぎパッケージは許可リスト方式で生成されます（`create_handover_package.py:INCLUDE`）。許可リストに含まれないファイルは自動的に除外されます。
 
@@ -330,9 +330,10 @@ rag-local/
 - **ソースコード**: `apps/`, `src/`, `ui/`, `scripts/`, `config/`, `config.py`
 - **プロンプト**: `prompt/`
 - **テスト**: `tests/`
-- **ドキュメント**: `README.md`, `docs/`
+- **ドキュメント**: `README.md`, `docs/*.md`（5ファイル）, UIガイド Word 2ファイル
 - **設定テンプレート**: `.env.example`, `requirements.txt`, `requirements-dev.txt`, `pytest.ini`, `.streamlit/`
-- **ソースデータ**: `data/source/`, `data/input/`（別途渡す場合は空ディレクトリ）
+- **ソースデータ**（`--include-data` 時）: `data/source/scenarios/`, `data/input/`, `reference/`（問い合わせ履歴データは除外・別途提供）
+- **出力例**（`--include-examples` 時）: `data/output/examples/` から種類ごとに最新1件（最大5ファイル）
 
 引き継ぎパッケージの作成には `scripts/create_handover_package.py` を使用（許可リスト方式で秘密情報の混入を防止）:
 
@@ -343,8 +344,11 @@ python scripts/create_handover_package.py ./handover_package --dry-run
 # パッケージ作成（コードのみ）
 python scripts/create_handover_package.py ./handover_package
 
-# パッケージ作成（data/source/ の実データも含む）
+# パッケージ作成（data/source/、reference/ 等の実データも含む）
 python scripts/create_handover_package.py ./handover_package --include-data
+
+# パッケージ作成（実データ + 出力例5件も含む）
+python scripts/create_handover_package.py ./handover_package --include-data --include-examples
 ```
 
 全オプションは `python scripts/create_handover_package.py --help` で確認できます。出力先ディレクトリが既に存在する場合はエラーになります。
