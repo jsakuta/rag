@@ -120,31 +120,27 @@ rag-maintenance/
 
 ---
 
-## Azure環境構築 進捗（2026-02-12）
+## Azure環境構築 進捗（2026-03-06）
 
-### ✅ 完了（Step 1〜12）
+### ✅ 完了（Step 1〜12 + ローカル機能テスト）
 
 - リソースグループ `rg-maintenance-poc` + 全サービス8リソース作成済み
 - RBAC 7ロール（管理プレーン5 + データプレーン2）付与済み
 - AI Search: インデックス + DS2 + Skillset + Indexer2 設定済み
-- Bot: M365 Agents SDK 実装 + Toolkit Provision/Deploy/Publish 完了
+- Bot: M365 Agents SDK 実装 + Toolkit Provision/Deploy/Publish + 再デプロイ完了（2026-03-06）
+- Cosmos DBテストデータ投入済み（scenarios 2,318件 + faqs 18,744件 = 計21,062件）
+- F5ローカルデバッグ + Bot通信 + 検索機能 + Adaptive Card UI: ローカルテスト全完了
 - 詳細値はメモリ参照: `memory/azure-deployment-progress.md`
 
-### 🔧 Step 13: 動作確認（進行中）
+### 🔧 Step 13: Teams上での動作確認（次のアクション）
 
-- **F5ローカルデバッグ起動**: ✅ 完了（遅延初期化修正、AZURE_OPENAI_*削除、.localConfigs設定済み）
-- **Bot基本通信（カード表示）**: ✅ 完了（モード選択カード表示まで動作確認）
-- **検索機能**: 🔧 403→開発者にSearch Index Data Readerロール付与済み（反映待ち）
-- **Cosmos DBテストデータ投入**: ✅ 投入済み（scenarios 2,318件 + faqs 18,744件 = 計21,062件、AI Searchインデックス反映済み）
-- **想定外データ**: `cat-yokin`/`cat-kawase`/`cat-yushi` の15件が初期テスト残骸として残存（要削除）
-- **Adaptive Card UIテスト**: ⬜ 未着手
-- **FR-015 Excel出力**: ⬜ 未実装
+- **Teams Botとしての疎通確認**: ⬜ 再デプロイ後の動作確認
+- **想定外データ削除**: `cat-yokin`/`cat-kawase`/`cat-yushi` の15件（初期テスト残骸）
 
 ### ⬜ 未完了
 
-1. **Step 13残タスク**: 想定外データ削除 + 検索テスト + UI確認
-2. **FR-015実装**: シナリオ要修正Excel出力（ExcelJS + インライン添付）
-3. **手順書 v2.0 完成**（スクショ付き、最終Word化）
+1. **FR-015実装**: シナリオ要修正Excel出力（ExcelJS + インライン添付）
+2. **手順書 v2.0 完成**（スクショ付き、最終Word化）
 
 ## コーディング規約・ドキュメント規約
 
