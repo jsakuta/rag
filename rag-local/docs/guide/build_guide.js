@@ -186,6 +186,8 @@ function buildSectionWithImage(section) {
     children.push(stepsTable(section.steps));
   }
 
+  if (section.note) children.push(bodyText(section.note));
+
   if (section.steps_group) {
     for (const group of section.steps_group) {
       if (group.image) {
@@ -245,6 +247,8 @@ function buildSubsections(subsections) {
       children.push(stepsTable(sub.steps));
     }
 
+    if (sub.note) children.push(bodyText(sub.note));
+
     if (sub.steps_group) {
       for (const group of sub.steps_group) {
         if (group.image) {
@@ -294,6 +298,8 @@ async function main() {
     if (section.steps) {
       allChildren.push(stepsTable(section.steps));
     }
+
+    if (section.note) allChildren.push(bodyText(section.note));
 
     if (section.bullets) {
       for (const bullet of section.bullets) {
