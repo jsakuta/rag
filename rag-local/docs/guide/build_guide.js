@@ -25,11 +25,10 @@ const {
   ShadingType,
 } = require("docx");
 
-const GUIDE_DIR = __dirname;
+const GUIDE_DIR = process.argv[2] ? path.resolve(process.argv[2]) : __dirname;
 const ANNOTATED_DIR = path.join(GUIDE_DIR, "annotated");
 const SCREENSHOTS_DIR = path.join(GUIDE_DIR, "screenshots");
 const STEP_FILE = path.join(GUIDE_DIR, "step_descriptions.json");
-const OUTPUT_FILE = path.join(GUIDE_DIR, "ops_ui_guide.docx");
 
 // ---------- helpers ----------
 
@@ -269,6 +268,8 @@ function buildSubsections(subsections) {
 
 async function main() {
   const data = JSON.parse(fs.readFileSync(STEP_FILE, "utf-8"));
+  const OUTPUT_FILE = path.join(GUIDE_DIR, data.cover.output || "guide.docx");
+  const headerText = data.cover.header || data.cover.title;
   const allChildren = [];
 
   // 表紙
@@ -332,7 +333,7 @@ async function main() {
             children: [
               new Paragraph({
                 children: [
-                  new TextRun({ text: "運用保守効率化AI（改定影響調査）操作ガイド", size: 16, color: "999999", font: "Meiryo UI" }),
+                  new TextRun({ text: headerText, size: 16, color: "999999", font: "Meiryo UI" }),
                 ],
                 alignment: AlignmentType.RIGHT,
               }),

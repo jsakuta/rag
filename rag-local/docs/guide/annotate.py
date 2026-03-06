@@ -3,10 +3,11 @@
 スクリーンショットに番号付き丸、ハイライト矩形、テキストラベルを追加する。
 """
 import json
+import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-GUIDE_DIR = Path(__file__).parent
+GUIDE_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent
 SCREENSHOTS_DIR = GUIDE_DIR / "screenshots"
 ANNOTATED_DIR = GUIDE_DIR / "annotated"
 CONFIG_FILE = GUIDE_DIR / "annotation_config.json"
@@ -56,7 +57,11 @@ def draw_highlight(overlay_draw, x1, y1, x2, y2):
 
 
 def draw_label(draw, x, y, text, font_label, anchor="left"):
-    """テキストラベルを描画（暗色背景 + 白文字）"""
+    """テキストラベルを描画（暗色背景 + 白文字）
+
+    anchor: "left"（丸の右側）, "right"（丸の左側）,
+            "top"（丸の上）, "bottom"（丸の下）
+    """
     if not text:
         return
     bbox = font_label.getbbox(text)
@@ -64,11 +69,18 @@ def draw_label(draw, x, y, text, font_label, anchor="left"):
     th = bbox[3] - bbox[1]
     pad = 4
 
-    if anchor == "left":
+    if anchor == "top":
         lx = x + CIRCLE_RADIUS + 6
-    else:
+        ly = y - CIRCLE_RADIUS - th - pad * 2
+    elif anchor == "bottom":
+        lx = x + CIRCLE_RADIUS + 6
+        ly = y + CIRCLE_RADIUS + pad
+    elif anchor == "right":
         lx = x - tw - CIRCLE_RADIUS - 6
-    ly = y - th / 2 - pad / 2
+        ly = y - th / 2 - pad / 2
+    else:  # left
+        lx = x + CIRCLE_RADIUS + 6
+        ly = y - th / 2 - pad / 2
 
     draw.rectangle([lx - pad, ly - pad, lx + tw + pad, ly + th + pad],
                    fill=LABEL_BG_COLOR)
@@ -101,11 +113,10 @@ def annotate_image(img_name, config):
         cx, cy = circle["x"], circle["y"]
         draw_circle(draw, cx, cy, circle["num"], font_num)
         label = circle.get("label", "")
-        # ラベルが右に収まるかチェック
-        if cx > img.width * 0.7:
-            draw_label(draw, cx, cy, label, font_label, anchor="right")
-        else:
-            draw_label(draw, cx, cy, label, font_label, anchor="left")
+        anchor = circle.get("anchor")
+        if anchor is None:
+            anchor = "right" if cx > img.width * 0.7 else "left"
+        draw_label(draw, cx, cy, label, font_label, anchor=anchor)
 
     # RGBA→RGB変換して保存
     out = img.convert("RGB")

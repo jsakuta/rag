@@ -1,0 +1,111 @@
+{
+  "01_launch": {
+    "circles": [
+      {"num": 1, "x": 370, "y": 115, "label": "タイトル"},
+      {"num": 2, "x": 100, "y": 163, "label": "モード選択"},
+      {"num": 3, "x": 380, "y": 280, "label": "検索フォーム"}
+    ],
+    "highlights": [
+      {"x1": 0, "y1": 70, "x2": 290, "y2": 700},
+      {"x1": 370, "y1": 300, "x2": 1190, "y2": 420}
+    ]
+  },
+  "02_eval_sidebar_bottom": {
+    "circles": [
+      {"num": 1, "x": 15, "y": 25, "label": ""},
+      {"num": 2, "x": 15, "y": 140, "label": "検索バランス（ベクトル重み）"},
+      {"num": 3, "x": 15, "y": 333, "label": ""},
+      {"num": 4, "x": 15, "y": 484, "label": ""},
+      {"num": 5, "x": 15, "y": 602, "label": ""}
+    ],
+    "highlights": []
+  },
+  "03_eval_revision_select": {
+    "circles": [
+      {"num": 1, "x": 148, "y": 359, "label": "改定番号セレクトボックス"}
+    ],
+    "highlights": [
+      {"x1": 22, "y1": 390, "x2": 270, "y2": 615}
+    ]
+  },
+  "04_eval_revision_selected": {
+    "circles": [
+      {"num": 1, "x": 148, "y": 358, "label": "改定③を選択"},
+      {"num": 2, "x": 148, "y": 422, "label": "正解ID件数"},
+      {"num": 3, "x": 148, "y": 478, "label": "対象エリア一覧"}
+    ],
+    "highlights": []
+  },
+  "05_eval_query_input": {
+    "circles": [
+      {"num": 1, "x": 380, "y": 280, "label": "検索クエリ入力欄"}
+    ],
+    "highlights": [
+      {"x1": 395, "y1": 320, "x2": 1185, "y2": 360}
+    ]
+  },
+  "06_eval_results": {
+    "circles": [
+      {"num": 1, "x": 530, "y": 248, "label": "ユーザークエリ"},
+      {"num": 2, "x": 365, "y": 403, "label": ""},
+      {"num": 3, "x": 365, "y": 451, "label": ""},
+      {"num": 4, "x": 375, "y": 510, "label": "結果カード"}
+    ],
+    "highlights": []
+  },
+  "07_eval_results_detail": {
+    "circles": [
+      {"num": 1, "x": 398, "y": 95, "label": ""},
+      {"num": 2, "x": 565, "y": 95, "label": ""},
+      {"num": 3, "x": 678, "y": 95, "label": ""},
+      {"num": 4, "x": 413, "y": 148, "label": ""},
+      {"num": 5, "x": 413, "y": 235, "label": ""}
+    ],
+    "highlights": [
+      {"x1": 395, "y1": 85, "x2": 1155, "y2": 665}
+    ]
+  },
+  "08_impact_mode_switch": {
+    "circles": [
+      {"num": 1, "x": 15, "y": 165, "label": ""},
+      {"num": 2, "x": 15, "y": 320, "label": ""},
+      {"num": 3, "x": 15, "y": 468, "label": ""}
+    ],
+    "highlights": []
+  },
+  "09_impact_sidebar": {
+    "circles": [
+      {"num": 1, "x": 15, "y": 90, "label": ""},
+      {"num": 2, "x": 15, "y": 195, "label": ""},
+      {"num": 3, "x": 15, "y": 333, "label": ""},
+      {"num": 4, "x": 15, "y": 484, "label": ""},
+      {"num": 5, "x": 15, "y": 602, "label": ""}
+    ],
+    "highlights": []
+  },
+  "10_impact_query": {
+    "circles": [
+      {"num": 1, "x": 380, "y": 280, "label": "改定内容入力"}
+    ],
+    "highlights": [
+      {"x1": 395, "y1": 320, "x2": 1185, "y2": 360}
+    ]
+  },
+  "11_impact_results": {
+    "circles": [
+      {"num": 1, "x": 530, "y": 248, "label": "検索クエリ"},
+      {"num": 2, "x": 365, "y": 403, "label": ""},
+      {"num": 3, "x": 365, "y": 451, "label": ""},
+      {"num": 4, "x": 375, "y": 510, "label": "結果カード（正解バッジなし）"}
+    ],
+    "highlights": []
+  },
+  "13_keyword_search": {
+    "circles": [
+      {"num": 1, "x": 15, "y": 487, "label": ""}
+    ],
+    "highlights": [
+      {"x1": 20, "y1": 518, "x2": 278, "y2": 565}
+    ]
+  }
+}
