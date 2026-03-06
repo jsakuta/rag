@@ -34,7 +34,14 @@ INCLUDE = [
     "tests/",
     # ドキュメント
     "README.md",
-    "docs/",
+    "docs/ANSWER_SUPPORT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/CONFIGURATION.md",
+    "docs/REVISION_OPS.md",
+    "docs/TROUBLESHOOTING.md",
+    # UIガイド（Word のみ）
+    "docs/guide/answer_support/answer_support_ui_guide.docx",
+    "docs/guide/revision_ops/ops_ui_guide.docx",
     # 設定テンプレート
     ".env.example",
     "requirements.txt",
@@ -44,6 +51,8 @@ INCLUDE = [
     # データ（--include-data 時のみ実データ、デフォルトは空ディレクトリ構造のみ）
     "data/source/",
     "data/input/",
+    # 改定資料
+    "reference/",
 ]
 
 # --- 明示的に除外（許可リスト内でも除外） ---
@@ -51,6 +60,10 @@ EXCLUDE_PATTERNS = [
     "__pycache__",
     "*.pyc",
     ".pytest_cache",
+    "~$*",
+    # 問い合わせ履歴データは別途提供（個人情報を含む可能性があるため同梱しない）
+    "faq",
+    "問い合わせ履歴",
 ]
 
 # --- 秘密情報検出パターン ---
@@ -60,19 +73,20 @@ SECRET_PATTERNS = [
     "*.key",
 ]
 
-# data/ 配下で --include-data 時のみ実データをコピーする対象
-DATA_DIRS = ["data/source/", "data/input/"]
+# --include-data 時のみ実データをコピーする対象（デフォルトは空ディレクトリ構造のみ）
+DATA_DIRS = ["data/source/", "data/input/", "reference/"]
 
 # 空ディレクトリとして常に作成する出力先構造
 OUTPUT_EMPTY_DIRS = ["data/output/latest/answer", "data/output/latest/rev"]
 
-# --- 出力例カテゴリ（--include-examples 時に latest/ から種類ごとに最新1件を選定） ---
-# 2軸（回答支援/運用保守）× 2種（バッチ/UI）= 4ファイル
+# --- 出力例カテゴリ（--include-examples 時に examples/ から種類ごとに最新1件を選定） ---
+# 回答支援（バッチ/UI） + 運用保守（バッチ/評価UI/影響調査UI） = 5ファイル
 EXAMPLE_CATEGORIES = {
-    "回答支援×バッチ": "output_batch_*.xlsx",
-    "回答支援×UI": "output_chat_*.xlsx",
-    "運用保守×バッチ": "★最新版_*.xlsx",
-    "運用保守×UI": "eval_chat_history_*.xlsx",
+    "回答支援×バッチ": "answer_batch_*.xlsx",
+    "回答支援×UI": "answer_chat_*.xlsx",
+    "運用保守×バッチ": "rev_eval_batch_*.xlsx",
+    "運用保守×UI(評価)": "rev_eval_chat_*.xlsx",
+    "運用保守×UI(影響調査)": "rev_impact_chat_*.xlsx",
 }
 EXAMPLE_OUTPUT_DIR = "data/output/examples"
 
@@ -88,7 +102,7 @@ def _is_excluded(path: Path) -> bool:
 
 
 def _is_data_dir_entry(rel_str: str) -> bool:
-    """data/ 配下のエントリかどうかを判定"""
+    """--include-data 制御対象のエントリかどうかを判定"""
     for data_dir in DATA_DIRS:
         if rel_str == data_dir.rstrip("/") or rel_str.startswith(data_dir):
             return True
@@ -137,7 +151,7 @@ def _collect_files(include_data: bool) -> list[tuple[Path, Path]]:
 
 
 def _collect_example_files() -> list[tuple[Path, Path]]:
-    """data/output/latest/ から種類ごとに最新1件を収集する（2軸×2種=4件）。"""
+    """data/output/examples/ から種類ごとに最新1件を収集する（5種）。"""
     output_dir = PROJECT_ROOT / EXAMPLE_OUTPUT_DIR
     if not output_dir.is_dir():
         return []
@@ -303,7 +317,7 @@ def run(
             print(f"空ディレクトリ作成: {len(empty_dirs)} ディレクトリ (data/)")
 
     if example_files:
-        print(f"出力例ファイル: {len(example_files)} 件 (data/output/latest/)")
+        print(f"出力例ファイル: {len(example_files)} 件 (data/output/examples/)")
 
     if secrets:
         print()
@@ -331,7 +345,7 @@ def main() -> None:
         "--include-data",
         action="store_true",
         default=False,
-        help="data/source/ と data/input/ の実データも含める（デフォルト: 空ディレクトリ構造のみ）",
+        help="data/source/、data/input/、reference/ の実データも含める（デフォルト: 空ディレクトリ構造のみ）",
     )
     parser.add_argument(
         "--include-examples",
