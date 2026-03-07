@@ -15,19 +15,18 @@
     },
     "name": {
         "short": "maintenance-bot${{APP_NAME_SUFFIX}}",
-        "full": "full name for maintenance-bot"
+        "full": "事務改定 影響候補検出システム (Phase2 PoC)"
     },
     "description": {
-        "short": "short description for maintenance-bot",
-        "full": "full description for maintenance-bot"
+        "short": "事務改定時の影響候補をAI検索で検出します",
+        "full": "改定内容をテキスト入力すると、影響を受ける可能性のあるシナリオとFAQを検出し、一覧表示します。"
     },
     "accentColor": "#FFFFFF",
     "bots": [
         {
             "botId": "${{BOT_ID}}",
             "scopes": [
-                "personal",
-                "team"
+                "personal"
             ],
             "supportsFiles": false,
             "isNotificationOnly": false,
