@@ -1,3 +1,12 @@
+// Application Insights: 他の import より先に初期化する
+// APPLICATIONINSIGHTS_CONNECTION_STRING 環境変数が設定されている場合のみ有効化
+const aiConnStr = process.env.APPLICATIONINSIGHTS_CONNECTION_STRING;
+if (aiConnStr) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { useAzureMonitor } = require("@azure/monitor-opentelemetry");
+  useAzureMonitor();
+}
+
 import { startServer } from "@microsoft/agents-hosting-express";
 import { agentApp } from "./agent";
 import { validateConfig } from "./config";

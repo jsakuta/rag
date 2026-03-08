@@ -6,7 +6,6 @@ import config, { SPO_SIMPLE_UPLOAD_LIMIT } from "./config";
 export interface SpoUploadResult {
   webUrl: string;
   filename: string;
-  folderUrl: string;
 }
 
 // --- Graph クライアント遅延初期化 ---
@@ -49,24 +48,42 @@ export async function uploadExcelToSharePoint(
     )
     .put(buffer);
 
-  const fileWebUrl: string = response.webUrl ?? "";
-  const lastSlash = fileWebUrl.lastIndexOf("/");
   return {
-    webUrl: fileWebUrl,
+    webUrl: response.webUrl ?? "",
     filename,
-    folderUrl: lastSlash > 0 ? fileWebUrl.substring(0, lastSlash) : "",
   };
 }
 
-/** アップロード先フォルダの SharePoint WebURL を取得 */
+/** アップロード先フォルダの SharePoint 閲覧URL を取得（AllItems.aspx 形式、結果キャッシュ） */
+let _cachedFolderWebUrl: string | null = null;
+
 export async function getFolderWebUrl(): Promise<string> {
+  if (_cachedFolderWebUrl) return _cachedFolderWebUrl;
+
   try {
     const client = getGraphClient();
     const driveId = config.spoDriveId;
     const folder = config.spoUploadFolder;
-    const folderPath = `/drives/${driveId}/root:/${encodeURIComponent(folder)}`;
-    const folderItem = await client.api(folderPath).select("webUrl").get();
-    return folderItem.webUrl ?? "";
+
+    // ドライブ webUrl とフォルダ webUrl を並列取得
+    const [driveInfo, folderItem] = await Promise.all([
+      client.api(`/drives/${driveId}`).select("webUrl").get(),
+      client.api(`/drives/${driveId}/root:/${encodeURIComponent(folder)}`).select("webUrl").get(),
+    ]);
+
+    const driveWebUrl: string = driveInfo.webUrl ?? "";
+    const folderWebUrl: string = folderItem.webUrl ?? "";
+
+    if (driveWebUrl && folderWebUrl) {
+      const parsed = new URL(folderWebUrl);
+      const serverRelativePath = decodeURIComponent(parsed.pathname);
+      const result = `${driveWebUrl.replace(/\/+$/, "")}/Forms/AllItems.aspx?id=${encodeURIComponent(serverRelativePath)}`;
+      _cachedFolderWebUrl = result;
+      return result;
+    }
+
+    console.warn("[getFolderWebUrl] Partial data: driveWebUrl=%s, folderWebUrl=%s", driveWebUrl, folderWebUrl);
+    return "";
   } catch (e) {
     console.warn("[getFolderWebUrl] Failed:", e);
     return "";
