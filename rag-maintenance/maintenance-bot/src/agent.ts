@@ -63,6 +63,7 @@ interface CachedSearchResult {
   scenarios: SearchResultItem[];
   faqs: SearchResultItem[];
   needsUpdateIds: Set<string>;
+  deleteTargetIds: Set<string>;
   query: string;
   mode: "semantic" | "keyword";
   categories: CategorySelection;
@@ -256,6 +257,7 @@ agentApp.adaptiveCards.actionExecute(
     // ページ遷移時にユーザーのチェック状態をキャッシュに同期
     if (cached) {
       syncToggleState(data, cached.needsUpdateIds, "scenario_");
+      syncToggleState(data, cached.deleteTargetIds, "faq_");
     }
 
     console.log(`[searchPage] query: ${query}, mode: ${mode}, page: ${page}, topN: ${topN}, perPage: ${perPage}, session: ${searchSessionId}`);
@@ -267,8 +269,26 @@ agentApp.adaptiveCards.actionExecute(
 agentApp.adaptiveCards.actionExecute(
   "confirmDeleteFaqs",
   async (_context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
-    const selectedIds = extractSelectedIds(data, "faq_");
-    console.log(`[confirmDeleteFaqs] selectedIds: ${JSON.stringify(selectedIds)}`);
+    const searchSessionId = extractField(data, "searchSessionId", "");
+    cleanExpiredCache();
+    const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
+
+    // ページ遷移と同じロジックでキャッシュに同期
+    if (cached) {
+      syncToggleState(data, cached.deleteTargetIds, "faq_");
+    }
+
+    // キャッシュの全deleteTargetIds + 現在ページのIDを統合
+    const currentPageIds = extractSelectedIds(data, "faq_");
+    const allIds = new Set<string>(currentPageIds);
+    if (cached) {
+      for (const id of cached.deleteTargetIds) {
+        allIds.add(id);
+      }
+    }
+    const selectedIds = Array.from(allIds);
+
+    console.log(`[confirmDeleteFaqs] selectedIds: ${JSON.stringify(selectedIds)} (current page: ${currentPageIds.length}, cached: ${cached?.deleteTargetIds.size ?? 0})`);
     if (selectedIds.length === 0) {
       return { type: "AdaptiveCard", body: [{ type: "TextBlock", text: "削除対象が選択されていません。" }], version: "1.5", $schema: "http://adaptivecards.io/schemas/adaptive-card.json" } as AdaptiveCard;
     }
@@ -277,7 +297,7 @@ agentApp.adaptiveCards.actionExecute(
       id,
       title: id,
     }));
-    return buildDeleteConfirmCard(faqInfos);
+    return buildDeleteConfirmCard(faqInfos, searchSessionId || undefined);
   }
 );
 
@@ -292,6 +312,13 @@ agentApp.adaptiveCards.actionExecute(
       return { type: "AdaptiveCard", version: "1.5", body: [{ type: "TextBlock", text: "削除対象が見つかりませんでした。", color: "Attention" }] } as AdaptiveCard;
     }
     const deleted = await deleteFaqs(faqIds);
+
+    // 削除完了後、キャッシュの deleteTargetIds をクリア
+    const searchSessionId = extractField(data, "searchSessionId", "");
+    if (searchSessionId && searchResultCache.has(searchSessionId)) {
+      searchResultCache.get(searchSessionId)!.deleteTargetIds.clear();
+    }
+
     return buildDeleteCompleteCard(deleted, user);
   }
 );
@@ -437,7 +464,7 @@ agentApp.adaptiveCards.actionExecute(
           webUrl: s.webUrl,
         }));
 
-        const folderUrl = succeeded[0].folderUrl || await getFolderWebUrl();
+        const folderUrl = await getFolderWebUrl();
 
         const resultCard = buildExcelExportCompleteCard({
           files,
@@ -536,6 +563,7 @@ async function executeSearch(
       scenarios: results.scenarios,
       faqs: results.faqs,
       needsUpdateIds: new Set(),
+      deleteTargetIds: new Set(),
       query,
       mode,
       categories,
@@ -572,7 +600,7 @@ async function executeSearchPaged(
   cleanExpiredCache();
   const cached = searchSessionId ? searchResultCache.get(searchSessionId) : undefined;
   if (cached) {
-    return buildResultCard(query, mode, cached.scenarios, cached.faqs, page, categories, topN, perPage, searchSessionId, cached.needsUpdateIds);
+    return buildResultCard(query, mode, cached.scenarios, cached.faqs, page, categories, topN, perPage, searchSessionId, cached.needsUpdateIds, cached.deleteTargetIds);
   }
 
   // キャッシュミス時はフォールバックとして再検索
@@ -595,6 +623,7 @@ async function executeSearchPaged(
       scenarios: results.scenarios,
       faqs: results.faqs,
       needsUpdateIds: new Set(),
+      deleteTargetIds: new Set(),
       query,
       mode,
       categories,

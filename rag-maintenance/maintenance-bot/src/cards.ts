@@ -323,14 +323,15 @@ export function buildResultCard(
   topN: number = 30,
   fixedPerPage?: number,
   searchSessionId?: string,
-  needsUpdateIds?: Set<string>
+  needsUpdateIds?: Set<string>,
+  deleteTargetIds?: Set<string>
 ): AdaptiveCard {
   const CARD_LIMIT = ADAPTIVE_CARD_SIZE_LIMIT;
 
   // ページ遷移時は前回確定した perPage を使用、初回は実アイテム数から開始
   const totalItems = scenarios.length + faqs.length;
   let perPage = Math.min(fixedPerPage ?? ITEMS_PER_PAGE, totalItems || 1);
-  let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId, needsUpdateIds);
+  let card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId, needsUpdateIds, deleteTargetIds);
   let cardJson = JSON.stringify(card);
   let cardSize = Buffer.byteLength(cardJson, "utf8");
   console.log(`[buildResultCard] perPage=${perPage}, size=${cardSize} bytes (UTF-8)`);
@@ -341,7 +342,7 @@ export function buildResultCard(
     let hi = perPage - 1;
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
-      card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, mid, searchSessionId, needsUpdateIds);
+      card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, mid, searchSessionId, needsUpdateIds, deleteTargetIds);
       cardJson = JSON.stringify(card);
       cardSize = Buffer.byteLength(cardJson, "utf8");
       if (cardSize <= CARD_LIMIT) {
@@ -351,7 +352,7 @@ export function buildResultCard(
       }
     }
     perPage = lo;
-    card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId, needsUpdateIds);
+    card = buildResultCardInner(queryText, searchMode, scenarios, faqs, page, selectedCategories, topN, perPage, searchSessionId, needsUpdateIds, deleteTargetIds);
     cardJson = JSON.stringify(card);
     cardSize = Buffer.byteLength(cardJson, "utf8");
     console.log(`[buildResultCard] binary search → perPage=${perPage}, size=${cardSize} bytes (UTF-8)`);
@@ -364,7 +365,7 @@ export function buildResultCard(
     for (const limit of truncLimits) {
       const ts = scenarios.map((s) => ({ ...s, content: truncate(s.content, limit) }));
       const tf = faqs.map((f) => ({ ...f, content: truncate(f.content, limit) }));
-      card = buildResultCardInner(queryText, searchMode, ts, tf, page, selectedCategories, topN, 1, searchSessionId, needsUpdateIds);
+      card = buildResultCardInner(queryText, searchMode, ts, tf, page, selectedCategories, topN, 1, searchSessionId, needsUpdateIds, deleteTargetIds);
       cardJson = JSON.stringify(card);
       cardSize = Buffer.byteLength(cardJson, "utf8");
       if (cardSize <= CARD_LIMIT) {
@@ -388,7 +389,8 @@ function buildResultCardInner(
   topN: number,
   perPage: number,
   searchSessionId?: string,
-  needsUpdateIds?: Set<string>
+  needsUpdateIds?: Set<string>,
+  deleteTargetIds?: Set<string>
 ): AdaptiveCard {
   const modeLabel = searchMode === "semantic" ? "意味検索" : "キーワード検索";
 
@@ -589,7 +591,7 @@ function buildResultCardInner(
           type: "Input.Toggle",
           id: `faq_${f.id}`,
           title: "削除対象",
-          value: "false", // FAQ削除は1ページ内操作のみ（ページ間保持は設計スコープ外）
+          value: deleteTargetIds?.has(f.id) ? "true" : "false",
         },
         {
           type: "TextBlock",
@@ -638,6 +640,7 @@ function buildResultCardInner(
       type: "Action.Execute",
       title: "選択したFAQを削除",
       verb: "confirmDeleteFaqs",
+      data: { searchSessionId },
       style: "destructive",
     });
   }
@@ -655,7 +658,8 @@ function buildResultCardInner(
 
 // --- FR-013: FAQ削除確認カード ---
 export function buildDeleteConfirmCard(
-  faqs: { id: string; title: string; categoryName?: string }[]
+  faqs: { id: string; title: string; categoryName?: string }[],
+  searchSessionId?: string
 ): AdaptiveCard {
   return {
     type: "AdaptiveCard",
@@ -681,7 +685,7 @@ export function buildDeleteConfirmCard(
         type: "Action.Execute",
         title: "削除実行",
         verb: "executeDeleteFaqs",
-        data: { faqIds: faqs.map((f) => f.id) },
+        data: { faqIds: faqs.map((f) => f.id), searchSessionId },
         style: "destructive",
       },
       {
