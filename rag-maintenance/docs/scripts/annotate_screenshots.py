@@ -14,23 +14,23 @@ OUT = os.path.join(BASE, "annotated")
 # x, y = center of the red circle (pixel coordinates)
 ANNOTATIONS = {
     # Step 10.2/10.3: Toolkit sidebar
-    # 352x1031 — 左端のため右上に配置
+    # 352x1031 — M365アイコン(y≈384-405)は左端のため右上に配置
     "step08_1_toolkit_sidebar.png": [
-        (48, 430, "1"),   # M365 Agents Toolkit icon (右上に配置、左端で見切れ防止)
-        (135, 220, "2"),  # "新しいエージェント/アプリの作成" button (左上)
+        (18, 350, "1"),   # M365 Agents Toolkit icon (左端ギリギリ、アイコンの上)
+        (70, 210, "2"),   # "新しいエージェント/アプリの作成" button (左寄せ)
     ],
     # Step 10.6: Provision completed
     # 344x998 — 各セクションの左上に配置
     "step08_3_provision_completed.png": [
-        (55, 35, "1"),    # ACCOUNTS section (左上)
-        (55, 185, "2"),   # ENVIRONMENT section (左上)
+        (55, 20, "1"),    # ACCOUNTS section (左上、上にずらし)
+        (55, 165, "2"),   # ENVIRONMENT section (左上、上にずらし)
         (55, 445, "3"),   # LIFECYCLE section (左上)
     ],
     # Step 16.4: Admin center app list
     # 1914x991
     "step14_2_admin_app_list.png": [
-        (100, 730, "1"),  # App list row (左上)
-        (1690, 730, "2"), # "maintenance-bot..." app name (左上)
+        (1480, 672, "1"), # 検索欄「maintenance-botdev」(左上)
+        (340, 750, "2"),  # maintenance-bot行のアプリ名(左上)
     ],
     # Step 16.4: Admin center publish button
     # 1919x908 — button color RGB(91,95,199) at x:740-840, y:320-360
@@ -45,14 +45,14 @@ ANNOTATIONS = {
     # Step 17.5: Teams app store
     # 1280x720 — 左端のため右上に配置
     "step15_4_apps_store.png": [
-        (55, 535, "1"),   # "アプリ" icon (右上に配置、左端で見切れ防止)
-        (110, 278, "2"),  # "組織向けに開発" category (左上)
+        (60, 520, "1"),   # "アプリ" icon (右上に配置、上にずらし+少し右)
+        (90, 243, "2"),   # "組織向けに開発" category (左上、さらに上にずらし)
     ],
     # Step 17.5: Org apps list
     # 1280x720
     "step15_5_org_apps.png": [
-        (840, 375, "1"),  # "maintenance-botdev" app card (左上)
-        (1190, 383, "2"), # "追加" button (左上)
+        (820, 355, "1"),  # "maintenance-botdev" app card (左上、上+左にずらし)
+        (1170, 363, "2"), # "追加" button (左上、上+左にずらし)
     ],
     # Step 17.5: App detail → "追加"
     # 1280x720
@@ -62,16 +62,24 @@ ANNOTATIONS = {
     # Step 17.5: Bot Adaptive Card response
     # 1280x720
     "step15_8_bot_response.png": [
-        (230, 178, "1"),  # Card title "事務改定 影響候補検出" (左上)
-        (290, 248, "2"),  # Tab area シナリオ (左上)
-        (235, 298, "3"),  # Category checkboxes (左上)
-        (235, 562, "4"),  # Search mode buttons (左上)
+        (230, 163, "1"),  # Card title "事務改定 影響候補検出" (左上、上にずらし)
+        (290, 233, "2"),  # Tab area シナリオ (左上、上にずらし)
+        (235, 278, "3"),  # Category checkboxes (左上、上にずらし)
+        (235, 537, "4"),  # Search mode buttons (左上、上にずらし)
     ],
 }
 
 
-def get_circle_radius(img_width: int) -> int:
+# 画像ファイル名ごとの半径オーバーライド
+RADIUS_OVERRIDE = {
+    "step15_8_bot_response.png": 20,  # 少し小さめ
+}
+
+
+def get_circle_radius(img_width: int, filename: str = "") -> int:
     """Image width に応じた注釈円の半径を返す"""
+    if filename in RADIUS_OVERRIDE:
+        return RADIUS_OVERRIDE[filename]
     if img_width < 500:
         return 16
     elif img_width < 1000:
@@ -110,7 +118,7 @@ def draw_annotation(draw: ImageDraw.Draw, x: int, y: int, number: str,
     tw = text_bbox[2] - text_bbox[0]
     th = text_bbox[3] - text_bbox[1]
     tx = x - tw / 2
-    ty = y - th / 2 - 1  # slight upward adjustment for visual centering
+    ty = y - th / 2 - 2  # upward adjustment for visual centering
     draw.text((tx, ty), number, fill="white", font=font)
 
 
@@ -123,7 +131,7 @@ def annotate_image(filename: str, annotations: list):
 
     img = Image.open(src).convert("RGBA")
     w, h = img.size
-    radius = get_circle_radius(w)
+    radius = get_circle_radius(w, filename)
     font_size = int(radius * 1.3)
     font = get_font(font_size)
 
