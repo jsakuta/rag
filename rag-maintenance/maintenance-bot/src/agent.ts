@@ -38,6 +38,7 @@ import {
 } from "./cards";
 import type { ExcelExportFileInfo } from "./cards";
 import { deleteFaqs, saveNeedsUpdate } from "./cosmos";
+import type { NeedsUpdateAssessmentInput } from "./cosmos";
 import { generateCategoryExcels } from "./excel";
 import { uploadExcelToSharePoint, getFolderWebUrl } from "./sharepoint";
 import type { SpoUploadResult } from "./sharepoint";
@@ -354,7 +355,15 @@ agentApp.adaptiveCards.actionExecute(
     const user = context.activity.from?.name ?? "不明";
     const query = extractQuery(data as Record<string, unknown>, context);
 
-    const saved = await saveNeedsUpdate(selectedIds, query, user);
+    const assessments: NeedsUpdateAssessmentInput[] = selectedIds.map((id) => {
+      const scenario = cached?.scenarios.find((item) => item.id === id);
+      return {
+        scenarioId: id,
+        rerankerScore: scenario?.rerankerScore ?? null,
+      };
+    });
+
+    const saved = await saveNeedsUpdate(assessments, query, user);
 
     // キャッシュの needsUpdateIds にマージ（重複なし）
     if (searchSessionId && searchResultCache.has(searchSessionId)) {

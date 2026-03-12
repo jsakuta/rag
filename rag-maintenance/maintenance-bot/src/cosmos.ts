@@ -1,5 +1,6 @@
 import { CosmosClient, Container, Database } from "@azure/cosmos";
 import { DefaultAzureCredential } from "@azure/identity";
+import { randomUUID } from "crypto";
 import config from "./config";
 
 // 遅延初期化（モジュール読み込み時に環境変数が空でもエラーにならない）
@@ -45,8 +46,13 @@ export async function deleteFaqs(
 }
 
 /** シナリオ要修正フラグ記録 (impactAssessments へ新規作成) */
+export interface NeedsUpdateAssessmentInput {
+  scenarioId: string;
+  rerankerScore: number | null;
+}
+
 export async function saveNeedsUpdate(
-  scenarioIds: string[],
+  assessments: NeedsUpdateAssessmentInput[],
   searchQuery: string,
   assessedBy: string
 ): Promise<{ id: string; title: string; categoryName: string }[]> {
@@ -54,10 +60,11 @@ export async function saveNeedsUpdate(
   const scenariosContainer: Container = db.container("scenarios");
   const assessContainer: Container = db.container("impactAssessments");
   const now = new Date().toISOString();
-  const searchId = `search-${now.replace(/[-:T.]/g, "").slice(0, 14)}`;
+  const searchId = `search-${now.replace(/[-:T.]/g, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
   const results: { id: string; title: string; categoryName: string }[] = [];
 
-  for (const scenarioId of scenarioIds) {
+  for (const assessment of assessments) {
+    const scenarioId = assessment.scenarioId;
     const { resources } = await scenariosContainer.items
       .query({
         query: "SELECT c.id, c.title, c.categoryName FROM c WHERE c.id = @id",
@@ -73,6 +80,7 @@ export async function saveNeedsUpdate(
       searchId,
       scenarioId,
       searchQuery,
+      rerankerScore: assessment.rerankerScore,
       impactStatus: "needsUpdate",
       assessedBy,
       assessedAt: now,

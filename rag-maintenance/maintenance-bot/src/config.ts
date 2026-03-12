@@ -24,7 +24,7 @@ export const CACHE_TTL_MS = 30 * 60 * 1000;     // 検索結果キャッシュ�
 export const MAX_CACHE_SIZE = 50;               // キャッシュエントリ最大数
 export const SEARCH_PAGE_SIZE = 1000;           // AI Search のページネーション上限（SDK制約）
 export const ADAPTIVE_CARD_SIZE_LIMIT = 25 * 1024; // Adaptive Card サイズ上限 ≈ 25KB（UTF-8バイト）
-export const SPO_SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024; // SharePoint 簡易アップロード上限（4MB）
+export const SPO_SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024; // POC 実装上の安全側制限（4MB）
 
 export const SCENARIO_CATEGORIES = [
   { id: "smile",     name: "スマイル" },

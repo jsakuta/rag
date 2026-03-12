@@ -21,9 +21,9 @@ function getGraphClient(): Client {
   return _graphClient;
 }
 
-const MAX_SIMPLE_UPLOAD_BYTES = SPO_SIMPLE_UPLOAD_LIMIT; // 4MB（config.ts で定義）
+const MAX_SIMPLE_UPLOAD_BYTES = SPO_SIMPLE_UPLOAD_LIMIT; // POC 実装上の安全側制限（config.ts で定義）
 
-/** Excel バッファを SharePoint Online にアップロード（4MB 以下シンプルアップロード） */
+/** Excel バッファを SharePoint Online にアップロード（現行 POC では 4MB 以下に制限） */
 export async function uploadExcelToSharePoint(
   buffer: Buffer,
   filename: string
