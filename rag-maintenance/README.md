@@ -15,7 +15,7 @@ Azure AI Search のハイブリッド検索（BM25 + ベクトル検索 + Semant
 | DB | Azure Cosmos DB (Serverless, NoSQL API) |
 | UI | Adaptive Card（Teams） |
 | Excel出力 | ExcelJS（要修正シナリオのハイライト出力） |
-| 認証 | Managed Identity（パスワードレス） |
+| 認証 | Bot認証は Entra ID アプリ + clientSecret、Azure リソースアクセスは Managed Identity |
 
 ## ディレクトリ構成
 
@@ -44,7 +44,7 @@ rag-maintenance/
 │   └── seed-cosmos.ts         # Cosmos DB テストデータ投入
 └── docs/                      # 設計ドキュメント
     ├── 要件定義書.md           # 機能要件・非機能要件・システム構成
-    ├── 導入手順書.md           # Azure 環境構築 Step 1〜15
+    ├── 導入手順書.md           # Azure 環境構築 Step 1〜14
     ├── 検索設計書.md           # 検索アルゴリズム・パラメータ・チューニング経緯
     ├── データベース設計書.md    # Cosmos DB スキーマ定義
     ├── シナリオ情報設計.md      # シナリオ/FAQ データ構造・Excel I/O 仕様
@@ -64,12 +64,11 @@ rag-maintenance/
 
 ### 環境構築の流れ
 
-1. **Azure リソース作成**（Step 1〜7）: リソースグループ、Azure OpenAI、AI Search、Cosmos DB、Key Vault、App Insights、App Service
-2. **Bot プロジェクト設定**（Step 8〜10）: Toolkit でプロジェクト作成、Azure Bot 登録、サービスプリンシパル作成
-3. **RBAC 設定**（Step 11）: Managed Identity 間のロール付与（7ロール）
-4. **AI Search 設定**（Step 12）: インデックス・データソース・Skillset・Indexer の作成
-5. **Bot 実装・デプロイ**（Step 13〜14）: ソースコード配置、Provision、Deploy、Publish
-6. **動作確認**（Step 15）: Teams 上での検索テスト
+1. **Azure リソース作成**（Step 1〜6）: リソースグループ、Azure OpenAI、AI Search、Cosmos DB、App Insights、App Service
+2. **Bot / アプリ登録**（Step 7〜10）: Toolkit Provision、Azure Bot 登録、サービスプリンシパル作成、RBAC / Graph 権限付与
+3. **AI Search 設定**（Step 11）: インデックス・データソース・Skillset・Indexer の作成
+4. **Bot 実装・デプロイ**（Step 12〜13）: アプリ設定、Toolkit Deploy、Teams アプリ Publish
+5. **動作確認**（Step 14）: F5 ローカルデバッグと Teams 上での検索テスト
 
 ### ローカル開発
 
@@ -80,7 +79,7 @@ npm install
 npm run dev:teamsfx    # F5 デバッグ（VSCode から実行推奨）
 ```
 
-必要な環境変数は [導入手順書 Step 13](docs/導入手順書.md) を参照。
+必要な環境変数と `.localConfigs` の扱いは [導入手順書](docs/導入手順書.md) の Step 10、Step 12、Step 14 を参照。
 
 ## アーキテクチャ
 
@@ -100,7 +99,8 @@ Azure Bot Service ──── Azure Web App (maintenance-bot)
 ```
 
 - Bot から Azure OpenAI を**直接呼び出さない**（Embedding は AI Search Skillset/Vectorizer 経由）
-- 全サービス間の認証は Managed Identity（RBAC）
+- Teams / Bot Framework から Bot への認証は Entra ID アプリ + clientSecret
+- Bot から Azure AI Search / Cosmos DB / Microsoft Graph へのアクセスは Managed Identity（RBAC）
 
 ## 検索の仕組み
 
@@ -131,7 +131,7 @@ Azure Bot Service ──── Azure Web App (maintenance-bot)
 | ドキュメント | 文書番号 | 内容 |
 |------------|---------|------|
 | [要件定義書](docs/要件定義書.md) | REQ-FAQ-IMPACT-002 | 機能要件 FR-001〜015、非機能要件、システム構成 |
-| [導入手順書](docs/導入手順書.md) | SETUP-FAQ-IMPACT-001 | Azure 環境構築〜デプロイの全手順（Step 1〜15） |
+| [導入手順書](docs/導入手順書.md) | SETUP-FAQ-IMPACT-001 | Azure 環境構築〜デプロイの全手順（Step 1〜14） |
 | [検索設計書](docs/検索設計書.md) | DESIGN-SEARCH-001 | 検索アルゴリズム、パラメータ、チューニング経緯 |
 | [データベース設計書](docs/データベース設計書.md) | DB-FAQ-IMPACT-001 | Cosmos DB スキーマ定義、combinedContent 生成ルール |
 | [シナリオ情報設計](docs/シナリオ情報設計.md) | — | シナリオ/FAQ の JSON・Excel 入出力仕様 |
