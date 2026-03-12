@@ -64,7 +64,7 @@ ANNOTATIONS = {
     "step15_8_bot_response.png": [
         (230, 163, "1"),  # Card title "事務改定 影響候補検出" (左上、上にずらし)
         (290, 233, "2"),  # Tab area シナリオ (左上、上にずらし)
-        (235, 278, "3"),  # Category checkboxes (左上、上にずらし)
+        (235, 278, "3"),  # Category single-select dropdown (左上、上にずらし)
         (235, 537, "4"),  # Search mode buttons (左上、上にずらし)
     ],
 }

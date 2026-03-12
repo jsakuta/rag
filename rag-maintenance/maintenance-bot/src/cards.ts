@@ -501,7 +501,7 @@ function buildResultCardInner(
               items: [
                 {
                   type: "TextBlock",
-                  text: `スコア: ${s.score.toFixed(4)}`,
+                  text: `関連度: ${s.score.toFixed(4)}`,
                   size: "Small",
                   horizontalAlignment: "Right",
                   isSubtle: true,
@@ -575,7 +575,7 @@ function buildResultCardInner(
               items: [
                 {
                   type: "TextBlock",
-                  text: `スコア: ${f.score.toFixed(4)}`,
+                  text: `関連度: ${f.score.toFixed(4)}`,
                   size: "Small",
                   horizontalAlignment: "Right",
                   isSubtle: true,

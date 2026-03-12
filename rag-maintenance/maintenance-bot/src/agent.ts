@@ -540,7 +540,7 @@ async function executeSearch(
       type: "AdaptiveCard",
       $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
       version: "1.5",
-      body: [{ type: "TextBlock", text: "カテゴリを1つ以上選択してください。", wrap: true, color: "Attention" }],
+      body: [{ type: "TextBlock", text: "カテゴリを選択してください。", wrap: true, color: "Attention" }],
     } as AdaptiveCard;
   }
 
@@ -667,7 +667,7 @@ function deduplicateById(items: SearchResultItem[]): SearchResultItem[] {
   });
 }
 
-// --- カテゴリ別並列検索 ---
+// --- カテゴリ選択に応じた検索 ---
 async function searchByCategories(
   query: string,
   mode: "semantic" | "keyword",
