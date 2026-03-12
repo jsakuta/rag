@@ -1,0 +1,20 @@
+﻿対象リポジトリ: c:\VSCode\rag\rag-maintenance
+必ず参照:
+- docs/要件定義書.md
+- docs/検索設計書.md
+- docs/データベース設計書.md
+- maintenance-bot/src/agent.ts
+- maintenance-bot/src/cards.ts
+- maintenance-bot/src/config.ts
+- maintenance-bot/src/cosmos.ts
+- maintenance-bot/src/excel.ts
+- maintenance-bot/src/sharepoint.ts
+- maintenance-bot/infra/azure.bicep
+- scripts/index-definition.json
+- scripts/skillset.json
+- scripts/indexer-scenarios.json
+- scripts/indexer-faqs.json
+出力は日本語。根拠が弱い推測は避ける。
+あなたは反証担当。
+要件定義書への厳しめ指摘を疑い、弱い指摘は落とし、残る強い指摘だけを最大6件で示せ。
+各項目は 想定される反論 / それでも残る問題 / 最終判断 を含める。

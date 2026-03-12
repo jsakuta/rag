@@ -1,0 +1,20 @@
+﻿対象リポジトリ: c:\VSCode\rag\rag-maintenance
+必ず参照:
+- docs/要件定義書.md
+- docs/検索設計書.md
+- docs/データベース設計書.md
+- maintenance-bot/src/agent.ts
+- maintenance-bot/src/cards.ts
+- maintenance-bot/src/config.ts
+- maintenance-bot/src/cosmos.ts
+- maintenance-bot/src/excel.ts
+- maintenance-bot/src/sharepoint.ts
+- maintenance-bot/infra/azure.bicep
+- scripts/index-definition.json
+- scripts/skillset.json
+- scripts/indexer-scenarios.json
+- scripts/indexer-faqs.json
+出力は日本語。根拠が弱い推測は避ける。
+あなたは要件品質レビュー担当。
+初学者にも通じる観点で、要件書として足りない点、誤解を生む書き方、受入条件の曖昧さを最大6件で指摘せよ。
+各項目は 何が書かれているか / 何が足りないか / 放置すると何が困るか / どう直すか を含める。

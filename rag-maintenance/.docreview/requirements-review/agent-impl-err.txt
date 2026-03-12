@@ -1,0 +1,397 @@
+2026-03-12T02:27:55.972942Z ERROR codex_core::skills::manager: failed to install system skills: io error while remove existing system skills dir: アクセスが拒否されました。 (os error 5)
+2026-03-12T02:27:56.435079Z ERROR codex_core::codex: failed to load skill C:\Users\SakutaJunki(作田隼樹)\dotfiles\.codex\skills\ios-deploy\SKILL.md: missing YAML frontmatter delimited by ---
+2026-03-12T02:27:56.435236Z ERROR codex_core::codex: failed to load skill C:\Users\SakutaJunki(作田隼樹)\dotfiles\.codex\skills\multi-ai-doc-review\SKILL.md: missing YAML frontmatter delimited by ---
+2026-03-12T02:27:58.171001Z  WARN codex_core::shell_snapshot: Failed to create shell snapshot for powershell: Shell snapshot not supported yet for PowerShell
+OpenAI Codex v0.99.0 (research preview)
+--------
+workdir: c:\VSCode\rag\rag-maintenance
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: auto
+session id: 019cdfdf-4834-7c30-8ad8-0cff1d266fc9
+--------
+user
+対象リポジトリ: c:\VSCode\rag\rag-maintenance
+必ず参照:
+- docs/要件定義書.md
+- docs/検索設計書.md
+- docs/データベース設計書.md
+- maintenance-bot/src/agent.ts
+- maintenance-bot/src/cards.ts
+- maintenance-bot/src/config.ts
+- maintenance-bot/src/cosmos.ts
+- maintenance-bot/src/excel.ts
+- maintenance-bot/src/sharepoint.ts
+- maintenance-bot/infra/azure.bicep
+- scripts/index-definition.json
+- scripts/skillset.json
+- scripts/indexer-scenarios.json
+- scripts/indexer-faqs.json
+出力は日本語。根拠が弱い推測は避ける。
+あなたは実装整合性レビュー担当。
+要件定義書の主張と実装・設定・IaC のズレだけを厳しく抽出せよ。
+最大6件。各項目は 見出し / 根拠 / なぜ問題か / 修正方向 を含める。
+
+mcp: context7 starting
+mcp: serena starting
+2026-03-12T02:27:58.427208Z  WARN codex_core::turn_metadata: timed out after 250ms while building turn metadata header
+mcp: context7 failed: MCP client for `context7` timed out after 10 seconds. Add or adjust `startup_timeout_sec` in your config.toml:
+[mcp_servers.context7]
+startup_timeout_sec = XX
+mcp: serena failed: MCP client for `serena` timed out after 10 seconds. Add or adjust `startup_timeout_sec` in your config.toml:
+[mcp_servers.serena]
+startup_timeout_sec = XX
+mcp startup: failed: context7, serena
+codex
+指定された要件書・設計書と実装/IaCを突き合わせ、要件の主張に対して実装が追随していない点だけを抽出します。まず対象ファイルを読み、要件側の明言とコード側の実態を対応付けます。
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'docs/要件定義書.md'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'maintenance-bot/src/sharepoint.ts'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'maintenance-bot/src/excel.ts'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'maintenance-bot/src/cosmos.ts'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'maintenance-bot/src/cards.ts'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'maintenance-bot/src/config.ts'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'maintenance-bot/src/agent.ts'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'docs/検索設計書.md'" in c:\VSCode\rag\rag-maintenance exited -1 in 0ms:
+`"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'docs/検索設計書.md'"` rejected: blocked by policy
+ exited -1 in 0ms:
+`"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'docs/要件定義書.md'"` rejected: blocked by policy
+ exited 124 in 14.44s:
+
+ exited 124 in 34.26s:
+
+ exited 124 in 34.34s:
+
+ exited 124 in 10.32s:
+
+ exited 124 in 10.48s:
+
+ exited 124 in 10.64s:
+
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'maintenance-bot/infra/azure.bicep'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'scripts/index-definition.json'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'scripts/skillset.json'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'docs/データベース設計書.md'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'scripts/indexer-scenarios.json'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -Raw 'scripts/indexer-faqs.json'" in c:\VSCode\rag\rag-maintenance exited 124 in 10.53s:
+
+ exited 124 in 10.32s:
+
+ exited 124 in 10.40s:
+
+ exited 124 in 10.14s:
+
+ exited 124 in 10.48s:
+
+ exited 124 in 10.21s:
+
+codex
+読み取り方法に制約があるので、まずローカル参照が可能な手段を切り分けます。シェル経由が不安定なので、使えるリソース経路を確認します。
+tool codex.list_mcp_resources({})
+codex.list_mcp_resources({}) success in 0ms:
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"resources\":[]}"
+    }
+  ],
+  "isError": false
+}
+tool codex.list_mcp_resource_templates({})
+codex.list_mcp_resource_templates({}) success in 0ms:
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"resourceTemplates\":[]}"
+    }
+  ],
+  "isError": false
+}
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "cmd /c type docs\\要件定義書.md" in c:\VSCode\rag\rag-maintenance exited -1 in 0ms:
+`"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "cmd /c type docs\\要件定義書.md"` rejected: blocked by policy
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command Get-Location in c:\VSCode\rag\rag-maintenance exited 124 in 5.19s:
+
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command Get-Location in c:\VSCode\rag\rag-maintenance exited 124 in 20.11s:
+
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command 'rg --files' in c:\VSCode\rag\rag-maintenance exited 124 in 10.24s:
+
+codex
+シェル起動自体が遅延している可能性があるため、出力を絞った短い確認で再試行します。ここが通れば、以降は必要箇所だけ分割して読みにいきます。
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command 'Get-ChildItem -Name' in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command Get-Location in c:\VSCode\rag\rag-maintenance succeeded in 51.76s:
+.docreview
+.plans
+.serena
+docs
+maintenance-bot
+scripts
+.gitignore
+CLAUDE.md
+README.md
+ succeeded in 53.31s:
+
+Path                         
+----                         
+C:\VSCode\rag\rag-maintenance
+
+
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "(Get-Content 'docs/検索設計書.md' | Measure-Object -Line).Lines" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Select-String -Path 'docs/データベース設計書.md' -Pattern '"'^#'"'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "(Get-Content 'docs/要件定義書.md' | Measure-Object -Line).Lines" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Select-String -Path 'docs/検索設計書.md' -Pattern '"'^#'"'" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "(Get-Content 'docs/データベース設計書.md' | Measure-Object -Line).Lines" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Select-String -Path 'docs/要件定義書.md' -Pattern '"'^#'"'" in c:\VSCode\rag\rag-maintenance exited -1 in 0ms:
+`"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "(Get-Content 'docs/検索設計書.md' | Measure-Object -Line).Lines"` rejected: blocked by policy
+ exited -1 in 0ms:
+`"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "(Get-Content 'docs/データベース設計書.md' | Measure-Object -Line).Lines"` rejected: blocked by policy
+ exited -1 in 0ms:
+`"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "(Get-Content 'docs/要件定義書.md' | Measure-Object -Line).Lines"` rejected: blocked by policy
+ succeeded in 34.30s:
+
+docs\データベース設計書.md:1:# 運用保守効率化AI データベース設計書
+docs\データベース設計書.md:9:## 1. 概要
+docs\データベース設計書.md:26:## 2. scenarios コンテナ スキーマ
+docs\データベース設計書.md:49:### フィールド詳細
+docs\データベース設計書.md:69:## 3. faqs コンテナ スキーマ
+docs\データベース設計書.md:90:### フィールド詳細
+docs\データベース設計書.md:108:## 4. impactAssessments コンテナ スキーマ
+docs\データベース設計書.md:124:## 5. combinedContent 生成ルール
+docs\データベース設計書.md:126:### シナリオ
+docs\データベース設計書.md:140:### FAQ
+docs\データベース設計書.md:153:## 6. カテゴリ ID マッピング
+docs\データベース設計書.md:167:## 7. isFinalAnswer 判定アルゴリズム
+docs\データベース設計書.md:184:## 8. Excel 列名マッピング
+docs\データベース設計書.md:186:### シナリオデータ（rev03*）
+docs\データベース設計書.md:197:### FAQ データ
+docs\データベース設計書.md:207:## 9. AI Search インデックス連携
+docs\データベース設計書.md:209:### インデックス名: `maintenance-search-index`
+docs\データベース設計書.md:213:### Skillset によるベクトル化
+docs\データベース設計書.md:219:### Bot の SELECT フィールド
+ succeeded in 54.83s:
+
+docs\検索設計書.md:1:# 運用保守効率化AI 検索設計書
+docs\検索設計書.md:8:## 目次
+docs\検索設計書.md:25:## 1. 概要・目的
+docs\検索設計書.md:31:## 2. 用語集
+docs\検索設計書.md:49:## 3. アーキテクチャ全体像
+docs\検索設計書.md:51:### クラウド版（Azure AI Search）
+docs\検索設計書.md:96:### ローカル版（ChromaDB）
+docs\検索設計書.md:114:## 4. ベクトル化設計
+docs\検索設計書.md:116:### 4-A. ベクトル化パラメータ
+docs\検索設計書.md:126:### 4-B. combinedContent のフォーマット
+docs\検索設計書.md:140:### 4-C. combinedContent の構成要素決定ロジック
+docs\検索設計書.md:142:#### シナリオの右→左スキャン（ローカル版 / クラウド版 共通）
+docs\検索設計書.md:158:#### FAQ の列マッピング
+docs\検索設計書.md:168:## 5. テキスト検索
+docs\検索設計書.md:170:### 5-A. トークン化
+docs\検索設計書.md:181:### 5-B. スコア計算
+docs\検索設計書.md:194:### 5-C. キーワードの扱い
+docs\検索設計書.md:210:## 6. スコア統合 — RRF
+docs\検索設計書.md:212:### 6-A. ローカル版: スコアベース線形結合
+ exited 124 in 1m 00s:
+
+docs\要件定義書.md:1:# 運用保守効率化AI 要件定義書
+docs\要件定義書.md:9:## 目次
+docs\要件定義書.md:27:## 1. はじめに
+docs\要件定義書.md:29:### 1.1 本書の目的
+docs\要件定義書.md:33:### 1.2 本書の位置づけ
+docs\要件定義書.md:42:### 1.3 対象読者
+docs\要件定義書.md:48:### 1.4 関連文書
+docs\要件定義書.md:59:## 2. システム概要
+docs\要件定義書.md:61:### 2.1 背景
+docs\要件定義書.md:72:### 2.2 目的
+docs\要件定義書.md:76:### 2.3 段階設計
+docs\要件定義書.md:85:### 2.4 対象範囲
+docs\要件定義書.md:109:### 2.5 システム概念図（Step 1）
+docs\要件定義書.md:135:### 2.6 ローカル検証からの設計判断
+docs\要件定義書.md:148:## 3. 業務要件
+docs\要件定義書.md:150:### 3.1 現行業務フロー（As-Is）
+docs\要件定義書.md:180:### 3.2 目標業務フロー（To-Be: Step 1）
+docs\要件定義書.md:220:### 3.3 ユーザーと役割
+docs\要件定義書.md:227:### 3.4 データに対するアクション方針
+codex
+要件側の主要主張を先に拾い、その後で実装側の該当箇所を当てます。全文読みに行くより、要件IDと設定値の周辺だけを抜き出す方が精度が高いです。
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/cosmos.ts' | Select-Object -First 260" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/excel.ts' | Select-Object -First 260" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/config.ts' | Select-Object -First 220" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/infra/azure.bicep' | Select-Object -First 320" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/cards.ts' | Select-Object -First 260" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/sharepoint.ts' | Select-Object -First 260" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/agent.ts' | Select-Object -First 260" in c:\VSCode\rag\rag-maintenance exited 124 in 1m 00s:
+
+ exited 124 in 1m 00s:
+
+ exited 124 in 1m 00s:
+
+ succeeded in 45.22s:
+import { Client } from "@microsoft/microsoft-graph-client";
+import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
+import { DefaultAzureCredential } from "@azure/identity";
+import config, { SPO_SIMPLE_UPLOAD_LIMIT } from "./config";
+
+export interface SpoUploadResult {
+  webUrl: string;
+  filename: string;
+}
+
+// --- Graph 繧ｯ繝ｩ繧､繧｢繝ｳ繝磯≦蟒ｶ蛻晄悄蛹・---
+let _graphClient: Client | null = null;
+function getGraphClient(): Client {
+  if (!_graphClient) {
+    const credential = new DefaultAzureCredential();
+    const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+      scopes: ["https://graph.microsoft.com/.default"],
+    });
+    _graphClient = Client.initWithMiddleware({ authProvider });
+  }
+ succeeded in 47.79s:
+@maxLength(20)
+@minLength(4)
+@description('Used to generate names for all resources in this file')
+param resourceBaseName string
+
+@secure()
+param azureOpenAIKey string
+
+@secure()
+param azureOpenAIEndpoint string
+
+@secure()
+param azureOpenAIDeploymentName string
+
+param webAppSKU string
+
+@maxLength(42)
+param botDisplayName string
+
+param serverfarmsName string = resourceBaseName
+ succeeded in 49.81s:
+import { ActivityTypes, type ConversationReference } from "@microsoft/agents-activity";
+import type { JwtPayload } from "jsonwebtoken";
+import {
+  AgentApplication,
+  MemoryStorage,
+  TurnContext,
+  TurnState,
+  MessageFactory,
+  CardFactory,
+  type AdaptiveCard,
+} from "@microsoft/agents-hosting";
+import { SearchClient } from "@azure/search-documents";
+import { DefaultAzureCredential } from "@azure/identity";
+import config, {
+  SCENARIO_CATEGORIES,
+  FAQ_CATEGORIES,
+  DEFAULT_TOP_N,
+  MAX_INPUT_LENGTH,
+  VECTOR_WEIGHT,
+  CACHE_TTL_MS,
+ succeeded in 47.81s:
+/**
+ * Adaptive Card 繝薙Ν繝繝ｼ
+ * 隕∽ｻｶ螳夂ｾｩ譖ｸ FR-001縲廡R-005, FR-013, FR-014 貅匁侠
+ */
+import type { AdaptiveCard } from "@microsoft/agents-hosting";
+import { SCENARIO_CATEGORIES, FAQ_CATEGORIES, TOP_N_OPTIONS, ITEMS_PER_PAGE, ADAPTIVE_CARD_SIZE_LIMIT } from "./config";
+
+// --- 蝙句ｮ夂ｾｩ ---
+export interface SearchResultItem {
+  id: string;
+  dataType: "scenario" | "faq";
+  categoryId: string;
+  categoryName: string;
+  title: string;
+  content: string;
+  score: number;
+  order?: number;
+}
+
+export interface CategorySelection {
+
+thinking
+**Considering configuration setup**
+
+I need to configure a few things: cosmos, Excel, and index JSONs. I think using a chunk of maybe the first 200 lines should be enough. I could use something like `Get-Content ... | Select-Object -First 180` to retrieve that. I will need to set timeouts to around 60000, and perhaps the configuration should be kept small for efficiency. Let's see how this all comes together!
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/cosmos.ts' | Select-Object -First 260" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/excel.ts' | Select-Object -First 260" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'scripts/index-definition.json' | Select-Object -First 320" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'scripts/indexer-faqs.json' | Select-Object -First 220" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'maintenance-bot/src/config.ts' | Select-Object -First 220" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'scripts/indexer-scenarios.json' | Select-Object -First 220" in c:\VSCode\rag\rag-maintenanceexec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "Get-Content 'scripts/skillset.json' | Select-Object -First 320" in c:\VSCode\rag\rag-maintenance succeeded in 38.80s:
+{
+  "name": "maintenance-skillset",
+  "skills": [
+    {
+      "@odata.type": "#Microsoft.Skills.Text.AzureOpenAIEmbeddingSkill",
+      "name": "embedding-skill",
+      "context": "/document",
+      "resourceUri": "https://aoai-maintenance-poc.openai.azure.com",
+      "deploymentId": "text-embedding-3-large",
+      "modelName": "text-embedding-3-large",
+      "dimensions": 3072,
+      "inputs": [
+        {
+          "name": "text",
+          "source": "/document/combinedContent"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "embedding",
+ succeeded in 38.32s:
+import ExcelJS from "exceljs";
+import { SearchResultItem } from "./cards";
+
+// --- 蝙句ｮ夂ｾｩ ---
+
+export interface CategoryExcelResult {
+  categoryId: string;
+  categoryName: string;
+  buffer: Buffer;
+  filename: string;
+  totalCount: number;
+  needsUpdateCount: number;
+}
+
+// --- 繝ｦ繝ｼ繝・ぅ繝ｪ繝・ぅ ---
+
+/**
+ * 繧ｿ繧､繝医Ν譁・ｭ怜・繧・"/" 縺ｧ蛻・牡縺励・嚴螻､驟榊・縺ｨ縺励※霑斐☆縲・
+ * - null/undefined/遨ｺ譁・ｭ・竊・["(遨ｺ)"]
+ * - 蜈磯ｭ繝ｻ譛ｫ蟆ｾ縺ｮ繧ｹ繝ｩ繝・す繝･縺ｯ辟｡隕・
+ succeeded in 28.78s:
+{
+  "name": "maintenance-search-index",
+  "fields": [
+    { "name": "id", "type": "Edm.String", "key": true, "filterable": true },
+    { "name": "dataType", "type": "Edm.String", "filterable": true },
+    { "name": "categoryId", "type": "Edm.String", "filterable": true },
+    { "name": "categoryName", "type": "Edm.String", "searchable": true, "filterable": true, "analyzer": "ja.microsoft" },
+    { "name": "title", "type": "Edm.String", "searchable": true, "analyzer": "ja.microsoft" },
+    { "name": "content", "type": "Edm.String", "searchable": true, "analyzer": "ja.microsoft" },
+    { "name": "combinedContent", "type": "Edm.String", "searchable": true, "analyzer": "ja.microsoft" },
+    {
+      "name": "contentVector",
+      "type": "Collection(Edm.Single)",
+      "searchable": true,
+      "dimensions": 3072,
+      "vectorSearchProfile": "vector-profile"
+    },
+    { "name": "keywords", "type": "Collection(Edm.String)", "searchable": true, "filterable": false, "analyzer": "ja.microsoft" },
+    { "name": "updatedAt", "type": "Edm.DateTimeOffset", "filterable": true, "sortable": true },
+    { "name": "isDeleted", "type": "Edm.Boolean", "filterable": true },
