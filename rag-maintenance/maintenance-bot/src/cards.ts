@@ -14,12 +14,14 @@ export interface SearchResultItem {
   title: string;
   content: string;
   score: number;
+  searchScore?: number;
+  rerankerScore?: number;
   order?: number;
 }
 
 export interface CategorySelection {
-  scenarios: string[];  // 例: ["smile", "souzoku"]
-  faqs: string[];       // 例: ["smile", "sousoku"]
+  scenarios: string[];  // 例: ["smile"]
+  faqs: string[];       // 例: ["smile"]
 }
 
 // --- ToggleVisibility ターゲット定義 ---
@@ -194,13 +196,17 @@ export function buildSearchCard(queryText: string): AdaptiveCard {
             weight: "Bolder",
             size: "Small",
           },
-          ...SCENARIO_CATEGORIES.map((c) => ({
-            type: "Input.Toggle" as const,
-            id: `scat_${c.id}`,
-            title: c.name,
-            value: "true",
-            spacing: "None" as const,
-          })),
+          {
+            type: "Input.ChoiceSet",
+            id: "scenarioCategory",
+            value: SCENARIO_CATEGORIES[0].id,
+            style: "compact",
+            isMultiSelect: false,
+            choices: SCENARIO_CATEGORIES.map((c) => ({
+              title: c.name,
+              value: c.id,
+            })),
+          },
           // 表示件数
           {
             type: "TextBlock",
@@ -257,13 +263,17 @@ export function buildSearchCard(queryText: string): AdaptiveCard {
             weight: "Bolder",
             size: "Small",
           },
-          ...FAQ_CATEGORIES.map((c) => ({
-            type: "Input.Toggle" as const,
-            id: `fcat_${c.id}`,
-            title: c.name,
-            value: "true",
-            spacing: "None" as const,
-          })),
+          {
+            type: "Input.ChoiceSet",
+            id: "faqCategory",
+            value: FAQ_CATEGORIES[0].id,
+            style: "compact",
+            isMultiSelect: false,
+            choices: FAQ_CATEGORIES.map((c) => ({
+              title: c.name,
+              value: c.id,
+            })),
+          },
           // 表示件数
           {
             type: "TextBlock",

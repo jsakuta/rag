@@ -776,7 +776,10 @@ async function searchSingle(
       categoryName: String(doc.categoryName),
       title: String(doc.title),
       content: String(doc.content),
-      score: result.score ?? 0,
+      // semantic query では rerankerScore を優先して最終順位に使う
+      score: mode === "semantic" ? (result.rerankerScore ?? result.score ?? 0) : (result.score ?? 0),
+      searchScore: result.score ?? 0,
+      rerankerScore: result.rerankerScore,
       order: typeof doc.order === "number" ? doc.order : undefined,
     });
   }
@@ -897,21 +900,25 @@ function isToggleOn(value: unknown): boolean {
   return value === "true" || value === true;
 }
 
-/** 初回検索時: チェックボックスから CategorySelection を抽出（scat_ / fcat_ プレフィックス） */
+/** 初回検索時: 単一選択UIから CategorySelection を抽出 */
 function extractCategorySelections(
   data: Record<string, unknown>,
   targetType: SearchTargetType
 ): CategorySelection {
   const nested = data?.data as Record<string, unknown> | undefined;
-  const prefix = targetType === "scenario" ? "scat_" : "fcat_";
   const categories = targetType === "scenario" ? SCENARIO_CATEGORIES : FAQ_CATEGORIES;
+  const fieldName = targetType === "scenario" ? "scenarioCategory" : "faqCategory";
+  const raw = typeof data?.[fieldName] === "string"
+    ? data[fieldName]
+    : (typeof nested?.[fieldName] === "string" ? nested[fieldName] : undefined);
 
   const selectedIds = categories
-    .filter((c) => {
-      const key = `${prefix}${c.id}`;
-      return isToggleOn(data[key]) || isToggleOn(nested?.[key]);
-    })
+    .filter((c) => c.id === raw)
     .map((c) => c.id);
+
+  if (selectedIds.length === 0 && categories.length > 0) {
+    selectedIds.push(categories[0].id);
+  }
 
   return targetType === "scenario"
     ? { scenarios: selectedIds, faqs: [] }
