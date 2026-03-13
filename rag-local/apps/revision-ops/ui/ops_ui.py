@@ -451,12 +451,26 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
     )
 
 
+def _detect_available_provider(area: str) -> Optional[str]:
+    """keyword_filter用: 利用可能なプロバイダーのDBディレクトリを検出"""
+    for provider in ["azure_openai", "vertex_ai"]:
+        db_path = VECTOR_DB_BASE / area / provider / "chroma.sqlite3"
+        if db_path.exists():
+            return provider
+    return None
+
+
 def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) -> List[Dict]:
     """キーワード検索（ChromaDB、LLM不使用）"""
-    searcher = _get_cached_keyword_searcher()
+    if not areas:
+        return []
+    provider = _detect_available_provider(areas[0])
+    if not provider:
+        logger.warning(f"keyword_filter: 利用可能なDBが見つかりません（{areas[0]}）")
+        return []
 
-    # areas は既に "rev02_souzoku" 等のフルネーム（旧コードは全件返却）
-    matches = searcher.search(areas, query, provider="azure_openai", max_results=10000)
+    searcher = _get_cached_keyword_searcher()
+    matches = searcher.search(areas, query, provider=provider, max_results=10000)
 
     # UI版フォーマットに変換
     return [
@@ -476,10 +490,16 @@ def _execute_keyword_filter_search(query: str, revision: str, areas: List[str]) 
 
 def _execute_impact_keyword_search(query: str, categories: List[str], source_filter: Optional[str] = None) -> List[Dict]:
     """影響調査モード: キーワード検索"""
-    searcher = _get_cached_keyword_searcher()
+    if not categories:
+        return []
+    provider = _detect_available_provider(categories[0])
+    if not provider:
+        logger.warning(f"keyword_filter: 利用可能なDBが見つかりません（{categories[0]}）")
+        return []
 
+    searcher = _get_cached_keyword_searcher()
     matches = searcher.search(
-        categories, query, provider="azure_openai",
+        categories, query, provider=provider,
         max_results=10000, source_filter=source_filter,
     )
 

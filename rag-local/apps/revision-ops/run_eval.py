@@ -288,6 +288,14 @@ class RevisionEvaluator:
             logger.error(f"参照クエリ取得エラー ({area}/{provider}): {e}")
             return []
 
+    def _detect_available_provider(self, area: str) -> Optional[str]:
+        """keyword_filter用: 利用可能なプロバイダーのDBディレクトリを検出"""
+        for provider in ["azure_openai", "vertex_ai"]:
+            db_path = VECTOR_DB_BASE / area / provider / "chroma.sqlite3"
+            if db_path.exists():
+                return provider
+        return None
+
     def _execute_keyword_filter_search(
         self, revision: str, query: str, correct_ids: List[str]
     ) -> Tuple[Dict[str, List[Dict]], str, List[str], List[str]]:
@@ -295,6 +303,13 @@ class RevisionEvaluator:
         areas = REVISION_TO_AREAS.get(revision, [])
         if not areas:
             logger.warning(f"改定 {revision} に対応するエリアがありません")
+            return {}, "", [], []
+
+        # keyword_filterはベクトル埋め込みを使わないが、DBディレクトリ構造上
+        # プロバイダー名が必要。利用可能なDBを自動検出する。
+        provider = self._detect_available_provider(areas[0])
+        if not provider:
+            logger.warning(f"改定 {revision}: 利用可能なDBが見つかりません（{areas}）")
             return {}, "", [], []
 
         keyword_engine = KeywordSearchEngine(
@@ -311,7 +326,7 @@ class RevisionEvaluator:
         )
 
         # area ごとに MAX_RESULTS 件制限するため、全体上限は十分大きく
-        all_matches = searcher.search(areas, query, provider="azure_openai", max_results=MAX_RESULTS * len(areas))
+        all_matches = searcher.search(areas, query, provider=provider, max_results=MAX_RESULTS * len(areas))
 
         # BUG-5修正: defaultdict で O(N+M) グルーピング
         from collections import defaultdict
@@ -398,13 +413,13 @@ class RevisionEvaluator:
         # 検索タイプを取得
         search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
 
-        # キーワード必須検索の場合はExcel直接検索（プロバイダー非依存）
+        # キーワード必須検索の場合（プロバイダー非依存）
         if search_type == "keyword_filter":
-            # 最初のプロバイダー呼び出し時のみ実行
-            if provider == "azure_openai":
+            # 重複実行防止: 最初のプロバイダー呼び出し時のみ実行
+            available = self._detect_available_provider(areas[0])
+            if provider == available:
                 return self._execute_keyword_filter_search(revision, query, correct_ids)
             else:
-                # VertexAI呼び出し時は空の結果を返す（Azure側の結果を使用）
                 return {}, "", [], []
 
         # 改定番号別のベクトル重みを取得
