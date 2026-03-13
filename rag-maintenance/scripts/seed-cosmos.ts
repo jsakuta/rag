@@ -14,7 +14,7 @@ import { DefaultAzureCredential } from "@azure/identity";
 import * as fs from "fs";
 import * as path from "path";
 
-const ENDPOINT = "https://cosmos-maintenance-poc.documents.azure.com:443/";
+const ENDPOINT = "https://<COSMOS_ACCOUNT>.documents.azure.com:443/";
 const DB_NAME = "maintenance-db";
 const BATCH_SIZE = 100;
 

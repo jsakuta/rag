@@ -1,6 +1,6 @@
 /**
  * Adaptive Card ビルダー
- * 要件定義書 FR-001〜FR-005, FR-013, FR-014 準拠
+ * 要件定義書 FR-001〜FR-005, FR-012, FR-013 準拠
  */
 import type { AdaptiveCard } from "@microsoft/agents-hosting";
 import { SCENARIO_CATEGORIES, FAQ_CATEGORIES, TOP_N_OPTIONS, ITEMS_PER_PAGE, ADAPTIVE_CARD_SIZE_LIMIT } from "./config";
@@ -666,7 +666,7 @@ function buildResultCardInner(
   };
 }
 
-// --- FR-013: FAQ削除確認カード ---
+// --- FR-012: FAQ削除確認カード ---
 export function buildDeleteConfirmCard(
   faqs: { id: string; title: string; categoryName?: string }[],
   searchSessionId?: string
@@ -707,7 +707,7 @@ export function buildDeleteConfirmCard(
   };
 }
 
-// --- FR-013: FAQ削除完了カード ---
+// --- FR-012: FAQ削除完了カード ---
 export function buildDeleteCompleteCard(
   deleted: { id: string; title: string }[],
   user: string
@@ -741,7 +741,7 @@ export function buildDeleteCompleteCard(
   };
 }
 
-// --- FR-014: 要修正フラグ保存完了カード ---
+// --- FR-013: 要修正フラグ保存完了カード ---
 export function buildNeedsUpdateCompleteCard(
   saved: { id: string; title: string; categoryName: string }[],
   user: string,
@@ -750,7 +750,7 @@ export function buildNeedsUpdateCompleteCard(
   const now = formatJST(new Date());
   const actions: Record<string, unknown>[] = [];
 
-  // FR-015: Excel出力ボタン
+  // FR-014: Excel出力ボタン
   if (searchSessionId) {
     actions.push({
       type: "Action.Execute",
@@ -825,7 +825,7 @@ export function buildNeedsUpdateCompleteCard(
   };
 }
 
-// --- FR-015: Excel出力関連の型定義 ---
+// --- FR-014: Excel出力関連の型定義 ---
 
 export interface ExcelExportFileInfo {
   categoryName: string;
@@ -846,7 +846,7 @@ export interface ExcelExportErrorCardParams {
   searchSessionId?: string;
 }
 
-// --- FR-015: Excel出力完了カード ---
+// --- FR-014: Excel出力完了カード ---
 export function buildExcelExportCompleteCard(
   params: ExcelExportCompleteCardParams
 ): AdaptiveCard {
@@ -982,7 +982,7 @@ export function buildSearchProcessingCard(queryText: string): AdaptiveCard {
   };
 }
 
-// --- FR-015: Excel出力処理中カード ---
+// --- FR-014: Excel出力処理中カード ---
 export function buildExcelProcessingCard(): AdaptiveCard {
   return {
     type: "AdaptiveCard",
@@ -1006,7 +1006,7 @@ export function buildExcelProcessingCard(): AdaptiveCard {
   };
 }
 
-// --- FR-015: Excel出力エラーカード ---
+// --- FR-014: Excel出力エラーカード ---
 export function buildExcelExportErrorCard(
   params: ExcelExportErrorCardParams
 ): AdaptiveCard {

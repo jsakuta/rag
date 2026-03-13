@@ -59,7 +59,7 @@ function getSearchClient() {
 const storage = new MemoryStorage();
 export const agentApp = new AgentApplication({ storage });
 
-// --- FR-015: 検索結果インメモリキャッシュ ---
+// --- FR-014: 検索結果インメモリキャッシュ ---
 interface CachedSearchResult {
   scenarios: SearchResultItem[];
   faqs: SearchResultItem[];
@@ -266,7 +266,7 @@ agentApp.adaptiveCards.actionExecute(
   }
 );
 
-// --- FR-013: FAQ削除確認 (Action.Execute verb: confirmDeleteFaqs) ---
+// --- FR-012: FAQ削除確認 (Action.Execute verb: confirmDeleteFaqs) ---
 agentApp.adaptiveCards.actionExecute(
   "confirmDeleteFaqs",
   async (_context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
@@ -302,7 +302,7 @@ agentApp.adaptiveCards.actionExecute(
   }
 );
 
-// --- FR-013: FAQ削除実行 (Action.Execute verb: executeDeleteFaqs) ---
+// --- FR-012: FAQ削除実行 (Action.Execute verb: executeDeleteFaqs) ---
 agentApp.adaptiveCards.actionExecute(
   "executeDeleteFaqs",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
@@ -324,7 +324,7 @@ agentApp.adaptiveCards.actionExecute(
   }
 );
 
-// --- FR-014: シナリオ要修正フラグ保存 (Action.Execute verb: saveNeedsUpdate) ---
+// --- FR-013: シナリオ要修正フラグ保存 (Action.Execute verb: saveNeedsUpdate) ---
 agentApp.adaptiveCards.actionExecute(
   "saveNeedsUpdate",
   async (context: TurnContext, _state: TurnState, data: Record<string, unknown>) => {
@@ -378,7 +378,7 @@ agentApp.adaptiveCards.actionExecute(
   }
 );
 
-// --- FR-015: Excel出力 (Action.Execute verb: exportExcel) ---
+// --- FR-014: Excel出力 (Action.Execute verb: exportExcel) ---
 // リトライガード: Teams が Action.Execute タイムアウトでリトライするため重複処理を防止
 const processingExports = new Set<string>();
 
@@ -565,7 +565,7 @@ async function executeSearch(
       } as AdaptiveCard;
     }
 
-    // FR-015: 検索結果をキャッシュ（ページネーション + Excel出力用）
+    // FR-014: 検索結果をキャッシュ（ページネーション + Excel出力用）
     cleanExpiredCache();
     const searchSessionId = randomUUID();
     searchResultCache.set(searchSessionId, {

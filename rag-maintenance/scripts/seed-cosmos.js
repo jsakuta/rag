@@ -14,7 +14,7 @@ const { DefaultAzureCredential } = require("@azure/identity");
 const fs = require("fs");
 const path = require("path");
 
-const ENDPOINT = "https://cosmos-maintenance-poc.documents.azure.com:443/";
+const ENDPOINT = "https://<COSMOS_ACCOUNT>.documents.azure.com:443/";
 const DB_NAME = "maintenance-db";
 const BATCH_SIZE = 100;
 

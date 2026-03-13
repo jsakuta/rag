@@ -2,7 +2,7 @@
   "name": "cosmos-faqs-ds",
   "type": "cosmosdb",
   "credentials": {
-    "connectionString": "ResourceId=/subscriptions/5a471c83-2f59-4509-806a-3c1fc77bb89a/resourceGroups/rg-maintenance-poc/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-maintenance-poc;Database=maintenance-db;"
+    "connectionString": "ResourceId=/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>/providers/Microsoft.DocumentDB/databaseAccounts/<COSMOS_ACCOUNT>;Database=maintenance-db;"
   },
   "container": {
     "name": "faqs",
