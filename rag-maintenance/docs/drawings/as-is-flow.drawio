@@ -15,11 +15,6 @@
           <mxGeometry x="430" y="60" width="540" height="30" as="geometry" />
         </mxCell>
 
-        <!-- ヒト ラベル -->
-        <mxCell id="human-label" value="ヒト" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8E8E8;strokeColor=#999999;fontSize=13;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="1350" y="100" width="60" height="30" as="geometry" />
-        </mxCell>
-
         <!-- ===== ステップ1: 事務改定の発生 ===== -->
         <mxCell id="num1" value="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
           <mxGeometry x="80" y="120" width="40" height="40" as="geometry" />
