@@ -1,0 +1,56 @@
+<mxfile host="draw.io" modified="2026-03-16T00:00:00.000Z" agent="draw.io" version="24.0.0" type="device">
+  <diagram id="system-overview" name="概念図">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- 外枠 -->
+        <mxCell id="outer-frame" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;strokeWidth=1;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="200" y="100" width="1000" height="400" as="geometry" />
+        </mxCell>
+
+        <!-- タイトル -->
+        <mxCell id="title" value="事務改定影響調査システム 概念図" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="120" width="460" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- 左列: 入力 -->
+        <mxCell id="input-box" value="&lt;b&gt;Teams Bot / テキスト入力&lt;/b&gt;&lt;hr&gt;&lt;div style=&quot;text-align:left;padding:4px;&quot;&gt;・改定内容（自然言語）&lt;br&gt;・検索モード選択&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="280" y="200" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- 中央列: 処理 -->
+        <mxCell id="search-box" value="&lt;b&gt;Azure AI Search (Basic)&lt;/b&gt;&lt;hr&gt;&lt;div style=&quot;text-align:left;padding:4px;&quot;&gt;・ハイブリッド検索（BM25+ベクトル）&lt;br&gt;・Semantic Ranker&lt;br&gt;・ビルトインVectorizer&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="590" y="200" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- 右列: 出力 -->
+        <mxCell id="output-box" value="&lt;b&gt;Teams / Adaptive Card&lt;/b&gt;&lt;hr&gt;&lt;div style=&quot;text-align:left;padding:4px;&quot;&gt;・シナリオタブ&lt;br&gt;・FAQタブ&lt;br&gt;・スコア順表示&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="900" y="200" width="220" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- 矢印: 入力→処理 -->
+        <mxCell id="arrow1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="input-box" target="search-box" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 矢印: 処理→出力 -->
+        <mxCell id="arrow2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="search-box" target="output-box" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 注記テキスト1 -->
+        <mxCell id="note1" value="Bot バックエンド: Azure Web App (App Service)" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=11;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="280" y="400" width="300" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- 注記テキスト2 -->
+        <mxCell id="note2" value="ベクトル化: Azure OpenAI text-embedding-3-large" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=11;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="280" y="430" width="320" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,81 @@
+<mxfile host="draw.io" modified="2026-03-16T00:00:00.000Z" agent="draw.io" version="24.0.0" type="device">
+  <diagram id="search-flow" name="原文検索方式フロー">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- タイトル -->
+        <mxCell id="title" value="原文検索方式フロー" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="950" y="50" width="300" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- 1. 入力テキスト（角丸四角・緑） -->
+        <mxCell id="input" value="入力テキスト（原文）&#xa;例: 「本人確認書類が2点から&#xa;1点に変更」" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="950" y="120" width="300" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 2. Azure AI Search ハイブリッド検索（大きいグループボックス・青） -->
+        <mxCell id="search-group" value="Azure AI Search ハイブリッド検索" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=10;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="850" y="250" width="500" height="250" as="geometry" />
+        </mxCell>
+
+        <!-- サブボックス1: ビルトインVectorizer -->
+        <mxCell id="sub1" value="① ビルトインVectorizer&#xa;→ ベクトル検索（cosine）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1;fontSize=11;" vertex="1" parent="search-group">
+          <mxGeometry x="30" y="50" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- サブボックス2: キーワード検索 -->
+        <mxCell id="sub2" value="② キーワード検索&#xa;（ja.microsoft）→ BM25" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1;fontSize=11;" vertex="1" parent="search-group">
+          <mxGeometry x="270" y="50" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- サブボックス3: RRFでスコア統合 -->
+        <mxCell id="sub3" value="③ RRFでスコア統合" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1;fontSize=11;" vertex="1" parent="search-group">
+          <mxGeometry x="150" y="150" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- サブボックス内矢印: ①→③ -->
+        <mxCell id="se1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#666666;" edge="1" source="sub1" target="sub3" parent="search-group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- サブボックス内矢印: ②→③ -->
+        <mxCell id="se2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#666666;" edge="1" source="sub2" target="sub3" parent="search-group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 3. Semantic Ranker（角丸四角・黄） -->
+        <mxCell id="ranker" value="Semantic Ranker で最終スコアリング&#xa;・rerankerScore を優先して関連度順に整列&#xa;・上位N件を返却（デフォルト: 30件）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="900" y="550" width="400" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 4. 出力（角丸四角・緑） -->
+        <mxCell id="output" value="Teams Adaptive Card&#xa;（影響候補一覧）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="975" y="680" width="250" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- 矢印: 入力→ハイブリッド検索 -->
+        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="input" target="search-group" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 矢印: ハイブリッド検索→Semantic Ranker -->
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="search-group" target="ranker" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 矢印: Semantic Ranker→出力 -->
+        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="ranker" target="output" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 注記テキスト -->
+        <mxCell id="note" value="注: Botアプリ → AI Search REST API 直接呼び出し（LLMクエリ拡張なし）" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="850" y="770" width="500" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
