@@ -1,125 +1,87 @@
-<mxfile host="app.diagrams.net" modified="2026-03-16T00:00:00.000Z" agent="Claude" version="24.0.0" type="device">
-  <diagram id="search-architecture" name="検索アーキテクチャ">
-    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-
-        <!-- タイトル -->
-        <mxCell id="title" value="検索アーキテクチャ全体像" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=18;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="550" y="20" width="260" height="40" as="geometry" />
-        </mxCell>
-
-        <!-- ===== 左列: Cosmos DB ===== -->
-        <mxCell id="cosmos-group" value="Cosmos DB" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=13;rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="70" width="280" height="560" as="geometry" />
-        </mxCell>
-
-        <!-- scenarios コンテナ -->
-        <mxCell id="scenarios-group" value="scenarios コンテナ" style="swimlane;startSize=28;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=11;rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="cosmos-group">
-          <mxGeometry x="15" y="50" width="250" height="200" as="geometry" />
-        </mxCell>
-
-        <mxCell id="sc-smile" value="smile (555件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="scenarios-group">
-          <mxGeometry x="15" y="35" width="130" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="sc-souzoku" value="souzoku (269件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="scenarios-group">
-          <mxGeometry x="15" y="70" width="140" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="sc-naibujimu" value="naibujimu (1,384件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="scenarios-group">
-          <mxGeometry x="15" y="105" width="160" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="sc-torikaku" value="torikaku (105件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="scenarios-group">
-          <mxGeometry x="15" y="140" width="140" height="30" as="geometry" />
-        </mxCell>
-
-        <!-- faqs コンテナ -->
-        <mxCell id="faqs-group" value="faqs コンテナ" style="swimlane;startSize=28;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="cosmos-group">
-          <mxGeometry x="15" y="290" width="250" height="170" as="geometry" />
-        </mxCell>
-
-        <mxCell id="faq-smile" value="smile (8,679件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="faqs-group">
-          <mxGeometry x="15" y="35" width="140" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="faq-sousoku" value="sousoku (4,000件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="faqs-group">
-          <mxGeometry x="15" y="70" width="160" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="faq-yokin" value="yokin (6,055件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="faqs-group">
-          <mxGeometry x="15" y="105" width="140" height="30" as="geometry" />
-        </mxCell>
-
-        <!-- ===== 中央列: AI Search ===== -->
-        <mxCell id="search-group" value="AI Search" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=13;rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="440" y="70" width="380" height="560" as="geometry" />
-        </mxCell>
-
-        <!-- scenarios Indexer（中央揃え） -->
-        <mxCell id="scenarios-indexer" value="maintenance-scenarios-indexer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="search-group">
-          <mxGeometry x="70" y="80" width="240" height="36" as="geometry" />
-        </mxCell>
-
-        <!-- 統合インデックス（中央揃え） -->
-        <mxCell id="search-index" value="maintenance-search-index&#xa;（15フィールド、21,047件）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=12;" vertex="1" parent="search-group">
-          <mxGeometry x="40" y="200" width="300" height="70" as="geometry" />
-        </mxCell>
-
-        <!-- faqs Indexer（中央揃え） -->
-        <mxCell id="faqs-indexer" value="maintenance-faqs-indexer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="search-group">
-          <mxGeometry x="70" y="350" width="240" height="36" as="geometry" />
-        </mxCell>
-
-        <!-- Skillset（中央揃えペア: skillset + OpenAI） -->
-        <mxCell id="skillset" value="maintenance-skillset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="search-group">
-          <mxGeometry x="55" y="470" width="170" height="36" as="geometry" />
-        </mxCell>
-
-        <!-- Azure OpenAI icon -->
-        <mxCell id="openai-icon" value="Azure OpenAI" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=10;image=img/lib/azure2/ai_machine_learning/Azure_OpenAI.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="search-group">
-          <mxGeometry x="265" y="455" width="60" height="60" as="geometry" />
-        </mxCell>
-
-        <!-- scenarios-indexer → index -->
-        <mxCell id="e-sc-idx" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="scenarios-indexer" target="search-index" parent="search-group">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- faqs-indexer → index -->
-        <mxCell id="e-faq-idx" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="faqs-indexer" target="search-index" parent="search-group">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- skillset → Azure OpenAI -->
-        <mxCell id="e-skill-openai" value="Embedding" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#9673a6;fontSize=10;fontColor=#9673a6;" edge="1" source="skillset" target="openai-icon" parent="search-group">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- ===== 右列: Bot ===== -->
-        <mxCell id="bot-group" value="Bot" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=13;rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="960" y="70" width="200" height="560" as="geometry" />
-        </mxCell>
-
-        <mxCell id="search-single" value="searchSingle()&#xa;agent.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="bot-group">
-          <mxGeometry x="30" y="210" width="140" height="50" as="geometry" />
-        </mxCell>
-
-        <!-- ===== グループ間の矢印 ===== -->
-
-        <!-- scenarios → scenarios-indexer -->
-        <mxCell id="e-sc-to-idx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" source="scenarios-group" target="scenarios-indexer" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- faqs → faqs-indexer -->
-        <mxCell id="e-faq-to-idx" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;" edge="1" source="faqs-group" target="faqs-indexer" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- searchSingle() → search-index -->
-        <mxCell id="e-bot-to-idx" value="検索クエリ" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;fontSize=10;" edge="1" source="search-single" target="search-index" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-      </root>
-    </mxGraphModel>
-  </diagram>
+<mxfile host="65bd71144e">
+    <diagram id="search-architecture" name="検索アーキテクチャ">
+        <mxGraphModel dx="1320" dy="1055" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="検索アーキテクチャ全体像" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=18;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="550" y="20" width="260" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="cosmos-group" value="Cosmos DB" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=13;rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="70" width="280" height="560" as="geometry"/>
+                </mxCell>
+                <mxCell id="scenarios-group" value="scenarios コンテナ" style="swimlane;startSize=28;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=11;rounded=1;whiteSpace=wrap;html=1;" parent="cosmos-group" vertex="1">
+                    <mxGeometry x="15" y="50" width="250" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="sc-smile" value="smile (555件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" parent="scenarios-group" vertex="1">
+                    <mxGeometry x="15" y="35" width="130" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="sc-souzoku" value="souzoku (269件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" parent="scenarios-group" vertex="1">
+                    <mxGeometry x="15" y="70" width="140" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="sc-naibujimu" value="naibujimu (1,384件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" parent="scenarios-group" vertex="1">
+                    <mxGeometry x="15" y="105" width="160" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="sc-torikaku" value="torikaku (105件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" parent="scenarios-group" vertex="1">
+                    <mxGeometry x="15" y="140" width="140" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="faqs-group" value="faqs コンテナ" style="swimlane;startSize=28;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;rounded=1;whiteSpace=wrap;html=1;" parent="cosmos-group" vertex="1">
+                    <mxGeometry x="15" y="283" width="250" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="faq-smile" value="smile (8,679件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" parent="faqs-group" vertex="1">
+                    <mxGeometry x="15" y="35" width="140" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="faq-sousoku" value="sousoku (4,000件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" parent="faqs-group" vertex="1">
+                    <mxGeometry x="15" y="70" width="160" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="faq-yokin" value="yokin (6,055件)" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=11;" parent="faqs-group" vertex="1">
+                    <mxGeometry x="15" y="105" width="140" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="search-group" value="AI Search" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=13;rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="440" y="70" width="380" height="560" as="geometry"/>
+                </mxCell>
+                <mxCell id="scenarios-indexer" value="maintenance-scenarios-indexer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="search-group" vertex="1">
+                    <mxGeometry x="70" y="80" width="240" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="search-index" value="maintenance-search-index&#xa;（15フィールド、21,047件）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=12;" parent="search-group" vertex="1">
+                    <mxGeometry x="40" y="200" width="300" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="faqs-indexer" value="maintenance-faqs-indexer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="search-group" vertex="1">
+                    <mxGeometry x="70" y="350" width="240" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="skillset" value="maintenance-skillset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" parent="search-group" vertex="1">
+                    <mxGeometry x="55" y="470" width="170" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="openai-icon" value="Azure OpenAI" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=10;image=img/lib/azure2/ai_machine_learning/Azure_OpenAI.svg;verticalLabelPosition=bottom;verticalAlign=top;" parent="search-group" vertex="1">
+                    <mxGeometry x="265" y="455" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-sc-idx" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" parent="search-group" source="scenarios-indexer" target="search-index" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-faq-idx" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" parent="search-group" source="faqs-indexer" target="search-index" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-skill-openai" value="Embedding" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#9673a6;fontSize=10;fontColor=#9673a6;" parent="search-group" source="skillset" target="openai-icon" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bot-group" value="Bot" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=13;rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="960" y="70" width="200" height="560" as="geometry"/>
+                </mxCell>
+                <mxCell id="search-single" value="searchSingle()&#xa;agent.ts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="bot-group" vertex="1">
+                    <mxGeometry x="30" y="210" width="140" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-sc-to-idx" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#6c8ebf;" parent="1" source="scenarios-group" target="scenarios-indexer" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-faq-to-idx" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="faqs-group" target="faqs-indexer" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="310" y="438" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e-bot-to-idx" value="検索クエリ" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;fontSize=10;" parent="1" source="search-single" target="search-index" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
 </mxfile>
