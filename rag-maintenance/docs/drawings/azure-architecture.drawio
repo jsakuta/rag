@@ -1,139 +1,103 @@
-<mxfile host="draw.io" modified="2026-03-16T00:00:00.000Z" agent="draw.io" version="24.0.0" type="device">
+<mxfile host="app.diagrams.net" modified="2026-03-16T00:00:00.000Z" agent="Claude" version="24.0.0" type="device">
   <diagram id="azure-architecture" name="Azure構成図">
-    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1400" math="0" shadow="0">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
         <!-- タイトル -->
         <mxCell id="title" value="Azure Resource Group: rg-maintenance-poc" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=18;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="30" width="420" height="40" as="geometry" />
+          <mxGeometry x="480" y="20" width="420" height="40" as="geometry" />
         </mxCell>
 
         <!-- Resource Group 外枠 -->
-        <mxCell id="rg-boundary" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#00B4D8;strokeWidth=2;dashed=1;dashPattern=8 8;" vertex="1" parent="1">
-          <mxGeometry x="350" y="80" width="1100" height="580" as="geometry" />
+        <mxCell id="rg-boundary" value="rg-maintenance-poc" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#00B4D8;strokeWidth=2;dashed=1;dashPattern=8 8;verticalAlign=top;fontStyle=1;fontSize=11;fontColor=#00B4D8;spacingTop=5;spacingLeft=10;align=left;" vertex="1" parent="1">
+          <mxGeometry x="280" y="70" width="1100" height="620" as="geometry" />
         </mxCell>
 
-        <!-- RGラベル -->
-        <mxCell id="rg-label" value="rg-maintenance-poc" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=12;fontStyle=1;fontColor=#00B4D8;" vertex="1" parent="1">
-          <mxGeometry x="360" y="85" width="140" height="30" as="geometry" />
-        </mxCell>
+        <!-- ===== 上段: Teams → Bot Service → Web App ===== -->
 
-        <!-- ============================================ -->
-        <!-- 上段 y=100: Teams → Bot Service → Web App   -->
-        <!-- ============================================ -->
-
-        <!-- Teams（RG外、左側） -->
-        <mxCell id="teams" value="Microsoft Teams" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6264A7;fontColor=#FFFFFF;strokeColor=#6264A7;fontStyle=1;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="120" y="130" width="120" height="50" as="geometry" />
+        <!-- Teams（RG外、外部URLアイコン） -->
+        <mxCell id="teams" value="Microsoft Teams" style="shape=image;html=1;verticalAlign=top;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;imageAspect=0;aspect=fixed;image=https://cdn.worldvectorlogo.com/logos/microsoft-teams-1.svg;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="130" width="60" height="60" as="geometry" />
         </mxCell>
 
         <!-- Bot Service -->
-        <mxCell id="bot-service" value="Bot Service&#xa;(F0)" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/ai_machine_learning/Bot_Services.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="480" y="110" width="68" height="68" as="geometry" />
+        <mxCell id="bot-service" value="Bot Service&#xa;(F0)" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=11;image=img/lib/azure2/ai_machine_learning/Bot_Services.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="400" y="120" width="60" height="60" as="geometry" />
         </mxCell>
 
         <!-- Web App -->
-        <mxCell id="web-app" value="Web App&#xa;(B1)" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/compute/App_Services.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="730" y="110" width="68" height="68" as="geometry" />
+        <mxCell id="web-app" value="Web App (B1)&#xa;Bot バックエンド" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=11;image=img/lib/azure2/compute/App_Services.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="660" y="120" width="60" height="60" as="geometry" />
         </mxCell>
 
-        <!-- 矢印: Teams → Bot Service -->
-        <mxCell id="arrow-teams-bot" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="teams" target="bot-service" parent="1">
+        <!-- Teams → Bot Service -->
+        <mxCell id="e-teams-bot" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="teams" target="bot-service" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- 矢印: Bot Service → Web App -->
-        <mxCell id="arrow-bot-webapp" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="bot-service" target="web-app" parent="1">
+        <!-- Bot Service → Web App -->
+        <mxCell id="e-bot-webapp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="bot-service" target="web-app" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- ============================================ -->
-        <!-- 中段 y=300: AI Search, Azure OpenAI, Cosmos  -->
-        <!-- ============================================ -->
+        <!-- ===== 中段: AI Search / Azure OpenAI / Cosmos DB ===== -->
 
-        <!-- Azure AI Search（テキストボックス） -->
-        <mxCell id="ai-search" value="Azure AI Search (Basic)&#xa;&#xa;・ハイブリッド検索&#xa;・Semantic Ranker&#xa;・ビルトインVectorizer&#xa;・Indexer×2&#xa;・AzureOpenAIEmbedding Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0078D4;fontColor=#FFFFFF;strokeColor=#0078D4;fontStyle=1;fontSize=12;verticalAlign=middle;spacingLeft=10;spacingRight=10;" vertex="1" parent="1">
-          <mxGeometry x="440" y="300" width="220" height="140" as="geometry" />
+        <!-- Azure AI Search -->
+        <mxCell id="ai-search" value="Azure AI Search (Basic)&#xa;&#xa;・ハイブリッド検索&#xa;・Semantic Ranker&#xa;・ビルトインVectorizer&#xa;・Indexer ×2&#xa;・AzureOpenAIEmbedding Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0078D4;fontColor=#FFFFFF;strokeColor=#005A9E;fontStyle=0;fontSize=11;verticalAlign=middle;spacingLeft=8;spacingRight=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="340" y="310" width="240" height="150" as="geometry" />
         </mxCell>
 
         <!-- Azure OpenAI -->
-        <mxCell id="azure-openai" value="Azure OpenAI&#xa;(S0)" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/ai_machine_learning/Azure_OpenAI.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="810" y="310" width="68" height="68" as="geometry" />
+        <mxCell id="azure-openai" value="Azure OpenAI&#xa;(S0)&#xa;text-embedding-3-large" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=10;image=img/lib/azure2/ai_machine_learning/Azure_OpenAI.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="430" y="540" width="60" height="60" as="geometry" />
         </mxCell>
 
         <!-- Cosmos DB -->
-        <mxCell id="cosmos-db" value="Cosmos DB&#xa;(Serverless)&#xa;scenarios/faqs/&#xa;impactAssessments" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/databases/Azure_Cosmos_DB.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="1060" y="300" width="68" height="68" as="geometry" />
+        <mxCell id="cosmos-db" value="Cosmos DB (Serverless)&#xa;scenarios / faqs /&#xa;impactAssessments" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=10;image=img/lib/azure2/databases/Azure_Cosmos_DB.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="900" y="340" width="60" height="60" as="geometry" />
         </mxCell>
 
-        <!-- 矢印: Web App → AI Search -->
-        <mxCell id="arrow-webapp-search" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="web-app" target="ai-search" parent="1">
+        <!-- Web App → AI Search（検索クエリ） -->
+        <mxCell id="e-webapp-search" value="検索クエリ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;fontSize=10;" edge="1" source="web-app" target="ai-search" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- 矢印: AI Search → Azure OpenAI -->
-        <mxCell id="arrow-search-openai" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="ai-search" target="azure-openai" parent="1">
+        <!-- Web App → Cosmos DB（書き込み） -->
+        <mxCell id="e-webapp-cosmos" value="書き込み&#xa;(FAQ削除/判定記録)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;fontSize=10;" edge="1" source="web-app" target="cosmos-db" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- 矢印: Cosmos DB → AI Search（Indexer） -->
-        <mxCell id="arrow-cosmos-search" value="Indexer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;fontSize=11;" edge="1" source="cosmos-db" target="ai-search" parent="1">
+        <!-- Cosmos DB → AI Search（Indexer） -->
+        <mxCell id="e-cosmos-search" value="Indexer&#xa;(10分間隔)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#0078D4;fontSize=10;fontColor=#0078D4;" edge="1" source="cosmos-db" target="ai-search" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- 矢印: Web App → Cosmos DB -->
-        <mxCell id="arrow-webapp-cosmos" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="web-app" target="cosmos-db" parent="1">
+        <!-- AI Search → Azure OpenAI（Skillset） -->
+        <mxCell id="e-search-openai" value="Skillset /&#xa;Vectorizer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#0078D4;fontSize=10;fontColor=#0078D4;" edge="1" source="ai-search" target="azure-openai" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- ============================================ -->
-        <!-- 下段 y=530: Managed Identity, App Insights   -->
-        <!-- ============================================ -->
+        <!-- ===== 下段: 補助サービス ===== -->
 
         <!-- Managed Identity -->
-        <mxCell id="managed-identity" value="Managed Identity&#xa;（サービス間認証）" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/identity/Azure_Active_Directory.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="440" y="530" width="68" height="68" as="geometry" />
+        <mxCell id="managed-identity" value="Managed Identity&#xa;（サービス間認証）" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=10;image=img/lib/azure2/identity/Azure_Active_Directory.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="740" y="540" width="60" height="60" as="geometry" />
         </mxCell>
 
         <!-- Application Insights -->
-        <mxCell id="app-insights" value="Application Insights&#xa;（監視・ログ）" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/management_governance/Application_Insights.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="700" y="530" width="68" height="68" as="geometry" />
+        <mxCell id="app-insights" value="Application Insights&#xa;（監視・ログ）" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=10;image=img/lib/azure2/management_governance/Application_Insights.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="540" width="60" height="60" as="geometry" />
         </mxCell>
 
         <!-- Log Analytics -->
-        <mxCell id="log-analytics" value="Log Analytics" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/management_governance/Log_Analytics_Workspaces.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
-          <mxGeometry x="950" y="530" width="68" height="68" as="geometry" />
+        <mxCell id="log-analytics" value="Log Analytics" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=10;image=img/lib/azure2/management_governance/Log_Analytics_Workspaces.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="540" width="60" height="60" as="geometry" />
         </mxCell>
 
-        <!-- 認証フロー点線: Managed Identity → Web App -->
-        <mxCell id="auth-mi-webapp" value="認証" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#999999;dashed=1;dashPattern=4 4;fontSize=10;fontColor=#999999;" edge="1" source="managed-identity" target="web-app" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- 認証フロー点線: Managed Identity → AI Search -->
-        <mxCell id="auth-mi-search" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#999999;dashed=1;dashPattern=4 4;" edge="1" source="managed-identity" target="ai-search" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- 認証フロー点線: Managed Identity → Azure OpenAI -->
-        <mxCell id="auth-mi-openai" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#999999;dashed=1;dashPattern=4 4;" edge="1" source="managed-identity" target="azure-openai" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- 認証フロー点線: Managed Identity → Cosmos DB -->
-        <mxCell id="auth-mi-cosmos" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#999999;dashed=1;dashPattern=4 4;" edge="1" source="managed-identity" target="cosmos-db" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- 矢印: App Insights → Log Analytics -->
-        <mxCell id="arrow-ai-la" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#999999;dashed=1;dashPattern=4 4;" edge="1" source="app-insights" target="log-analytics" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- 監視点線: App Insights → Web App -->
-        <mxCell id="monitor-ai-webapp" value="監視" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#999999;dashed=1;dashPattern=4 4;fontSize=10;fontColor=#999999;" edge="1" source="app-insights" target="web-app" parent="1">
+        <!-- App Insights → Log Analytics -->
+        <mxCell id="e-ai-la" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#999999;dashed=1;dashPattern=4 4;" edge="1" source="app-insights" target="log-analytics" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
