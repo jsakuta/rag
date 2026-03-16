@@ -30,8 +30,9 @@ rag-maintenance/
 │   │   ├── cosmos.ts          # Cosmos DB 操作（影響評価の保存・FAQ削除）
 │   │   ├── excel.ts           # Excel 出力（要修正シナリオ一覧）
 │   │   └── sharepoint.ts      # SharePoint Online アップロード
+│   ├── .vscode/               # F5デバッグ設定（launch.json / tasks.json）
 │   ├── appPackage/            # Teams アプリマニフェスト
-│   ├── env/                   # 環境変数ファイル（.env.dev / .env.local）
+│   ├── env/                   # 環境変数ファイル（.env.dev / .env.local）※機密情報のため引き継ぎ時は空
 │   ├── infra/                 # Azure Bicep テンプレート
 │   ├── m365agents.yml         # M365 Agents Toolkit 設定（Provision / Deploy）
 │   └── package.json
@@ -62,7 +63,7 @@ rag-maintenance/
 ### 環境構築の流れ
 
 1. **Azure リソース作成**（Step 1〜6）: リソースグループ、Azure OpenAI、AI Search、Cosmos DB、App Insights、App Service
-2. **Bot / アプリ登録**（Step 7〜10）: Toolkit Provision、Azure Bot 登録、サービスプリンシパル作成、RBAC / Graph 権限付与
+2. **Bot / アプリ登録**（Step 7〜10）: Toolkit Provision、Azure Bot 登録、サービスプリンシパル作成、RBAC / Graph 権限付与（引き継ぎコードがある場合、Step 7 のプロジェクト作成・yml カスタマイズはスキップ — 詳細は導入手順書参照）
 3. **AI Search 設定**（Step 11）: インデックス・データソース・Skillset・Indexer の作成
 4. **Bot 実装・デプロイ**（Step 12〜13）: アプリ設定、Toolkit Deploy、Teams アプリ Publish
 5. **動作確認**（Step 14）: F5 ローカルデバッグと Teams 上での検索テスト

@@ -100,6 +100,12 @@ done
 # src/
 cp -r "$BOT_SRC/src" "$BOT_DEST/"
 
+# .vscode/ （F5デバッグに必須。Toolkitはプロジェクト新規作成時のみ生成し、既存プロジェクトでは自動生成しない）
+if [ -d "$BOT_SRC/.vscode" ]; then
+    cp -r "$BOT_SRC/.vscode" "$BOT_DEST/"
+    echo "  [COPY] maintenance-bot/.vscode/（F5デバッグ設定）"
+fi
+
 # infra/
 if [ -d "$BOT_SRC/infra" ]; then
     cp -r "$BOT_SRC/infra" "$BOT_DEST/"
@@ -125,14 +131,14 @@ if [ -d "$BOT_SRC/appPackage" ]; then
     fi
 fi
 
-# env/ は全て除外（サブスクリプションID・テナントID等の機密情報を含む）
-echo "  [SKIP] maintenance-bot/env/（機密情報: サブスクリプションID, テナントID, Bot ID等）"
+# env/ — 機密情報を含むファイルは除外、空ディレクトリのみ作成
+mkdir -p "$BOT_DEST/env"
+echo "  [MKDIR] maintenance-bot/env/（空ディレクトリ。.env.dev は手順書に従い手動作成）"
 
 # 除外リスト表示
 echo "  [SKIP] maintenance-bot/node_modules/（npm installで復元）"
 echo "  [SKIP] maintenance-bot/lib/（tscで再生成）"
 echo "  [SKIP] maintenance-bot/.plans/（実装計画書）"
-echo "  [SKIP] maintenance-bot/.vscode/（IDE設定）"
 echo "  [SKIP] maintenance-bot/.localConfigs*（ローカル一時設定）"
 echo "  [SKIP] maintenance-bot/m365agents.playground.yml（Playground環境）"
 
@@ -164,13 +170,12 @@ echo "  - docs/scripts/              （文書加工ツール）"
 echo "  - docs/plans/                （設計ドラフト）"
 echo "  - scripts/seed-cosmos.js     （.ts版の重複）"
 echo "  - scripts/data/              （生成JSONデータ）"
-echo "  - maintenance-bot/env/       （機密情報）"
+echo "  - maintenance-bot/env/*.env* （機密情報。空ディレクトリのみ同梱）"
 echo "  - maintenance-bot/node_modules/"
 echo "  - maintenance-bot/lib/"
 echo "  - maintenance-bot/appPackage/build/"
 echo "  - maintenance-bot/.localConfigs*"
 echo "  - maintenance-bot/.plans/"
-echo "  - maintenance-bot/.vscode/"
 echo "  - maintenance-bot/m365agents.playground.yml"
 echo ""
 echo "[INFO] 完了。handoff/ フォルダをそのまま引き継ぎに使用してください。"
