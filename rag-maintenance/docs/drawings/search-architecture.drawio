@@ -53,34 +53,29 @@
           <mxGeometry x="440" y="70" width="380" height="560" as="geometry" />
         </mxCell>
 
-        <!-- AI Search アイコン（装飾） -->
-        <mxCell id="ai-search-icon" value="" style="shape=image;html=1;imageAspect=0;aspect=fixed;image=data:image/png;base64,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;" vertex="1" parent="search-group">
-          <mxGeometry x="300" y="40" width="40" height="40" as="geometry" />
-        </mxCell>
-
-        <!-- scenarios Indexer（上部、scenarios と同じ高さ） -->
+        <!-- scenarios Indexer（中央揃え） -->
         <mxCell id="scenarios-indexer" value="maintenance-scenarios-indexer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="search-group">
-          <mxGeometry x="30" y="80" width="240" height="36" as="geometry" />
+          <mxGeometry x="70" y="80" width="240" height="36" as="geometry" />
         </mxCell>
 
-        <!-- 統合インデックス（中央） -->
+        <!-- 統合インデックス（中央揃え） -->
         <mxCell id="search-index" value="maintenance-search-index&#xa;（15フィールド、21,047件）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=12;" vertex="1" parent="search-group">
-          <mxGeometry x="30" y="200" width="300" height="70" as="geometry" />
+          <mxGeometry x="40" y="200" width="300" height="70" as="geometry" />
         </mxCell>
 
-        <!-- faqs Indexer（下部、faqs と同じ高さ） -->
+        <!-- faqs Indexer（中央揃え） -->
         <mxCell id="faqs-indexer" value="maintenance-faqs-indexer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="search-group">
-          <mxGeometry x="30" y="350" width="240" height="36" as="geometry" />
+          <mxGeometry x="70" y="350" width="240" height="36" as="geometry" />
         </mxCell>
 
-        <!-- Skillset -->
+        <!-- Skillset（中央揃えペア: skillset + OpenAI） -->
         <mxCell id="skillset" value="maintenance-skillset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="search-group">
-          <mxGeometry x="30" y="470" width="170" height="36" as="geometry" />
+          <mxGeometry x="55" y="470" width="170" height="36" as="geometry" />
         </mxCell>
 
         <!-- Azure OpenAI icon -->
         <mxCell id="openai-icon" value="Azure OpenAI" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=10;image=img/lib/azure2/ai_machine_learning/Azure_OpenAI.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="search-group">
-          <mxGeometry x="270" y="455" width="60" height="60" as="geometry" />
+          <mxGeometry x="265" y="455" width="60" height="60" as="geometry" />
         </mxCell>
 
         <!-- scenarios-indexer → index -->
