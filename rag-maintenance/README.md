@@ -32,7 +32,7 @@ rag-maintenance/
 │   │   └── sharepoint.ts      # SharePoint Online アップロード
 │   ├── .vscode/               # F5デバッグ設定（launch.json / tasks.json）
 │   ├── appPackage/            # Teams アプリマニフェスト
-│   ├── env/                   # 環境変数ファイル（.env.dev / .env.local）※機密情報のため引き継ぎ時は空
+│   ├── env/                   # 環境変数ファイル（.env.dev / .env.local）※引き継ぎ時は .env.dev.example のみ同梱
 │   ├── infra/                 # Azure Bicep テンプレート
 │   ├── m365agents.yml         # M365 Agents Toolkit 設定（Provision / Deploy）
 │   └── package.json
@@ -46,7 +46,8 @@ rag-maintenance/
 └── docs/                      # 設計ドキュメント
     ├── 要件定義書.docx         # 機能要件・非機能要件・システム構成
     ├── 導入手順書.docx         # Azure 環境構築 Step 1〜14
-    └── 検索設計書.docx         # 検索アルゴリズム・パラメータ・チューニング経緯
+    ├── 検索設計書.docx         # 検索アルゴリズム・パラメータ・チューニング経緯
+    └── データベース設計書.docx  # Cosmos DB スキーマ定義・データ構造
 ```
 
 ## セットアップ
