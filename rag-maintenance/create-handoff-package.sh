@@ -130,9 +130,31 @@ if [ -d "$BOT_SRC/appPackage" ]; then
     fi
 fi
 
-# env/ — 機密情報を含むファイルは除外、空ディレクトリのみ作成
+# env/ — 機密情報を含むファイルは除外、テンプレートのみ同梱
 mkdir -p "$BOT_DEST/env"
-echo "  [MKDIR] maintenance-bot/env/（空ディレクトリ。.env.dev は手順書に従い手動作成）"
+cat > "$BOT_DEST/env/.env.dev.example" << 'ENVEOF'
+# Built-in environment variables
+TEAMSFX_ENV=dev
+APP_NAME_SUFFIX=dev
+
+# 既存リソース情報（Step 1〜7で作成済みの値を記入）
+AZURE_SUBSCRIPTION_ID=<サブスクリプションID>
+AZURE_RESOURCE_GROUP_NAME=rg-maintenance-poc
+
+# Provision実行後に自動書き込みされる
+# BOT_ID=<自動生成>
+# TEAMS_APP_ID=<自動生成>
+
+# 既存リソースのエンドポイント（Bot実装時に使用）
+AI_SEARCH_ENDPOINT=https://<AI Searchリソース名>.search.windows.net
+AI_SEARCH_INDEX_NAME=maintenance-search-index
+COSMOS_DB_ENDPOINT=https://<Cosmos DBアカウント名>.documents.azure.com:443/
+COSMOS_DB_DATABASE=maintenance-db
+
+# Provision実行後に自動書き込みされる
+# TEAMS_APP_TENANT_ID=<自動生成>
+ENVEOF
+echo "  [CREATE] maintenance-bot/env/.env.dev.example（テンプレート）"
 
 # 除外リスト表示
 echo "  [SKIP] maintenance-bot/node_modules/（npm installで復元）"
@@ -169,7 +191,7 @@ echo "  - docs/scripts/              （文書加工ツール）"
 echo "  - docs/plans/                （設計ドラフト）"
 echo "  - scripts/seed-cosmos.js     （.ts版の重複）"
 echo "  - scripts/data/              （生成JSONデータ）"
-echo "  - maintenance-bot/env/*.env* （機密情報。空ディレクトリのみ同梱）"
+echo "  - maintenance-bot/env/*.env* （機密情報。.env.dev.example のみ同梱）"
 echo "  - maintenance-bot/node_modules/"
 echo "  - maintenance-bot/lib/"
 echo "  - maintenance-bot/appPackage/build/"
