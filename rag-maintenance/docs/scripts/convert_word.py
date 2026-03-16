@@ -207,9 +207,15 @@ def convert_md_to_word(input_md, output_docx):
         apply_table_header_style(unpacked_dir)
         center_tables(unpacked_dir)
         
+        # テーブル列幅を自動設定
+        autofit_tables(unpacked_dir)
+
+        # コードブロック背景色をグレーに
+        add_code_block_background(unpacked_dir)
+
         # 画像を中央揃え
         center_images(unpacked_dir)
-        
+
         # 斜体削除
         remove_italics(unpacked_dir)
         
@@ -598,8 +604,50 @@ def center_tables(unpacked_dir):
         return tbl_pr.replace('</w:tblPr>', center_jc + '</w:tblPr>')
     
     content = re.sub(r'<w:tblPr>.*?</w:tblPr>', add_center_to_table, content, flags=re.DOTALL)
-    
+
     with open(doc_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+
+def autofit_tables(unpacked_dir):
+    """テーブル列幅をautofit(自動調整)に設定"""
+    doc_path = os.path.join(unpacked_dir, 'word/document.xml')
+    with open(doc_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    # tblLayout type="fixed" → type="autofit"
+    content = content.replace(
+        'w:type="fixed"', 'w:type="autofit"')
+
+    with open(doc_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+
+CODE_BG_COLOR = 'F5F5F5'
+
+
+def add_code_block_background(unpacked_dir):
+    """コードブロック(SourceCodeスタイル)に薄いグレー背景を追加"""
+    # styles.xmlのSourceCodeスタイルにshd(背景色)を追加
+    styles_path = os.path.join(unpacked_dir, 'word/styles.xml')
+    with open(styles_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    shd = f'<w:shd w:val="clear" w:color="auto" w:fill="{CODE_BG_COLOR}"/>'
+
+    # SourceCodeスタイルのpPrにshdを追加
+    source_code_pattern = r'(<w:style[^>]*w:styleId="SourceCode"[^>]*>)(.*?)(</w:style>)'
+    match = re.search(source_code_pattern, content, flags=re.DOTALL)
+    if match and 'w:shd' not in match.group(2):
+        style_start, style_content, style_end = match.groups()
+        # pPr内にshdを追加
+        if '<w:pPr>' in style_content:
+            style_content = style_content.replace('</w:pPr>', shd + '</w:pPr>')
+        else:
+            style_content = f'<w:pPr>{shd}</w:pPr>' + style_content
+        content = content[:match.start()] + style_start + style_content + style_end + content[match.end():]
+
+    with open(styles_path, 'w', encoding='utf-8') as f:
         f.write(content)
 
 
