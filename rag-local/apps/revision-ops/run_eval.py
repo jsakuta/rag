@@ -753,10 +753,21 @@ class RevisionEvaluator:
                     vertex_results = self._run_llm_analysis(vertex_results, revision_content)
 
             # 未発見シナリオ抽出
+            # both時: DBが存在するプロバイダーのみでAND（どちらかで未発見なら未発見）
+            # 片方指定時: そのプロバイダーのみで判定
             found_ids_azure = self._collect_found_ids(azure_results)
             found_ids_vertex = self._collect_found_ids(vertex_results)
             if providers == "both":
-                found_ids_combined = found_ids_azure | found_ids_vertex
+                azure_db = (VECTOR_DB_BASE / area / "azure_openai" / "chroma.sqlite3").exists()
+                vertex_db = (VECTOR_DB_BASE / area / "vertex_ai" / "chroma.sqlite3").exists()
+                if azure_db and vertex_db:
+                    found_ids_combined = found_ids_azure & found_ids_vertex
+                elif azure_db:
+                    found_ids_combined = found_ids_azure
+                elif vertex_db:
+                    found_ids_combined = found_ids_vertex
+                else:
+                    found_ids_combined = set()
             else:
                 found_ids_combined = found_ids_azure | found_ids_vertex
 
