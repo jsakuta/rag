@@ -71,6 +71,11 @@ for f in "$SRC/scripts/"*; do
         echo "  [SKIP] scripts/$basename（.ts版の重複）"
         continue
     fi
+    # export-drawings.py を除外（drawings/ を引き継がないため不要）
+    if [ "$basename" = "export-drawings.py" ]; then
+        echo "  [SKIP] scripts/$basename（drawings除外のため不要）"
+        continue
+    fi
     cp "$f" "$DEST/scripts/"
 done
 
@@ -155,7 +160,6 @@ echo "  - .review/                   （コードレビュー差分）"
 echo "  - .serena/                   （IDEメタデータ）"
 echo "  - docs/レビュー報告書.md      （開発時品質レビュー）"
 echo "  - docs/シナリオ情報設計.md    （引き継ぎ対象外）"
-echo "  - docs/データベース設計書.md  （引き継ぎ対象外）"
 echo "  - docs/scripts/              （文書加工ツール）"
 echo "  - docs/plans/                （設計ドラフト）"
 echo "  - scripts/seed-cosmos.js     （.ts版の重複）"
