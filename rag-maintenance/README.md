@@ -130,7 +130,7 @@ Azure Bot Service ──── Azure Web App (maintenance-bot)
 
 | ドキュメント | 文書番号 | 内容 |
 |------------|---------|------|
-| [要件定義書](docs/要件定義書.md) | REQ-FAQ-IMPACT-002 | 機能要件 FR-001〜015、非機能要件、システム構成 |
+| [要件定義書](docs/要件定義書.md) | REQ-FAQ-IMPACT-002 | 機能要件 FR-001〜009、非機能要件、システム構成 |
 | [導入手順書](docs/導入手順書.md) | SETUP-FAQ-IMPACT-001 | Azure 環境構築〜デプロイの全手順（Step 1〜14） |
 | [検索設計書](docs/検索設計書.md) | DESIGN-SEARCH-001 | 検索アルゴリズム、パラメータ、チューニング経緯 |
 | [データベース設計書](docs/データベース設計書.md) | DB-FAQ-IMPACT-001 | Cosmos DB スキーマ定義、combinedContent 生成ルール |
