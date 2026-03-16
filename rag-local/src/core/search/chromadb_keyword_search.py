@@ -69,7 +69,7 @@ class ChromaDBKeywordSearcher:
         self,
         collection_names: List[str],
         query: str,
-        provider: str = "azure_openai",
+        provider: str,
         max_results: int = 50,
         source_filter: Optional[str] = None,
     ) -> List[MatchResult]:

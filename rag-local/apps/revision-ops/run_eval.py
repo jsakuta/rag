@@ -136,10 +136,16 @@ class RevisionEvaluator:
         return df
 
     def _fetch_scenario_content(
-        self, scenario_id: str, area: str, provider: str = "azure_openai"
+        self, scenario_id: str, area: str, provider: Optional[str] = None
     ) -> Optional[Dict[str, str]]:
         """シナリオIDから質問・回答を取得"""
         try:
+            # プロバイダー未指定時は自動検出
+            if provider is None:
+                provider = self._detect_available_provider(area)
+                if provider is None:
+                    return None
+
             bot_name, excel_row = scenario_id.rsplit("_", 1)
             # シナリオID = Excel行番号 なので、row_index = Excel行 - 2
             row_index = int(excel_row) - 2
@@ -410,18 +416,6 @@ class RevisionEvaluator:
             logger.warning(f"改定 {revision} に対応するDBがありません")
             return {}, "", [], []
 
-        # 検索タイプを取得
-        search_type = REVISION_SEARCH_TYPES.get(revision, "hybrid")
-
-        # キーワード必須検索の場合（プロバイダー非依存）
-        if search_type == "keyword_filter":
-            # 重複実行防止: 最初のプロバイダー呼び出し時のみ実行
-            available = self._detect_available_provider(areas[0])
-            if provider == available:
-                return self._execute_keyword_filter_search(revision, query, correct_ids)
-            else:
-                return {}, "", [], []
-
         # 改定番号別のベクトル重みを取得
         vector_weight = REVISION_VECTOR_WEIGHTS.get(revision, DEFAULT_VECTOR_WEIGHT)
 
@@ -654,6 +648,17 @@ class RevisionEvaluator:
 
             evaluation_result["areas"] = searched_areas
 
+            # keyword_filterはプロバイダー非依存。格納先はDB存在状況と--providerで決定:
+            #   --provider vertex → VertexAI列のみ
+            #   --provider azure  → Azure列のみ
+            #   --provider both   → 存在するDB側に格納（両方あれば両方）
+            areas = REVISION_TO_AREAS.get(revision, [])
+            first_area = areas[0] if areas else ""
+            azure_exists = (VECTOR_DB_BASE / first_area / "azure_openai" / "chroma.sqlite3").exists() if first_area else False
+            vertex_exists = (VECTOR_DB_BASE / first_area / "vertex_ai" / "chroma.sqlite3").exists() if first_area else False
+            show_azure = providers in ("both", "azure") and azure_exists
+            show_vertex = providers in ("both", "vertex") and vertex_exists
+
             for area in searched_areas:
                 area_correct_ids = self._filter_correct_ids_by_area(correct_ids, area)
                 keyword_results = keyword_results_by_area.get(area, [])
@@ -666,10 +671,9 @@ class RevisionEvaluator:
                     area_correct_ids, found_ids, area, revision, change_details_map
                 )
 
-                # キーワード必須検索の場合、選択プロバイダーに応じて結果を設定
                 evaluation_result["by_area"][area] = {
-                    "azure_results": keyword_results if providers in ("both", "azure") else [],
-                    "vertex_results": keyword_results if providers in ("both", "vertex") else [],
+                    "azure_results": keyword_results if show_azure else [],
+                    "vertex_results": keyword_results if show_vertex else [],
                     "correct_ids": area_correct_ids,
                     "unfound_scenarios": unfound_scenarios,
                 }
@@ -752,7 +756,7 @@ class RevisionEvaluator:
             found_ids_azure = self._collect_found_ids(azure_results)
             found_ids_vertex = self._collect_found_ids(vertex_results)
             if providers == "both":
-                found_ids_combined = found_ids_azure & found_ids_vertex
+                found_ids_combined = found_ids_azure | found_ids_vertex
             else:
                 found_ids_combined = found_ids_azure | found_ids_vertex
 
@@ -1226,7 +1230,10 @@ def main() -> None:
     config = SearchConfig(
         base_dir=str(PROJECT_ROOT),
         top_k=MAX_RESULTS,
-        multi_stage_threshold=THRESHOLD_BY_PROVIDER["azure_openai"],
+        multi_stage_threshold=THRESHOLD_BY_PROVIDER.get(
+            {"vertex": "vertex_ai", "azure": "azure_openai"}.get(args.provider, "azure_openai"),
+            THRESHOLD_BY_PROVIDER.get("azure_openai", 0.0),
+        ),
         multi_stage_max_results=MAX_RESULTS,
         multi_stage_enable_judgment_support=True,
     )

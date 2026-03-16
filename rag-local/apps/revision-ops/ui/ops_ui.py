@@ -418,10 +418,16 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
 
         if search_type == "keyword_filter":
             results = _execute_impact_keyword_search(query, categories, source_filter)
+            # keyword_filterはプロバイダー非依存。DB存在状況に応じて格納先を決定
+            first_area = categories[0] if categories else ""
+            azure_exists = (VECTOR_DB_BASE / first_area / "azure_openai" / "chroma.sqlite3").exists() if first_area else False
+            vertex_exists = (VECTOR_DB_BASE / first_area / "vertex_ai" / "chroma.sqlite3").exists() if first_area else False
             selected_providers = st.session_state.get("selected_providers", "both")
-            if selected_providers == "vertex_ai":
-                return [], results, ""
-            return results, [], ""
+            show_azure = selected_providers in ("both", "azure_openai") and azure_exists
+            show_vertex = selected_providers in ("both", "vertex_ai") and vertex_exists
+            azure_results = results if show_azure else []
+            vertex_results = results if show_vertex else []
+            return azure_results, vertex_results, ""
 
         vector_weight = getattr(config, "vector_weight", DEFAULT_VECTOR_WEIGHT)
         selected_providers = st.session_state.get("selected_providers", "both")
@@ -440,10 +446,16 @@ def execute_dual_provider_search(query: str, revision: str) -> Tuple[List[Dict],
 
     if search_type == "keyword_filter":
         keyword_results = _execute_keyword_filter_search(query, revision, areas)
+        # keyword_filterはプロバイダー非依存。DB存在状況に応じて格納先を決定
+        first_area = areas[0] if areas else ""
+        azure_exists = (VECTOR_DB_BASE / first_area / "azure_openai" / "chroma.sqlite3").exists() if first_area else False
+        vertex_exists = (VECTOR_DB_BASE / first_area / "vertex_ai" / "chroma.sqlite3").exists() if first_area else False
         selected_providers = st.session_state.get("selected_providers", "both")
-        if selected_providers == "vertex_ai":
-            return [], keyword_results, ""
-        return keyword_results, [], ""
+        show_azure = selected_providers in ("both", "azure_openai") and azure_exists
+        show_vertex = selected_providers in ("both", "vertex_ai") and vertex_exists
+        azure_results = keyword_results if show_azure else []
+        vertex_results = keyword_results if show_vertex else []
+        return azure_results, vertex_results, ""
 
     selected_providers = st.session_state.get("selected_providers", "both")
     return _run_parallel_hybrid_search(
@@ -695,13 +707,9 @@ def process_query(query: str):
 def _render_provider_results(results: List[Dict], correct_ids: List[str], is_vertex: bool = False) -> None:
     """プロバイダー検索結果を表示"""
     if not results:
-        if is_vertex:
-            app_mode = st.session_state.get("app_mode", "evaluation")
-            search_type = getattr(st.session_state.config, "search_type", "hybrid")
-            if search_type == "keyword_filter":
-                st.info("キーワード検索のためスキップ（Azureタブの結果をご確認ください）")
-            else:
-                st.info("該当する結果がありません")
+        search_type = getattr(st.session_state.config, "search_type", "hybrid")
+        if search_type == "keyword_filter":
+            st.info("このプロバイダーのDBが存在しないため、キーワード検索結果はありません")
         else:
             st.info("該当する結果がありません")
         return
