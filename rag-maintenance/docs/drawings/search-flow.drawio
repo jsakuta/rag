@@ -56,17 +56,17 @@
         </mxCell>
 
         <!-- 矢印: 入力→ハイブリッド検索 -->
-        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="input" target="search-group" parent="1">
+        <mxCell id="e1" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="input" target="search-group" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: ハイブリッド検索→Semantic Ranker -->
-        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="search-group" target="ranker" parent="1">
+        <mxCell id="e2" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="search-group" target="ranker" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: Semantic Ranker→出力 -->
-        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="ranker" target="output" parent="1">
+        <mxCell id="e3" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="ranker" target="output" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 

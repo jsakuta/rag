@@ -87,27 +87,27 @@
         </mxCell>
 
         <!-- 矢印: 開始→テキスト入力 -->
-        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="start" target="step1" parent="lane1">
+        <mxCell id="e1" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="start" target="step1" parent="lane1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: テキスト入力→AI検索（クロスレーン） -->
-        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step1" target="step2" parent="pool">
+        <mxCell id="e2" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step1" target="step2" parent="pool">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: AI検索→Adaptive Card返却 -->
-        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step2" target="step3" parent="lane2">
+        <mxCell id="e3" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step2" target="step3" parent="lane2">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: Adaptive Card返却→候補を確認（クロスレーン） -->
-        <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step3" target="step4" parent="pool">
+        <mxCell id="e4" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step3" target="step4" parent="pool">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: 候補を確認→タブ選択 -->
-        <mxCell id="e5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step4" target="decision" parent="lane1">
+        <mxCell id="e5" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step4" target="decision" parent="lane1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
@@ -132,7 +132,7 @@
         </mxCell>
 
         <!-- 矢印: Cosmos DB更新→完了カード返却 -->
-        <mxCell id="e8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step6" target="step7" parent="lane2">
+        <mxCell id="e8" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step6" target="step7" parent="lane2">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 

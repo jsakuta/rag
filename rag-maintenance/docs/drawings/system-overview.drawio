@@ -31,12 +31,12 @@
         </mxCell>
 
         <!-- 矢印: 入力→処理 -->
-        <mxCell id="arrow1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="input-box" target="search-box" parent="1">
+        <mxCell id="arrow1" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="input-box" target="search-box" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: 処理→出力 -->
-        <mxCell id="arrow2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="search-box" target="output-box" parent="1">
+        <mxCell id="arrow2" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="search-box" target="output-box" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 

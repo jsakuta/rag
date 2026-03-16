@@ -75,22 +75,22 @@
         </mxCell>
 
         <!-- 矢印: 開始→通達変更を手動監視 -->
-        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="start" target="step1" parent="lane1">
+        <mxCell id="e1" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="start" target="step1" parent="lane1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: 通達変更→影響範囲調査 -->
-        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step1" target="step2" parent="lane1">
+        <mxCell id="e2" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step1" target="step2" parent="lane1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: 影響範囲→メール連絡 -->
-        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step2" target="step3" parent="lane1">
+        <mxCell id="e3" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step2" target="step3" parent="lane1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- 矢印: メール連絡→FAQ更新依頼（レーン跨ぎ） -->
-        <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step3" target="step4" parent="pool">
+        <mxCell id="e4" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step3" target="step4" parent="pool">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
@@ -100,7 +100,7 @@
         </mxCell>
 
         <!-- 矢印: FAQ更新→終了 -->
-        <mxCell id="e6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" source="step5" target="end" parent="lane3">
+        <mxCell id="e6" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step5" target="end" parent="lane3">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
