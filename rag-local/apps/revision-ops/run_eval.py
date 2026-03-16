@@ -667,7 +667,8 @@ class RevisionEvaluator:
                     keyword_results = self._run_llm_analysis(keyword_results, revision_content)
 
                 found_ids = self._collect_found_ids(keyword_results)
-                unfound_scenarios = self._build_unfound_scenarios(
+                # keyword_filterはプロバイダー非依存。DB存在側のみ未発見を記録
+                unfound = self._build_unfound_scenarios(
                     area_correct_ids, found_ids, area, revision, change_details_map
                 )
 
@@ -675,7 +676,8 @@ class RevisionEvaluator:
                     "azure_results": keyword_results if show_azure else [],
                     "vertex_results": keyword_results if show_vertex else [],
                     "correct_ids": area_correct_ids,
-                    "unfound_scenarios": unfound_scenarios,
+                    "unfound_azure": unfound if show_azure else [],
+                    "unfound_vertex": unfound if show_vertex else [],
                 }
 
             return evaluation_result
@@ -752,34 +754,30 @@ class RevisionEvaluator:
                 if vertex_results:
                     vertex_results = self._run_llm_analysis(vertex_results, revision_content)
 
-            # 未発見シナリオ抽出
-            # both時: DBが存在するプロバイダーのみでAND（どちらかで未発見なら未発見）
-            # 片方指定時: そのプロバイダーのみで判定
+            # プロバイダー別の未発見を構築（DB不在のプロバイダーは空）
             found_ids_azure = self._collect_found_ids(azure_results)
             found_ids_vertex = self._collect_found_ids(vertex_results)
+
             if providers == "both":
                 azure_db = (VECTOR_DB_BASE / area / "azure_openai" / "chroma.sqlite3").exists()
                 vertex_db = (VECTOR_DB_BASE / area / "vertex_ai" / "chroma.sqlite3").exists()
-                if azure_db and vertex_db:
-                    found_ids_combined = found_ids_azure & found_ids_vertex
-                elif azure_db:
-                    found_ids_combined = found_ids_azure
-                elif vertex_db:
-                    found_ids_combined = found_ids_vertex
-                else:
-                    found_ids_combined = set()
             else:
-                found_ids_combined = found_ids_azure | found_ids_vertex
+                azure_db = providers == "azure"
+                vertex_db = providers == "vertex"
 
-            unfound_scenarios = self._build_unfound_scenarios(
-                area_correct_ids, found_ids_combined, area, revision, change_details_map
-            )
+            unfound_azure = self._build_unfound_scenarios(
+                area_correct_ids, found_ids_azure, area, revision, change_details_map
+            ) if azure_db else []
+            unfound_vertex = self._build_unfound_scenarios(
+                area_correct_ids, found_ids_vertex, area, revision, change_details_map
+            ) if vertex_db else []
 
             evaluation_result["by_area"][area] = {
                 "azure_results": azure_results,
                 "vertex_results": vertex_results,
                 "correct_ids": area_correct_ids,
-                "unfound_scenarios": unfound_scenarios,
+                "unfound_azure": unfound_azure,
+                "unfound_vertex": unfound_vertex,
             }
 
         return evaluation_result
@@ -907,10 +905,9 @@ class RevisionEvaluator:
                     area_data.get("vertex_results", []), area_correct_ids
                 )
 
-                # 未発見情報
-                unfound_scenarios = area_data.get("unfound_scenarios", [])
-                unfound_count = len(unfound_scenarios)
-                unfound_ids = ", ".join([s["シナリオID"] for s in unfound_scenarios])
+                # 未発見情報（プロバイダー別）
+                unfound_azure = area_data.get("unfound_azure", [])
+                unfound_vertex = area_data.get("unfound_vertex", [])
 
                 summary_data.append({
                     "改定番号": revision,
@@ -925,8 +922,10 @@ class RevisionEvaluator:
                     "VertexAI_正解発見数": vertex_metrics["正解発見数"],
                     "VertexAI_正解発見率": vertex_metrics["正解発見率"],
                     "VertexAI_必要確認件数": vertex_metrics["必要確認件数"],
-                    "未発見数": unfound_count,
-                    "未発見ID": unfound_ids,
+                    "Azure_未発見数": len(unfound_azure),
+                    "Azure_未発見ID": ", ".join([s["シナリオID"] for s in unfound_azure]),
+                    "VertexAI_未発見数": len(unfound_vertex),
+                    "VertexAI_未発見ID": ", ".join([s["シナリオID"] for s in unfound_vertex]),
                 })
 
         if not summary_data:
@@ -936,7 +935,7 @@ class RevisionEvaluator:
         self._write_summary_headers(worksheet, formats)
         self._write_summary_data(worksheet, summary_data, formats)
 
-        column_widths = [10, 12, 15, 8, 8, 12, 12, 18, 8, 12, 12, 18, 10, 40]
+        column_widths = [10, 12, 15, 8, 8, 12, 12, 18, 8, 12, 12, 18, 10, 40, 10, 40]
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
@@ -961,8 +960,10 @@ class RevisionEvaluator:
             "VertexAI_正解発見数": 0,
             "VertexAI_正解発見率": 0,
             "VertexAI_必要確認件数": "-",
-            "未発見数": len(correct_ids),
-            "未発見ID": ", ".join(correct_ids),
+            "Azure_未発見数": len(correct_ids),
+            "Azure_未発見ID": ", ".join(correct_ids),
+            "VertexAI_未発見数": len(correct_ids),
+            "VertexAI_未発見ID": ", ".join(correct_ids),
         }
 
     def _write_summary_headers(self, worksheet, formats: Dict[str, Any]) -> None:
@@ -975,12 +976,14 @@ class RevisionEvaluator:
             worksheet.write(0, col, "", header_fmt)
         worksheet.merge_range("E1:H1", "Azure", azure_fmt)
         worksheet.merge_range("I1:L1", "VertexAI", vertex_fmt)
-        worksheet.merge_range("M1:N1", "未発見", unfound_fmt)
+        worksheet.merge_range("M1:N1", "Azure未発見", azure_fmt)
+        worksheet.merge_range("O1:P1", "VertexAI未発見", vertex_fmt)
 
         headers = [
             "改定番号", "エリア", "改定内容", "正解数",
             "候補数", "正解発見数", "正解発見率", "必要確認件数",
             "候補数", "正解発見数", "正解発見率", "必要確認件数",
+            "未発見数", "未発見ID",
             "未発見数", "未発見ID",
         ]
         for col, header in enumerate(headers):
@@ -990,8 +993,10 @@ class RevisionEvaluator:
                 fmt = azure_fmt
             elif col < 12:
                 fmt = vertex_fmt
+            elif col < 14:
+                fmt = azure_fmt
             else:
-                fmt = unfound_fmt
+                fmt = vertex_fmt
             worksheet.write(1, col, header, fmt)
 
     def _get_comparison_format(
@@ -1053,8 +1058,10 @@ class RevisionEvaluator:
             worksheet.write(row_num, 9, row_data["VertexAI_正解発見数"], cell_fmt)
             worksheet.write(row_num, 10, vertex_rate, vertex_rate_fmt)
             worksheet.write(row_num, 11, vertex_check, vertex_check_fmt)
-            worksheet.write(row_num, 12, row_data.get("未発見数", 0), cell_fmt)
-            worksheet.write(row_num, 13, row_data.get("未発見ID", ""), cell_fmt)
+            worksheet.write(row_num, 12, row_data.get("Azure_未発見数", 0), cell_fmt)
+            worksheet.write(row_num, 13, row_data.get("Azure_未発見ID", ""), cell_fmt)
+            worksheet.write(row_num, 14, row_data.get("VertexAI_未発見数", 0), cell_fmt)
+            worksheet.write(row_num, 15, row_data.get("VertexAI_未発見ID", ""), cell_fmt)
 
     def _write_detail_sheets(
         self,
@@ -1118,22 +1125,27 @@ class RevisionEvaluator:
             worksheet.write(0, col, f"VertexAI_{header}", formats["vertex_header"])
             col += 1
         for header in unfound_headers:
-            worksheet.write(0, col, f"未発見_{header}", formats["unfound_header"])
+            worksheet.write(0, col, f"Azure未発見_{header}", formats["azure_header"])
+            col += 1
+        for header in unfound_headers:
+            worksheet.write(0, col, f"VertexAI未発見_{header}", formats["vertex_header"])
             col += 1
 
         azure_results = []
         vertex_results = []
-        unfound_scenarios = []
+        unfound_azure = []
+        unfound_vertex = []
         for area in data.get("areas", []):
             area_data = data.get("by_area", {}).get(area, {})
             azure_results.extend(area_data.get("azure_results", []))
             vertex_results.extend(area_data.get("vertex_results", []))
-            unfound_scenarios.extend(area_data.get("unfound_scenarios", []))
+            unfound_azure.extend(area_data.get("unfound_azure", []))
+            unfound_vertex.extend(area_data.get("unfound_vertex", []))
 
-        max_rows = max(len(azure_results), len(vertex_results), len(unfound_scenarios), 1)
+        max_rows = max(len(azure_results), len(vertex_results), len(unfound_azure), len(unfound_vertex), 1)
 
-        for row_num, (azure_row, vertex_row, unfound_row) in enumerate(
-            zip_longest(azure_results, vertex_results, unfound_scenarios, fillvalue={}), start=1
+        for row_num, (azure_row, vertex_row, unfound_az_row, unfound_vx_row) in enumerate(
+            zip_longest(azure_results, vertex_results, unfound_azure, unfound_vertex, fillvalue={}), start=1
         ):
             col = 0
 
@@ -1171,11 +1183,13 @@ class RevisionEvaluator:
             col += len(result_headers)
             self._write_result_row(worksheet, row_num, col, vertex_row, formats)
             col += len(result_headers)
-            self._write_unfound_row(worksheet, row_num, col, unfound_row, formats)
+            self._write_unfound_row(worksheet, row_num, col, unfound_az_row, formats)
+            col += len(unfound_headers)
+            self._write_unfound_row(worksheet, row_num, col, unfound_vx_row, formats)
 
         # 列幅設定（common + azure + vertex + unfound）
         # 順位(6), シナリオID(18), 類似度(10), マッチ種別(15), 正解フラグ(12), 質問(50), 回答(50), 関連性判定(15), 判定根拠(40), ソースファイル(40)
-        column_widths = [10, 60, 30, 50, 25, 15, 12] + [6, 18, 10, 15, 12, 50, 50, 15, 40, 40] * 2 + [18, 12, 40, 50, 50]
+        column_widths = [10, 60, 30, 50, 25, 15, 12] + [6, 18, 10, 15, 12, 50, 50, 15, 40, 40] * 2 + [18, 12, 40, 50, 50] * 2
         for col_num, width in enumerate(column_widths):
             worksheet.set_column(col_num, col_num, width)
 
