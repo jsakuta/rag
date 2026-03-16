@@ -1,6 +1,6 @@
-# 運用保守効率化AI（事務改定影響検知システム Phase2 PoC）
+# 運用保守効率化AI（事務改定影響検知システム Phase 2 PoC）
 
-事務改定時にシナリオ・FAQ への影響候補を AI 検索で自動検出する Teams Bot システム。
+事務改定時にシナリオ・FAQ への影響候補を Azure AI Search で自動検出する Teams Bot システム。
 
 Azure AI Search のハイブリッド検索（BM25 + ベクトル検索 + Semantic Ranker）により、改定内容に関連するシナリオ・FAQ を高精度で特定する。
 
@@ -11,7 +11,7 @@ Azure AI Search のハイブリッド検索（BM25 + ベクトル検索 + Semant
 | Bot SDK | M365 Agents SDK (`@microsoft/agents-hosting`) |
 | 言語 | TypeScript |
 | 検索 | Azure AI Search (Basic) — ハイブリッド検索 + Semantic Ranker |
-| ベクトル化 | Azure OpenAI `text-embedding-3-large`（3,072次元）— AI Search Skillset 経由 |
+| ベクトル化 | Azure OpenAI `text-embedding-3-large`（3,072次元）— AI Search Skillset/Vectorizer 経由 |
 | DB | Azure Cosmos DB (Serverless, NoSQL API) |
 | UI | Adaptive Card（Teams） |
 | Excel出力 | ExcelJS（要修正シナリオのハイライト出力） |
@@ -43,17 +43,14 @@ rag-maintenance/
 │   ├── convert-excel-to-json.py  # Excel → Cosmos DB 用 JSON 変換
 │   └── seed-cosmos.ts         # Cosmos DB テストデータ投入
 └── docs/                      # 設計ドキュメント
-    ├── 要件定義書.md           # 機能要件・非機能要件・システム構成
-    ├── 導入手順書.md           # Azure 環境構築 Step 1〜14
-    ├── 検索設計書.md           # 検索アルゴリズム・パラメータ・チューニング経緯
-    ├── データベース設計書.md    # Cosmos DB スキーマ定義
-    ├── シナリオ情報設計.md      # シナリオ/FAQ データ構造・Excel I/O 仕様
-    └── screenshots/            # 手順書用スクリーンショット
+    ├── 要件定義書.docx         # 機能要件・非機能要件・システム構成
+    ├── 導入手順書.docx         # Azure 環境構築 Step 1〜14
+    └── 検索設計書.docx         # 検索アルゴリズム・パラメータ・チューニング経緯
 ```
 
 ## セットアップ
 
-環境構築の詳細手順は [導入手順書](docs/導入手順書.md) を参照。
+環境構築の詳細手順は導入手順書（`docs/導入手順書.docx`）を参照。
 
 ### 前提条件
 
@@ -76,10 +73,10 @@ rag-maintenance/
 cd maintenance-bot
 npm install
 # env/.env.local に環境変数を設定後:
-npm run dev:teamsfx    # F5 デバッグ（VSCode から実行推奨）
+npm run dev:teamsfx    # ローカル起動（VSCode の F5 デバッグからも実行可）
 ```
 
-必要な環境変数と `.localConfigs` の扱いは [導入手順書](docs/導入手順書.md) の Step 10、Step 12、Step 14 を参照。
+必要な環境変数と `.localConfigs` の扱いは導入手順書の Step 10、Step 12、Step 14 を参照。
 
 ## アーキテクチャ
 
@@ -95,7 +92,7 @@ Azure Bot Service ──── Azure Web App (maintenance-bot)
                  │
                  ▼
             Azure OpenAI
-          (Skillset 経由のみ)
+          (Skillset/Vectorizer 経由のみ)
 ```
 
 - Bot から Azure OpenAI を**直接呼び出さない**（Embedding は AI Search Skillset/Vectorizer 経由）
@@ -104,7 +101,7 @@ Azure Bot Service ──── Azure Web App (maintenance-bot)
 
 ## 検索の仕組み
 
-詳細は [検索設計書](docs/検索設計書.md) を参照。
+詳細は検索設計書（`docs/検索設計書.docx`）を参照。
 
 | 項目 | 値 |
 |------|-----|
@@ -118,7 +115,7 @@ Azure Bot Service ──── Azure Web App (maintenance-bot)
 
 ## データ構成
 
-詳細は [データベース設計書](docs/データベース設計書.md)、[シナリオ情報設計](docs/シナリオ情報設計.md) を参照。
+Cosmos DB に3コンテナを配置。
 
 | コンテナ | 用途 | パーティションキー | 件数目安 |
 |---------|------|-----------------|---------|
@@ -128,13 +125,12 @@ Azure Bot Service ──── Azure Web App (maintenance-bot)
 
 ## ドキュメント一覧
 
-| ドキュメント | 文書番号 | 内容 |
-|------------|---------|------|
-| [要件定義書](docs/要件定義書.md) | REQ-FAQ-IMPACT-002 | 機能要件 FR-001〜009、非機能要件、システム構成 |
-| [導入手順書](docs/導入手順書.md) | SETUP-FAQ-IMPACT-001 | Azure 環境構築〜デプロイの全手順（Step 1〜14） |
-| [検索設計書](docs/検索設計書.md) | DESIGN-SEARCH-001 | 検索アルゴリズム、パラメータ、チューニング経緯 |
-| [データベース設計書](docs/データベース設計書.md) | DB-FAQ-IMPACT-001 | Cosmos DB スキーマ定義、combinedContent 生成ルール |
-| [シナリオ情報設計](docs/シナリオ情報設計.md) | — | シナリオ/FAQ の JSON・Excel 入出力仕様 |
+| ドキュメント | 内容 |
+| ------------ | ------ |
+| `docs/要件定義書.docx` | 機能要件 FR-001〜FR-009、非機能要件、システム構成 |
+| `docs/導入手順書.docx` | Azure 環境構築〜デプロイの全手順（Step 1〜14） |
+| `docs/検索設計書.docx` | 検索アルゴリズム、パラメータ、チューニング経緯 |
+| `docs/データベース設計書.docx` | Cosmos DB スキーマ定義、combinedContent 生成ルール |
 
-> 各ドキュメントの役割分担: 「何を作るか」→ 要件定義書、「どう構築するか」→ 導入手順書、「検索をどう設計したか」→ 検索設計書、「データをどう持つか」→ データベース設計書・シナリオ情報設計
+> 各ドキュメントの役割分担: 「何を作るか」→ 要件定義書、「どう構築するか」→ 導入手順書、「検索をどう設計したか」→ 検索設計書、「データをどう持つか」→ データベース設計書
 
