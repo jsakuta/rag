@@ -23,7 +23,7 @@ Azure AI Search のハイブリッド検索（BM25 + ベクトル検索 + Semant
 rag-maintenance/
 ├── maintenance-bot/           # Bot アプリケーション（メイン）
 │   ├── src/
-│   │   ├── index.ts           # エントリポイント（Express + Agent Server）
+│   │   ├── index.ts           # エントリポイント（Express + Agent Server + Application Insights）
 │   │   ├── agent.ts           # Bot ロジック（検索・カード操作ハンドラ）
 │   │   ├── cards.ts           # Adaptive Card 生成（検索UI・結果表示・ページネーション）
 │   │   ├── config.ts          # 環境変数・アプリ定数

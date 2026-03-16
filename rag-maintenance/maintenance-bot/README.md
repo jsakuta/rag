@@ -27,6 +27,7 @@
 | `SPO_SITE_ID` | SharePoint サイト ID |
 | `SPO_DRIVE_ID` | SharePoint ドキュメントライブラリ ID |
 | `SPO_UPLOAD_FOLDER` | アップロード先フォルダ名（デフォルト: `影響候補シナリオ`） |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Application Insights 接続文字列（設定時のみ監視有効化） |
 
 認証は Managed Identity を使用するため、API キーの設定は不要。ローカル開発時は `DefaultAzureCredential` が Azure CLI ログインを自動検出する。
 
@@ -46,7 +47,7 @@ npm run build          # TypeScript コンパイル
 npm start              # コンパイル済み JS を実行
 ```
 
-デプロイは M365 Agents Toolkit の Provision → Deploy → Publish フローで実行する。詳細は [導入手順書](../docs/導入手順書.md) Step 13〜14 を参照。
+デプロイは M365 Agents Toolkit の Provision → Deploy → Publish フローで実行する。詳細は [導入手順書](../docs/導入手順書.md) Step 12〜13 を参照。
 
 ## Toolkit 設定ファイル
 
@@ -54,4 +55,3 @@ npm start              # コンパイル済み JS を実行
 |---------|------|
 | `m365agents.yml` | Provision / Deploy の定義（Azure 環境用） |
 | `m365agents.local.yml` | ローカルデバッグ用オーバーライド |
-| `m365agents.playground.yml` | M365 Agents Playground 用 |

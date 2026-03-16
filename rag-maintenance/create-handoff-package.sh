@@ -29,7 +29,6 @@ mkdir -p "$DEST"
 # =========================================
 echo "[1/6] トップレベルファイルをコピー..."
 cp "$SRC/README.md" "$DEST/"
-cp "$SRC/.gitignore" "$DEST/"
 
 # =========================================
 # 2. docs/ （レビュー報告書、scripts/、plans/ を除外）
@@ -91,7 +90,7 @@ mkdir -p "$BOT_DEST"
 for f in package.json package-lock.json tsconfig.json \
          m365agents.yml m365agents.local.yml \
          web.config create-deploy-zip.ps1 \
-         .webappignore .gitignore README.md; do
+         .webappignore .gitignore; do
     if [ -f "$BOT_SRC/$f" ]; then
         cp "$BOT_SRC/$f" "$BOT_DEST/"
     fi
