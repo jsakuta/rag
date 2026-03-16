@@ -1,93 +1,76 @@
-<mxfile host="app.diagrams.net" modified="2026-03-16T00:00:00.000Z" agent="Claude" version="24.0.0" type="device">
-  <diagram id="to-be-flow" name="目標業務フロー">
-    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="900" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-
-        <!-- タイトル -->
-        <mxCell id="title" value="事務改定時の運用フロー（To-Be）" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=20;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="20" width="380" height="40" as="geometry" />
-        </mxCell>
-
-        <!-- サブタイトル -->
-        <mxCell id="subtitle" value="ステップ③をAIが支援し、影響候補を一覧で提示する" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=12;fontColor=#666666;" vertex="1" parent="1">
-          <mxGeometry x="480" y="60" width="420" height="30" as="geometry" />
-        </mxCell>
-
-        <!-- ===== ステップ1 ===== -->
-        <mxCell id="num1" value="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="80" y="120" width="40" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="step1" value="事務改定の発生" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="180" width="160" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="desc1" value="法改正、営業店の&#xa;BizAssistによる提案、&#xa;担当者間の会議により&#xa;事務改定が発生" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#555555;" vertex="1" parent="1">
-          <mxGeometry x="40" y="245" width="160" height="70" as="geometry" />
-        </mxCell>
-
-        <!-- ===== ステップ2 ===== -->
-        <mxCell id="num2" value="2" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="350" y="120" width="40" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="step2" value="改定内容の検討" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="290" y="180" width="160" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="desc2" value="事務改定の内容を詳細に&#xa;検討し、後続で影響範囲を&#xa;特定したうえで、&#xa;協議書に記載" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#555555;" vertex="1" parent="1">
-          <mxGeometry x="290" y="245" width="160" height="70" as="geometry" />
-        </mxCell>
-
-        <!-- ===== ステップ3（AI支援・緑） ===== -->
-        <mxCell id="num3" value="3" style="ellipse;whiteSpace=wrap;html=1;fillColor=#107C10;strokeColor=#0B6A0B;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="620" y="120" width="40" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="step3" value="影響範囲の特定" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="180" width="160" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="desc3" value="改定内容をTeamsボットに&#xa;入力し、AIが影響候補を&#xa;一覧で提示" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#107C10;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="245" width="160" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="ai-badge" value="AI × ヒト" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#107C10;strokeColor=#0B6A0B;fontSize=11;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="600" y="310" width="80" height="26" as="geometry" />
-        </mxCell>
-
-        <!-- ===== ステップ4 ===== -->
-        <mxCell id="num4" value="4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="890" y="120" width="40" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="step4" value="修正・WFを起票" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="830" y="180" width="160" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="desc4" value="担当者が影響範囲の&#xa;Q&amp;Aを修正しWFを起票&#xa;（修正済みシナリオの&#xa;新旧比較を添付）" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#555555;" vertex="1" parent="1">
-          <mxGeometry x="830" y="245" width="160" height="70" as="geometry" />
-        </mxCell>
-
-        <!-- ===== ステップ5 ===== -->
-        <mxCell id="num5" value="5" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
-          <mxGeometry x="1160" y="120" width="40" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="step5" value="WF承認後に&#xa;台帳へ記入" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1100" y="180" width="160" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="desc5" value="上席がWFを承認すると、&#xa;管理者に通知されるので、&#xa;最終確認しボット更新" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#555555;" vertex="1" parent="1">
-          <mxGeometry x="1100" y="245" width="160" height="60" as="geometry" />
-        </mxCell>
-
-        <!-- ===== 矢印 ===== -->
-        <mxCell id="e12" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step1" target="step2" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e23" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step2" target="step3" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e34" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step3" target="step4" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e45" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" edge="1" source="step4" target="step5" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-      </root>
-    </mxGraphModel>
-  </diagram>
+<mxfile host="65bd71144e">
+    <diagram id="to-be-flow" name="目標業務フロー">
+        <mxGraphModel dx="544" dy="659" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="事務改定時の運用フロー（To-Be）" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="500" y="20" width="380" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="subtitle" value="ステップ③をAIが支援し、影響候補を一覧で提示する" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=12;fontColor=#666666;" parent="1" vertex="1">
+                    <mxGeometry x="480" y="60" width="420" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="num1" value="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="120" width="40" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="step1" value="事務改定の発生" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="180" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="desc1" value="法改正、営業店の&#xa;BizAssistによる提案、&#xa;担当者間の会議により&#xa;事務改定が発生" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="245" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="num2" value="2" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" parent="1" vertex="1">
+                    <mxGeometry x="350" y="120" width="40" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="step2" value="改定内容の検討" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="290" y="180" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="desc2" value="事務改定の内容を詳細に&#xa;検討し、後続で影響範囲を&#xa;特定したうえで、&#xa;協議書に記載" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="290" y="245" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="num3" value="3" style="ellipse;whiteSpace=wrap;html=1;fillColor=#107C10;strokeColor=#0B6A0B;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" parent="1" vertex="1">
+                    <mxGeometry x="620" y="120" width="40" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="step3" value="影響範囲の特定" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="560" y="180" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="desc3" value="改定内容をTeamsボットに&#xa;入力し、AIが影響候補を&#xa;一覧で提示" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#107C10;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="560" y="245" width="160" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="ai-badge" value="AI × ヒト" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#107C10;strokeColor=#0B6A0B;fontSize=11;fontStyle=1;fontColor=#FFFFFF;" parent="1" vertex="1">
+                    <mxGeometry x="670" y="170" width="70" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="num4" value="4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" parent="1" vertex="1">
+                    <mxGeometry x="890" y="120" width="40" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="step4" value="修正・WFを起票" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="830" y="180" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="desc4" value="担当者が影響範囲の&#xa;Q&amp;Aを修正しWFを起票&#xa;（修正済みシナリオの&#xa;新旧比較を添付）" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="830" y="245" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="num5" value="5" style="ellipse;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontSize=16;fontStyle=1;fontColor=#FFFFFF;" parent="1" vertex="1">
+                    <mxGeometry x="1160" y="120" width="40" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="step5" value="WF承認後に&#xa;台帳へ記入" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1100" y="180" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="desc5" value="上席がWFを承認すると、&#xa;管理者に通知されるので、&#xa;最終確認しボット更新" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];strokeColor=none;fillColor=none;fontSize=10;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="1100" y="245" width="160" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="e12" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" parent="1" source="step1" target="step2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e23" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" parent="1" source="step2" target="step3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e34" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" parent="1" source="step3" target="step4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e45" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#333333;" parent="1" source="step4" target="step5" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
 </mxfile>
