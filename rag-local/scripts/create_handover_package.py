@@ -80,11 +80,12 @@ DATA_DIRS = ["data/source/", "data/input/", "reference/"]
 OUTPUT_EMPTY_DIRS = ["data/output/latest/answer", "data/output/latest/rev"]
 
 # --- 出力例カテゴリ（--include-examples 時に examples/ から種類ごとに最新1件を選定） ---
-# 回答支援（バッチ/UI） + 運用保守（バッチ/評価UI/影響調査UI） = 5ファイル
+# 回答支援（バッチ/UI） + 運用保守（バッチ×2/評価UI/影響調査UI） = 6ファイル
 EXAMPLE_CATEGORIES = {
     "回答支援×バッチ": "answer_batch_*.xlsx",
     "回答支援×UI": "answer_chat_*.xlsx",
-    "運用保守×バッチ": "rev_eval_batch_*.xlsx",
+    "運用保守×バッチ(VertexAIのみ)": "rev_eval_batch_vertexai_only.xlsx",
+    "運用保守×バッチ(両方)": "rev_eval_batch_both_providers.xlsx",
     "運用保守×UI(評価)": "rev_eval_chat_*.xlsx",
     "運用保守×UI(影響調査)": "rev_impact_chat_*.xlsx",
 }
